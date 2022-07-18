@@ -110,7 +110,7 @@ def read_gtfs_timetable(
     trips = pd.read_csv(os.path.join(input_folder, "trips.txt"))
     trips = trips[trips.route_id.isin(routes.route_id.values)]
 
-    trips_column_selector = [
+    trips_col_selector = [
         "route_id",
         "service_id",
         "trip_id"
@@ -119,11 +119,11 @@ def read_gtfs_timetable(
     # The trip short name is an optionally defined attribute in the GTFS standard
     t_short_name_col = "trip_short_name"
     if t_short_name_col in trips.columns:
-        trips_column_selector.append(t_short_name_col)
+        trips_col_selector.append(t_short_name_col)
 
         trips[t_short_name_col] = trips[t_short_name_col].astype(int)
 
-    trips = trips[trips_column_selector]
+    trips = trips[trips_col_selector]
 
     # Read calendar
     logger.debug("Read Calendar")
@@ -177,16 +177,19 @@ def read_gtfs_timetable(
     stop_code_col = "stop_code"
     stops[stop_code_col] = stops[stop_code_col].astype(str)
 
-    # stops["zone_id"] = stops["zone_id"].str.replace("IFF:", "").str.upper()
     stops[stop_code_col] = stops.stop_code.str.upper()
-    stops = stops[
-        [
-            "stop_id",
-            "stop_name",
-            "parent_station",
-            "platform_code",
-        ]
+
+    stops_col_selector = [
+        "stop_id",
+        "stop_name",  # TODO this is optional too (conditionally required)
+        "parent_station",
     ]
+
+    platform_code_col = "platform_code",
+    if platform_code_col in stops.columns:
+        stops_col_selector.append(platform_code_col)
+
+    stops = stops[stops_col_selector]
 
     # Filter out the general station codes
     stops = stops.loc[~stops.parent_station.isna()]
@@ -219,8 +222,9 @@ def gtfs_to_pyraptor_timetable(
         station = Station(s.stop_name, s.stop_name)
         station = stations.add(station)
 
-        stop_id = f"{s.stop_name}-{s.platform_code}"
-        stop = Stop(s.stop_id, stop_id, station, s.platform_code)
+        platform_code = getattr(s, "platform_code", "missing_platform_code")
+        stop_id = f"{s.stop_name}-{platform_code}"
+        stop = Stop(s.stop_id, stop_id, station, platform_code)
 
         station.add_stop(stop)
         stops.add(stop)
