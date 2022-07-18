@@ -367,11 +367,12 @@ class GTFSCalendarProcessor:
 
             # Extract the exception type for the provided date
             exception_on_date = service_exceptions[service_exceptions["date"] == date]
-            exception_type = int(exception_on_date["exception_type"][0])
+            exception_type = int(exception_on_date["exception_type"].iloc[0])
 
             return exception_type
-        except Exception:
+        except Exception as x:
             # Exception not found
+            # logger.debug(f"Exception type for service {service_id} on date {date} not found. Reason: {x}")
             return -1
 
 
@@ -416,7 +417,14 @@ def gtfs_to_pyraptor_timetable(
     trips = Trips()
     trip_stop_times = TripStopTimes()
 
+    # TODO debug
+    prog_counter = -1
     for trip_row in gtfs_timetable.trips.itertuples():
+        prog_counter += 1
+        table_length = len(gtfs_timetable.trips)
+        logger.debug(f"Trips Table Progress: {(prog_counter / table_length)*100}% "
+                     f"[row #{prog_counter} out of {table_length}")
+
         trip = Trip()
 
         # This is an optionally defined attribute in the GTFS standard
