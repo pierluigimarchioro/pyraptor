@@ -216,13 +216,15 @@ def gtfs_to_pyraptor_timetable(
     stations = Stations()
     stops = Stops()
 
-    gtfs_timetable.stops.platform_code = gtfs_timetable.stops.platform_code.fillna("?")
+    platform_code_col = "platform_code"
+    if platform_code_col in gtfs_timetable.stops.columns:
+        gtfs_timetable.stops.platform_code = gtfs_timetable.stops.platform_code.fillna("missing_platform_code")
 
     for s in gtfs_timetable.stops.itertuples():
         station = Station(s.stop_name, s.stop_name)
         station = stations.add(station)
 
-        platform_code = getattr(s, "platform_code", "missing_platform_code")
+        platform_code = getattr(s, platform_code_col, "missing_platform_code")
         stop_id = f"{s.stop_name}-{platform_code}"
         stop = Stop(s.stop_id, stop_id, station, platform_code)
 
