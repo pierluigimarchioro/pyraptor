@@ -103,26 +103,29 @@ def run_raptor(
     """
 
     # Get stops for origin and all destinations
-    from_stops = timetable.stations.get(origin_station).stops
-    destination_stops = {
-        st.name: timetable.stations.get_stops(st.name) for st in timetable.stations
-    }
-    destination_stops.pop(origin_station, None)
+    try:
+        from_stops = timetable.stations.get(origin_station).stops
+        destination_stops = {
+            st.name: timetable.stations.get_stops(st.name) for st in timetable.stations
+        }
+        destination_stops.pop(origin_station, None)
 
-    # Run Round-Based Algorithm
-    raptor = RaptorAlgorithm(timetable)
-    bag_round_stop = raptor.run(from_stops, dep_secs, rounds)
-    best_labels = bag_round_stop[rounds]
+        # Run Round-Based Algorithm
+        raptor = RaptorAlgorithm(timetable)
+        bag_round_stop = raptor.run(from_stops, dep_secs, rounds)
+        best_labels = bag_round_stop[rounds]
 
-    # Determine the best journey to all possible destination stations
-    journey_to_destinations = dict()
-    for destination_station_name, to_stops in destination_stops.items():
-        dest_stop = best_stop_at_target_station(to_stops, best_labels)
-        if dest_stop != 0:
-            journey = reconstruct_journey(dest_stop, best_labels)
-            journey_to_destinations[destination_station_name] = journey
+        # Determine the best journey to all possible destination stations
+        journey_to_destinations = dict()
+        for destination_station_name, to_stops in destination_stops.items():
+            dest_stop = best_stop_at_target_station(to_stops, best_labels)
+            if dest_stop != 0:
+                journey = reconstruct_journey(dest_stop, best_labels)
+                journey_to_destinations[destination_station_name] = journey
 
-    return journey_to_destinations
+        return journey_to_destinations
+    except Exception as ex:
+        logger.error(ex)
 
 
 if __name__ == "__main__":

@@ -249,7 +249,7 @@ class Trip:
     id = attr.ib(default=None)
     stop_times = attr.ib(default=attr.Factory(list))
     stop_times_index = attr.ib(default=attr.Factory(dict))
-    hint = attr.ib(default=None)
+    hint = attr.ib(default=None)  # i.e. trip_short_name
     long_name = attr.ib(default=None)  # e.g., Sprinter
 
     def __hash__(self):

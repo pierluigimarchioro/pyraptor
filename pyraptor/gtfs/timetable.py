@@ -109,20 +109,26 @@ def read_gtfs_timetable(
 
     trips = pd.read_csv(os.path.join(input_folder, "trips.txt"))
     trips = trips[trips.route_id.isin(routes.route_id.values)]
-    trips = trips[
-        [
-            "route_id",
-            "service_id",
-            "trip_id",
-            "trip_short_name",
-            "trip_long_name",
-        ]
+
+    trips_column_selector = [
+        "route_id",
+        "service_id",
+        "trip_id"
     ]
-    trips["trip_short_name"] = trips["trip_short_name"].astype(int)
+
+    # The trip short name is an optionally defined attribute in the GTFS standard
+    t_short_name_col = "trip_short_name"
+    if t_short_name_col in trips.columns:
+        trips_column_selector.append(t_short_name_col)
+
+        trips[t_short_name_col] = trips[t_short_name_col].astype(int)
+
+    trips = trips[trips_column_selector]
 
     # Read calendar
     logger.debug("Read Calendar")
 
+    # TODO only ALTERNATE calendar representation? no use of calendar.txt
     calendar = pd.read_csv(
         os.path.join(input_folder, "calendar_dates.txt"), dtype={"date": str}
     )
@@ -167,8 +173,12 @@ def read_gtfs_timetable(
     # stops = stops.append(.copy())
     stops = pd.concat([stops, stops_full.loc[stops_full["stop_id"].isin(stopareas)]])
 
+    # Make sure that stop_code is of string type
+    stop_code_col = "stop_code"
+    stops[stop_code_col] = stops[stop_code_col].astype(str)
+
     # stops["zone_id"] = stops["zone_id"].str.replace("IFF:", "").str.upper()
-    stops["stop_code"] = stops.stop_code.str.upper()
+    stops[stop_code_col] = stops.stop_code.str.upper()
     stops = stops[
         [
             "stop_id",
@@ -228,8 +238,9 @@ def gtfs_to_pyraptor_timetable(
 
     for trip_row in gtfs_timetable.trips.itertuples():
         trip = Trip()
-        trip.hint = trip_row.trip_short_name  # i.e. treinnummer
-        trip.long_name = trip_row.trip_long_name  # e.g., Sprinter
+
+        # This is an optionally defined attribute in the GTFS standard
+        trip.hint = getattr(trip_row, "trip_short_name", "missing_hint")  # i.e. train number
 
         # Iterate over stops
         sort_stop_times = sorted(
