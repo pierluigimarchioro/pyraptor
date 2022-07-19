@@ -5,9 +5,11 @@ import math
 import os
 import argparse
 import calendar as cal
-from typing import List, Iterable, Any
+import uuid
+from typing import List, Iterable, Any, Tuple, Callable, NamedTuple
 from dataclasses import dataclass
 from collections import defaultdict
+from collections.abc import Mapping
 from datetime import datetime
 
 import pandas as pd
@@ -63,6 +65,8 @@ def parse_arguments():
     )
     parser.add_argument("-a", "--agencies", nargs="+", default=["NS"])
     parser.add_argument("--icd", action="store_true", help="Add ICD fare(s)")
+    parser.add_argument("j", "--jobs", type=int, default=1, help="Number of jobs to run")
+
     arguments = parser.parse_args()
     return arguments
 
@@ -72,6 +76,7 @@ def main(
         output_folder: str,
         departure_date: str,
         agencies: List[str],
+        n_jobs: int,
         icd_fix: bool = False,
 ):
     """Main function"""
@@ -80,7 +85,7 @@ def main(
     mkdir_if_not_exists(output_folder)
 
     gtfs_timetable = read_gtfs_timetable(input_folder, departure_date, agencies)
-    timetable = gtfs_to_pyraptor_timetable(gtfs_timetable, icd_fix)
+    timetable = gtfs_to_pyraptor_timetable(gtfs_timetable, n_jobs, icd_fix)
     write_timetable(output_folder, timetable)
 
 
@@ -213,7 +218,7 @@ def read_gtfs_timetable(
     return gtfs_timetable
 
 
-class GTFSCalendarProcessor:
+class GTFSCalendarProcessor(object):
     """
     Class that handles the processing of the calendar and calendar_dates tables
     of the provided GTFS feed.
@@ -375,8 +380,91 @@ class GTFSCalendarProcessor:
             return -1
 
 
+class TripsProcessor:
+    """
+    Class that handles the processing of GtfsTimetable trips, written with multi-threading in mind.
+    """
+
+    @staticmethod
+    def get_processor(trips_storage: Trips,
+                      trip_stop_times_storage: TripStopTimes,
+                      trips_row_iterator: Iterable[NamedTuple],
+                      stops_info: Stops,
+                      stop_times_by_trip_id: Mapping[Any, List],
+                      processor_id: uuid.UUID | int | str = uuid.uuid4()) -> Callable[[], None]:
+        """
+        Returns a function that processes the provided trips.
+        The resulting Trip and TripStopTime instances will be added to the provided storage.
+
+        :param trips_storage: list to which the Trip instances
+            generated in the processing phase will be added
+        :param trip_stop_times_storage: list to which the TripStopTime instances
+            generated in the processing phase will be added
+        :param trips_row_iterator: iterator that cycles over the rows of
+            a GtfsTimetable.trips dataframe
+        :param stops_info: collection of stop instances that contain detailed information
+            for each stop
+        :param stop_times_by_trip_id: default dictionary where keys are trip ids and
+            values are collections of stop times.
+        :param processor_id: id to assign to this processor.
+            Its purpose is only to identify this instance in the logger output.
+        """
+
+        def process_trips():
+            # DEBUG: Keep track of progress since this operation is relatively heavy
+            processed_trips = -1
+            prev_pct_point = -1
+
+            trip_rows = list(trips_row_iterator)
+            for row in trip_rows:
+                processed_trips += 1
+                table_length = len(trip_rows)
+                current_pct = math.floor((processed_trips / table_length) * 100)
+
+                if math.floor(current_pct) > prev_pct_point or current_pct == 100:
+                    logger.debug(f"[TripsProcessor {processor_id}] Progress: {current_pct}% "
+                                 f"[trip #{processed_trips} of {table_length}]")
+                    prev_pct_point = current_pct
+
+                trip = Trip()
+
+                # This is an optionally defined attribute in the GTFS standard
+                trip.hint = getattr(row, "trip_short_name", "missing_hint")  # i.e. train number
+
+                # Iterate over stops, ordered by sequence number:
+                # the first stop will be the one with stop_sequence == 1
+                sort_stop_times = sorted(
+                    stop_times_by_trip_id[row.trip_id], key=lambda s: int(s.stop_sequence)
+                )
+                for stop_number, stop_time in enumerate(sort_stop_times):
+                    # Timestamps
+                    dts_arr = stop_time.arrival_time
+                    dts_dep = stop_time.departure_time
+
+                    # Trip Stop Times
+                    stop = stops_info.get(stop_time.stop_id)
+
+                    # TODO ICD fare not calculated since it is specific (apparently) to the sample Dutch GTFS
+                    # GTFS files do not contain ICD supplement fare, so hard-coded here
+                    # fare = calculate_icd_fare(trip, stop, stations) if icd_fix is True else 0
+                    trip_stop_time = TripStopTime(trip, stop_number, stop, dts_arr, dts_dep)
+
+                    trip_stop_times_storage.add(trip_stop_time)
+                    trip.add_stop_time(trip_stop_time)
+
+                # Add trip TODO why this if? isn't trip always != None?
+                if trip:
+                    trips_storage.add(trip)
+
+            pass
+
+        return process_trips
+
+
 def gtfs_to_pyraptor_timetable(
-        gtfs_timetable: GtfsTimetable, icd_fix: bool = False
+        gtfs_timetable: GtfsTimetable,
+        n_jobs: int,
+        icd_fix: bool = False  # TODO consider removing, because this ICD thing works only on this specific Dutch GTFS
 ) -> Timetable:
     """
     Convert timetable for usage in Raptor algorithm.
@@ -416,46 +504,16 @@ def gtfs_to_pyraptor_timetable(
     trips = Trips()
     trip_stop_times = TripStopTimes()
 
-    # DEBUG: Keep track of progress since this operation is relatively heavy
-    prog_counter = -1
-    prev_pct_point = -1
-    for trip_row in gtfs_timetable.trips.itertuples():
-        prog_counter += 1
-        table_length = len(gtfs_timetable.trips)
-        current_pct = math.floor((prog_counter / table_length) * 100)
+    # TODO multithread with multiprocessing.Process and TripsProcessor
+    for i in range(n_jobs):
+        total_trips = len(gtfs_timetable.trips)
+        interval_length = math.floor(total_trips / n_jobs)
+        start = i*interval_length
+        end = (start + interval_length) - 1  # -1 because the interval_length-th trip belongs to the next round
 
-        if math.floor(current_pct) > prev_pct_point:
-            logger.debug(f"[Trips and Trip Stop Times] Progress: {current_pct}% "
-                         f"[trip #{prog_counter} of {table_length}]")
-            prev_pct_point = current_pct
-
-        trip = Trip()
-
-        # This is an optionally defined attribute in the GTFS standard
-        trip.hint = getattr(trip_row, "trip_short_name", "missing_hint")  # i.e. train number
-
-        # Iterate over stops
-        sort_stop_times = sorted(
-            stop_times[trip_row.trip_id], key=lambda s: int(s.stop_sequence)
-        )
-        for stopidx, stop_time in enumerate(sort_stop_times):
-            # Timestamps
-            dts_arr = stop_time.arrival_time
-            dts_dep = stop_time.departure_time
-
-            # Trip Stop Times
-            stop = stops.get(stop_time.stop_id)
-
-            # GTFS files do not contain ICD supplement fare, so hard-coded here
-            fare = calculate_icd_fare(trip, stop, stations) if icd_fix is True else 0
-            trip_stop_time = TripStopTime(trip, stopidx, stop, dts_arr, dts_dep, fare)
-
-            trip_stop_times.add(trip_stop_time)
-            trip.add_stop_time(trip_stop_time)
-
-        # Add trip TODO why this if? isn't trip always != None?
-        if trip:
-            trips.add(trip)
+        p = multiprocessing.Process(target=get_correct_pin, args=(guess_start, guess_end, correct_pin_queue, ))
+        p.start()
+        processes.append(p)
 
     # Routes
     logger.debug("Add routes")
@@ -512,4 +570,6 @@ def calculate_icd_fare(trip: Trip, stop: Stop, stations: Stations) -> int:
 
 if __name__ == "__main__":
     args = parse_arguments()
-    main(args.input, args.output, args.date, args.agencies, args.icd)
+    main(input_folder=args.input, output_folder=args.output,
+         departure_date=args.date, agencies=args.agencies,
+         icd_fix=args.icd)
