@@ -502,10 +502,6 @@ def gtfs_to_pyraptor_timetable(
     # Trips and Trip Stop Times
     logger.debug("Add trips and trip stop times")
 
-    trips = Trips()
-    trip_stop_times = TripStopTimes()
-
-    # TODO multithread with multiprocessing.Process and TripsProcessor
     job_results: dict[int, ApplyResult] = {}
     pool = p.ProcessPool(nodes=n_jobs)
     for i in range(n_jobs):
@@ -523,10 +519,6 @@ def gtfs_to_pyraptor_timetable(
             stop_times_by_trip_id=stop_times,
             processor_id=processor_id
         )
-
-        # TODO with multiprocessing (which doesn't work because pickle can't serialize functions)
-        # job = mp.Process(target=processor)
-        # jobs[processor_id] = job
 
         job_results[processor_id] = pool.apipe(processor)
 
@@ -550,11 +542,6 @@ def gtfs_to_pyraptor_timetable(
 
     # Make sure all the jobs are finished
     pool.join()
-
-    # TODO with multiprocessing
-    # for pool.
-    #     logger.info(f"Trips Processor Job #{processor_id} completed")
-    #     job.join()
 
     # Routes
     logger.debug("Add routes")
