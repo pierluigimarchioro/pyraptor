@@ -1,5 +1,7 @@
 """Parse timetable from GTFS files"""
+from __future__ import annotations
 
+import math
 import os
 import argparse
 import calendar as cal
@@ -124,15 +126,13 @@ def read_gtfs_timetable(
     if t_short_name_col in trips.columns:
         trips_col_selector.append(t_short_name_col)
 
-        # TODO error because some values are missing
+        # TODO error because some values are missing - fillna with -1?
         # trips[t_short_name_col] = trips[t_short_name_col].astype(int)
 
     trips = trips[trips_col_selector]
 
     # Read calendar
     logger.debug("Read Calendar")
-
-    # TODO
     calendar_processor = GTFSCalendarProcessor(input_folder=input_folder)
 
     # Trips here are already filtered by agency ids
@@ -187,7 +187,7 @@ def read_gtfs_timetable(
     stops_col_selector = [
         "stop_id",
         "stop_name",  # TODO this is optional too (conditionally required)
-        "parent_station",  # TODO is this optional?
+        "parent_station",  # TODO conditionally required too
     ]
 
     platform_code_col = "platform_code",
@@ -196,13 +196,12 @@ def read_gtfs_timetable(
 
     stops = stops[stops_col_selector]
 
-    # TODO commented because we actually want to keep stops
-    #  that are parent stations (parent_station == na):
-    #  such stops are also standalone stops and should not be discarded
-    #  SHOULD IT BE HANDLED DIFFERENTLY?
-    #  I think the rationale behind removing parent stations
-    #  is that the child stops are already included, so including the station would basically
-    #  mean double-counting
+    # TODO commented because it excludes stops with location_type 0 or empty,
+    #   which are standalone stops that should not be discarded.
+    #   I think the rationale behind removing parent stations
+    #   is that the child stops are already included, so including the station would basically
+    #   mean double-counting. This means that the stops that should actually be removed are the ones
+    #   with location_type == 1 (Stations) and parent_station == empty
     # Filter out the general station codes
     # stops = stops.loc[~stops.parent_station.isna()]
 
@@ -417,13 +416,18 @@ def gtfs_to_pyraptor_timetable(
     trips = Trips()
     trip_stop_times = TripStopTimes()
 
-    # TODO debug
+    # DEBUG: Keep track of progress since this operation is relatively heavy
     prog_counter = -1
+    prev_pct_point = -1
     for trip_row in gtfs_timetable.trips.itertuples():
         prog_counter += 1
         table_length = len(gtfs_timetable.trips)
-        logger.debug(f"Trips Table Progress: {(prog_counter / table_length)*100}% "
-                     f"[row #{prog_counter} out of {table_length}")
+        current_pct = math.floor((prog_counter / table_length) * 100)
+
+        if math.floor(current_pct) > prev_pct_point:
+            logger.debug(f"[Trips and Trip Stop Times] Progress: {current_pct}% "
+                         f"[trip #{prog_counter} of {table_length}]")
+            prev_pct_point = current_pct
 
         trip = Trip()
 
@@ -449,7 +453,7 @@ def gtfs_to_pyraptor_timetable(
             trip_stop_times.add(trip_stop_time)
             trip.add_stop_time(trip_stop_time)
 
-        # Add trip
+        # Add trip TODO why this if? isn't trip always != None?
         if trip:
             trips.add(trip)
 
@@ -489,6 +493,7 @@ def gtfs_to_pyraptor_timetable(
     return timetable
 
 
+# TODO this is specific for these two stations of the sample Dutch GTFS. Remove?
 def calculate_icd_fare(trip: Trip, stop: Stop, stations: Stations) -> int:
     """Get supplemental fare for ICD"""
 
