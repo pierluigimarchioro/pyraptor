@@ -135,7 +135,8 @@ def read_gtfs_timetable(
         trips_col_selector.append(t_short_name_col)
 
         # TODO error because some values are missing - fillna with -1?
-        # trips[t_short_name_col] = trips[t_short_name_col].astype(int)
+        trips[t_short_name_col] = trips[t_short_name_col].fillna(value=-1)
+        trips[t_short_name_col] = trips[t_short_name_col].astype(int)
 
     trips = trips[trips_col_selector]
 
@@ -423,8 +424,7 @@ class TripsProcessor:
                 current_pct = math.floor((processed_trips / table_length) * 100)
 
                 if math.floor(current_pct) > prev_pct_point or current_pct == 100:
-                    logger.debug(f"[TripsProcessor {processor_id}] Progress: {current_pct}% "
-                                 f"[trip #{processed_trips} of {table_length}]")
+                    log(f"Progress: {current_pct}% [trip #{processed_trips} of {table_length}]")
                     prev_pct_point = current_pct
 
                 trip = Trip()
@@ -457,7 +457,12 @@ class TripsProcessor:
                 if trip:
                     trips.add(trip)
 
+            log(f"Processing completed")
+
             return trips, trip_stop_times
+
+        def log(msg: str):
+            logger.debug(f"[TripsProcessor {processor_id}] {msg}")
 
         return process_trips
 
@@ -506,7 +511,7 @@ def gtfs_to_pyraptor_timetable(
     pool = p.ProcessPool(nodes=n_jobs)
     for i in range(n_jobs):
         processor_id = i
-        logger.info(f"Starting Trips Processor Job #{processor_id}...")
+        logger.debug(f"Starting Trips Processor Job #{processor_id}...")
 
         total_trips = len(gtfs_timetable.trips)
         interval_length = math.floor(total_trips / n_jobs)
@@ -524,13 +529,13 @@ def gtfs_to_pyraptor_timetable(
 
     pool.close()
 
-    logger.info(f"Waiting for jobs to finish...")
+    logger.debug(f"Waiting for jobs to finish...")
 
     trips = Trips()
     trip_stop_times = TripStopTimes()
     for p_id, result in job_results.items():
         res: Tuple[Trips, TripStopTimes] = result.get()
-        logger.info(f"Processor #{p_id} has completed its execution")
+        logger.debug(f"Processor #{p_id} has completed its execution")
         logger.debug(f"Trips produced: {len(res[0])}; TripStopTimes produced: {len(res[1])}")
 
         # Add the results
