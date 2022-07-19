@@ -1,19 +1,22 @@
 """Parse timetable from GTFS files"""
 from __future__ import annotations
 
+import itertools
 import math
 import os
 import argparse
 import calendar as cal
 import uuid
-from typing import List, Iterable, Any, Tuple, Callable, NamedTuple
+from typing import List, Iterable, Any, NamedTuple, Tuple, Callable
 from dataclasses import dataclass
 from collections import defaultdict
 from collections.abc import Mapping
 from datetime import datetime
 
 import pandas as pd
+import pathos.pools as p
 from loguru import logger
+from pathos.helpers.pp_helper import ApplyResult
 
 from pyraptor.dao import write_timetable
 from pyraptor.util import mkdir_if_not_exists, str2sec, TRANSFER_COST
@@ -65,7 +68,7 @@ def parse_arguments():
     )
     parser.add_argument("-a", "--agencies", nargs="+", default=["NS"])
     parser.add_argument("--icd", action="store_true", help="Add ICD fare(s)")
-    parser.add_argument("j", "--jobs", type=int, default=1, help="Number of jobs to run")
+    parser.add_argument("-j", "--jobs", type=int, default=1, help="Number of jobs to run")
 
     arguments = parser.parse_args()
     return arguments
@@ -386,20 +389,14 @@ class TripsProcessor:
     """
 
     @staticmethod
-    def get_processor(trips_storage: Trips,
-                      trip_stop_times_storage: TripStopTimes,
-                      trips_row_iterator: Iterable[NamedTuple],
+    def get_processor(trips_row_iterator: Iterable[NamedTuple],
                       stops_info: Stops,
                       stop_times_by_trip_id: Mapping[Any, List],
-                      processor_id: uuid.UUID | int | str = uuid.uuid4()) -> Callable[[], None]:
+                      processor_id: uuid.UUID | int | str = uuid.uuid4()) -> Callable[[], Tuple[Trips, TripStopTimes]]:
         """
         Returns a function that processes the provided trips.
         The resulting Trip and TripStopTime instances will be added to the provided storage.
 
-        :param trips_storage: list to which the Trip instances
-            generated in the processing phase will be added
-        :param trip_stop_times_storage: list to which the TripStopTime instances
-            generated in the processing phase will be added
         :param trips_row_iterator: iterator that cycles over the rows of
             a GtfsTimetable.trips dataframe
         :param stops_info: collection of stop instances that contain detailed information
@@ -408,9 +405,13 @@ class TripsProcessor:
             values are collections of stop times.
         :param processor_id: id to assign to this processor.
             Its purpose is only to identify this instance in the logger output.
+        :return: tuple containing the generated collections of Trip and TripStopTime instances
         """
 
-        def process_trips():
+        def process_trips() -> Tuple[Trips, TripStopTimes]:
+            trips = Trips()
+            trip_stop_times = TripStopTimes()
+
             # DEBUG: Keep track of progress since this operation is relatively heavy
             processed_trips = -1
             prev_pct_point = -1
@@ -449,14 +450,14 @@ class TripsProcessor:
                     # fare = calculate_icd_fare(trip, stop, stations) if icd_fix is True else 0
                     trip_stop_time = TripStopTime(trip, stop_number, stop, dts_arr, dts_dep)
 
-                    trip_stop_times_storage.add(trip_stop_time)
+                    trip_stop_times.add(trip_stop_time)
                     trip.add_stop_time(trip_stop_time)
 
                 # Add trip TODO why this if? isn't trip always != None?
                 if trip:
-                    trips_storage.add(trip)
+                    trips.add(trip)
 
-            pass
+            return trips, trip_stop_times
 
         return process_trips
 
@@ -505,15 +506,55 @@ def gtfs_to_pyraptor_timetable(
     trip_stop_times = TripStopTimes()
 
     # TODO multithread with multiprocessing.Process and TripsProcessor
+    job_results: dict[int, ApplyResult] = {}
+    pool = p.ProcessPool(nodes=n_jobs)
     for i in range(n_jobs):
+        processor_id = i
+        logger.info(f"Starting Trips Processor Job #{processor_id}...")
+
         total_trips = len(gtfs_timetable.trips)
         interval_length = math.floor(total_trips / n_jobs)
         start = i*interval_length
         end = (start + interval_length) - 1  # -1 because the interval_length-th trip belongs to the next round
 
-        p = multiprocessing.Process(target=get_correct_pin, args=(guess_start, guess_end, correct_pin_queue, ))
-        p.start()
-        processes.append(p)
+        processor = TripsProcessor.get_processor(
+            trips_row_iterator=itertools.islice(gtfs_timetable.trips.itertuples(), start, end),
+            stops_info=stops,
+            stop_times_by_trip_id=stop_times,
+            processor_id=processor_id
+        )
+
+        # TODO with multiprocessing (which doesn't work because pickle can't serialize functions)
+        # job = mp.Process(target=processor)
+        # jobs[processor_id] = job
+
+        job_results[processor_id] = pool.apipe(processor)
+
+    pool.close()
+
+    logger.info(f"Waiting for jobs to finish...")
+
+    trips = Trips()
+    trip_stop_times = TripStopTimes()
+    for p_id, result in job_results.items():
+        res: Tuple[Trips, TripStopTimes] = result.get()
+        logger.info(f"Processor #{p_id} has completed its execution")
+        logger.debug(f"Trips produced: {len(res[0])}; TripStopTimes produced: {len(res[1])}")
+
+        # Add the results
+        for res_trip in res[0].set_idx.values():
+            trips.add(res_trip)
+
+        for res_trip_stop_time in res[1].set_idx.values():
+            trip_stop_times.add(res_trip_stop_time)
+
+    # Make sure all the jobs are finished
+    pool.join()
+
+    # TODO with multiprocessing
+    # for pool.
+    #     logger.info(f"Trips Processor Job #{processor_id} completed")
+    #     job.join()
 
     # Routes
     logger.debug("Add routes")
@@ -572,4 +613,4 @@ if __name__ == "__main__":
     args = parse_arguments()
     main(input_folder=args.input, output_folder=args.output,
          departure_date=args.date, agencies=args.agencies,
-         icd_fix=args.icd)
+         icd_fix=args.icd, n_jobs=args.jobs)
