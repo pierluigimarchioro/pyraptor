@@ -67,7 +67,6 @@ def parse_arguments():
         "-d", "--date", type=str, default="20210906", help="Departure date (yyyymmdd)"
     )
     parser.add_argument("-a", "--agencies", nargs="+", default=["NS"])
-    parser.add_argument("--icd", action="store_true", help="Add ICD fare(s)")
     parser.add_argument("-j", "--jobs", type=int, default=1, help="Number of jobs to run")
 
     arguments = parser.parse_args()
@@ -79,8 +78,7 @@ def main(
         output_folder: str,
         departure_date: str,
         agencies: List[str],
-        n_jobs: int,
-        icd_fix: bool = False,
+        n_jobs: int
 ):
     """Main function"""
 
@@ -88,7 +86,7 @@ def main(
     mkdir_if_not_exists(output_folder)
 
     gtfs_timetable = read_gtfs_timetable(input_folder, departure_date, agencies)
-    timetable = gtfs_to_pyraptor_timetable(gtfs_timetable, n_jobs, icd_fix)
+    timetable = gtfs_to_pyraptor_timetable(gtfs_timetable, n_jobs)
     write_timetable(output_folder, timetable)
 
 
@@ -469,9 +467,7 @@ class TripsProcessor:
 
 def gtfs_to_pyraptor_timetable(
         gtfs_timetable: GtfsTimetable,
-        n_jobs: int,
-        icd_fix: bool = False  # TODO consider removing, because this ICD thing works only on this specific Dutch GTFS
-) -> Timetable:
+        n_jobs: int) -> Timetable:
     """
     Convert timetable for usage in Raptor algorithm.
     """
@@ -584,25 +580,8 @@ def gtfs_to_pyraptor_timetable(
     return timetable
 
 
-# TODO this is specific for these two stations of the sample Dutch GTFS. Remove?
-def calculate_icd_fare(trip: Trip, stop: Stop, stations: Stations) -> int:
-    """Get supplemental fare for ICD"""
-
-    fare = 0
-    if 900 <= trip.hint <= 1099:
-        if (
-                trip.hint % 2 == 0 and stop.station == stations.get("Schiphol Airport")
-        ) or (
-                trip.hint % 2 == 1 and stop.station == stations.get("Rotterdam Centraal")
-        ):
-            fare = 1.67
-        else:
-            fare = 0
-    return fare
-
-
 if __name__ == "__main__":
     args = parse_arguments()
     main(input_folder=args.input, output_folder=args.output,
          departure_date=args.date, agencies=args.agencies,
-         icd_fix=args.icd, n_jobs=args.jobs)
+         n_jobs=args.jobs)
