@@ -509,7 +509,14 @@ def gtfs_to_pyraptor_timetable(
         total_trips = len(gtfs_timetable.trips)
         interval_length = math.floor(total_trips / n_jobs)
         start = i*interval_length
-        end = (start + interval_length) - 1  # -1 because the interval_length-th trip belongs to the next round
+
+        if i == (n_jobs - 1):
+            # Make sure that all the trips are processed and
+            # that no trip is left out due to rounding errors
+            # in calculating interval_length
+            end = total_trips
+        else:
+            end = (start + interval_length) - 1  # -1 because the interval_length-th trip belongs to the next round
 
         processor = TripsProcessor.get_processor(
             trips_row_iterator=itertools.islice(gtfs_timetable.trips.itertuples(), start, end),
