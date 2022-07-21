@@ -18,6 +18,7 @@ from pyraptor.util import str2sec
 
 def parse_arguments():
     """Parse arguments"""
+
     parser = argparse.ArgumentParser()
     parser.add_argument(
         "-i",
@@ -113,7 +114,7 @@ def run_mcraptor(
     bag_round_stop, actual_rounds = raptor.run(from_stops, dep_secs, rounds)
     last_round_bag = copy(bag_round_stop[rounds])
 
-    # Calculate journets to all destinations
+    # Calculate journeys to all destinations
     logger.info("Calculating journeys to all destinations")
     s = perf_counter()
 

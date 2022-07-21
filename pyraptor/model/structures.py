@@ -403,7 +403,7 @@ class Routes:
     def __iter__(self):
         return iter(self.set_idx.values())
 
-    def add(self, trip: Trip):
+    def add(self, trip: Trip) -> Route:
         """Add trip to route. Make route if not exists."""
         trip_stop_ids = trip.trip_stop_ids()
 

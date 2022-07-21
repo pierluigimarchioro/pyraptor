@@ -40,7 +40,7 @@ class McRaptorAlgorithm:
         logger.debug(f"Starting from Stop IDs: {str(from_stops)}")
 
         # Initialize bag for round 0, i.e. add Labels with criterion 0 for all from stops
-        if previous_run != None:
+        if previous_run is not None:
             # For the range query
             bag_round_stop[0] = copy(previous_run)
 
@@ -85,15 +85,16 @@ class McRaptorAlgorithm:
 
     def accumulate_routes(self, marked_stops) -> List[Tuple[Route, Stop]]:
         """Accumulate routes serving marked stops from previous round, i.e. Q"""
+
         route_marked_stops = {}  # i.e. Q
         for marked_stop in marked_stops:
             routes_serving_stop = self.timetable.routes.get_routes_of_stop(marked_stop)
+
             for route in routes_serving_stop:
                 # Check if new_stop is before existing stop in Q
                 current_stop_for_route = route_marked_stops.get(route, None)  # p'
                 if (current_stop_for_route is None) or (
-                    route.stop_index(current_stop_for_route)
-                    > route.stop_index(marked_stop)
+                    route.stop_index(current_stop_for_route) > route.stop_index(marked_stop)
                 ):
                     route_marked_stops[route] = marked_stop
         route_marked_stops = [(r, p) for r, p in route_marked_stops.items()]
@@ -128,7 +129,7 @@ class McRaptorAlgorithm:
 
             for stop_idx, current_stop in enumerate(remaining_stops_in_route):
 
-                # Step 1: update earliest arrival times and criteria for each label L in route-bag
+                # Step 1: update the earliest arrival times and criteria for each label L in route-bag
                 update_labels = []
                 for label in route_bag.labels:
                     trip_stop_time = label.trip.get_stop(current_stop)
