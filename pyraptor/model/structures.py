@@ -1,18 +1,22 @@
 """Datatypes"""
 from __future__ import annotations
 
+import datetime
+import os
 from itertools import compress
 from collections import defaultdict
 from operator import attrgetter
+from pathlib import Path
 from typing import List, Dict, Tuple
 from dataclasses import dataclass, field
 from copy import copy
 
 import attr
+import joblib
 import numpy as np
 from loguru import logger
 
-from pyraptor.util import sec2str
+from pyraptor.util import sec2str, mkdir_if_not_exists
 
 
 def same_type_and_id(first, second):
@@ -21,7 +25,18 @@ def same_type_and_id(first, second):
 
 
 @dataclass
-class Timetable:
+class TimetableInfo:
+    # Path to the directory of the GTFS feed originally
+    # used to generate the current Timetable instance
+    original_gtfs_dir: str | bytes | os.PathLike = None
+
+    # Date that the timetable refers to.
+    # Format: YYYYMMDD which is equal to %Y%m%d
+    date: str = None
+
+
+@dataclass
+class Timetable(TimetableInfo):
     """Timetable data"""
 
     stations: Stations = None
@@ -773,11 +788,12 @@ class Journey:
         """Convert journey to list of legs as dict"""
         return [leg.to_dict(leg_index=idx) for idx, leg in enumerate(self.legs)]
 
+
 def pareto_set(labels: List[Label], keep_equal=False):
     """
     Find the pareto-efficient points
     :param labels: list with labels
-    :keep_equal return also labels with equal criteria
+    :param keep_equal: return also labels with equal criteria
     :return: list with pairwise non-dominating labels
     """
 
@@ -799,3 +815,63 @@ def pareto_set(labels: List[Label], keep_equal=False):
             is_efficient[i] = True  # And keep self
 
     return list(compress(labels, is_efficient))
+
+
+_ALGO_OUTPUT_FILENAME = "algo-output"
+
+
+@dataclass
+class AlgorithmOutput(TimetableInfo):
+    """
+    Class that represents the data output of a Raptor algorithm execution.
+    Contains the best journey found by the algorithm, the departure date and time of said journey
+    and the path to the directory of the GTFS feed originally used to build the timetable
+    provided to the algorithm.
+    """
+
+    # Best journey found by the algorithm
+    journey: Journey = None
+
+    # string in the format %H:%M:%S
+    departure_time: str = None
+
+    @staticmethod
+    def read_from_file(filepath: str | bytes | os.PathLike) -> AlgorithmOutput:
+        """
+        Returns the AlgorithmOutput instance read from the provided folder
+        :param filepath: path to an AlgorithmOutput .pcl file
+        :return: AlgorithmOutput instance
+        """
+
+        def load_joblib() -> AlgorithmOutput:
+            logger.debug(f"Loading '{filepath}'")
+            with open(Path(filepath), "rb") as handle:
+                return joblib.load(handle)
+
+        if not os.path.exists(filepath):
+            raise IOError(
+                "PyRaptor AlgorithmOutput not found. Run `python pyraptor/query_raptor`"
+                " first to generate an algorithm output .pcl file."
+            )
+
+        logger.debug("Using cached datastructures")
+
+        algo_output: AlgorithmOutput = load_joblib()
+
+        return algo_output
+
+    @staticmethod
+    def save_to_dir(output_dir: str | bytes | os.PathLike,
+                    algo_output: AlgorithmOutput):
+        """
+        Write the algorithm output to the provided directory
+        """
+
+        def write_joblib(state, name):
+            with open(Path(output_dir, f"{name}.pcl"), "wb") as handle:
+                joblib.dump(state, handle)
+
+        logger.info(f"Writing PyRaptor output to {output_dir}")
+
+        mkdir_if_not_exists(output_dir)
+        write_joblib(algo_output, _ALGO_OUTPUT_FILENAME)

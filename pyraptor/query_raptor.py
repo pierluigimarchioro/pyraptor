@@ -5,7 +5,7 @@ from typing import Dict
 from loguru import logger
 
 from pyraptor.dao.timetable import read_timetable
-from pyraptor.model.structures import Journey, Station, Timetable
+from pyraptor.model.structures import Journey, Station, Timetable, AlgorithmOutput
 from pyraptor.model.raptor import (
     RaptorAlgorithm,
     reconstruct_journey,
@@ -16,6 +16,7 @@ from pyraptor.util import str2sec
 
 def parse_arguments():
     """Parse arguments"""
+
     parser = argparse.ArgumentParser()
     parser.add_argument(
         "-i",
@@ -48,16 +49,25 @@ def parse_arguments():
         default=5,
         help="Number of rounds to execute the RAPTOR algorithm",
     )
+    parser.add_argument(
+        "-o",
+        "--output",
+        type=str,
+        default="data/output",
+        help="Output directory",
+    )
+
     arguments = parser.parse_args()
     return arguments
 
 
 def main(
-    input_folder,
-    origin_station,
-    destination_station,
-    departure_time,
-    rounds,
+    input_folder: str,
+    origin_station: str,
+    destination_station: str,
+    departure_time: str,
+    rounds: int,
+    output_folder: str
 ):
     """Run RAPTOR algorithm"""
 
@@ -84,7 +94,18 @@ def main(
     )
 
     # Print journey to destination
-    journey_to_destinations[destination_station].print(dep_secs=dep_secs)
+    destination_journey = journey_to_destinations[destination_station]
+    destination_journey.print()
+
+    # Save the algorithm output
+    algo_output = AlgorithmOutput(
+        journey=destination_journey,
+        date=timetable.date,
+        departure_time=departure_time,
+        original_gtfs_dir=timetable.original_gtfs_dir
+    )
+    AlgorithmOutput.save_to_dir(output_dir=output_folder,
+                                algo_output=algo_output)
 
 
 def run_raptor(
@@ -131,9 +152,10 @@ def run_raptor(
 if __name__ == "__main__":
     args = parse_arguments()
     main(
-        args.input,
-        args.origin,
-        args.destination,
-        args.time,
-        args.rounds,
+        input_folder=args.input,
+        origin_station=args.origin,
+        destination_station=args.destination,
+        departure_time=args.time,
+        rounds=args.rounds,
+        output_folder=args.output
     )

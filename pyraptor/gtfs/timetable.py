@@ -32,18 +32,18 @@ from pyraptor.model.structures import (
     Stations,
     Routes,
     Transfer,
-    Transfers,
+    Transfers, TimetableInfo,
 )
 
 
 @dataclass
-class GtfsTimetable:
+class GtfsTimetable(TimetableInfo):
     """Gtfs Timetable data"""
 
-    trips = None
-    calendar = None
-    stop_times = None
-    stops = None
+    trips: pd.DataFrame = None
+    calendar: pd.DataFrame = None
+    stop_times: pd.DataFrame = None
+    stops: pd.DataFrame = None
 
 
 def parse_arguments():
@@ -201,7 +201,7 @@ def read_gtfs_timetable(
     if platform_code_col in stops.columns:
         stops_col_selector.append(platform_code_col)
 
-    stops = stops[stops_col_selector]
+    stops: pd.DataFrame = stops[stops_col_selector]
 
     # TODO commented because it excludes stops with location_type 0 or empty,
     #   which are standalone stops that should not be discarded.
@@ -212,10 +212,13 @@ def read_gtfs_timetable(
     # Filter out the general station codes
     # stops = stops.loc[~stops.parent_station.isna()]
 
-    gtfs_timetable = GtfsTimetable()
-    gtfs_timetable.trips = trips
-    gtfs_timetable.stop_times = stop_times
-    gtfs_timetable.stops = stops
+    gtfs_timetable = GtfsTimetable(
+        original_gtfs_dir=input_folder,
+        date=departure_date,
+        trips=trips,
+        stop_times=stop_times,
+        stops=stops,
+    )
 
     return gtfs_timetable
 
@@ -508,7 +511,7 @@ def gtfs_to_pyraptor_timetable(
 
         total_trips = len(gtfs_timetable.trips)
         interval_length = math.floor(total_trips / n_jobs)
-        start = i*interval_length
+        start = i * interval_length
 
         if i == (n_jobs - 1):
             # Make sure that all the trips are processed and
@@ -578,6 +581,8 @@ def gtfs_to_pyraptor_timetable(
         trip_stop_times=trip_stop_times,
         routes=routes,
         transfers=transfers,
+        original_gtfs_dir=gtfs_timetable.original_gtfs_dir,
+        date=gtfs_timetable.date
     )
     timetable.counts()
 
