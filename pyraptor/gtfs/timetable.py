@@ -443,9 +443,6 @@ class TripsProcessor:
                     # Trip Stop Times
                     stop = stops_info.get(stop_time.stop_id)
 
-                    # TODO ICD fare not calculated since it is specific (apparently) to the sample Dutch GTFS
-                    # GTFS files do not contain ICD supplement fare, so hard-coded here
-                    # fare = calculate_icd_fare(trip, stop, stations) if icd_fix is True else 0
                     trip_stop_time = TripStopTime(trip, stop_number, stop, dts_arr, dts_dep)
 
                     trip_stop_times.add(trip_stop_time)
