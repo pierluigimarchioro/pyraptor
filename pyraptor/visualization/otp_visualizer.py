@@ -118,7 +118,7 @@ class OTPVisualizer(object):
         routes_table = gtfs_tables["routes"]
         itinerary_routes = routes_table[routes_table["route_id"].isin(itinerary_trips["route_id"])]
 
-        # Get only the transfers that involve stops included in the journey
+        # Get only the transfers that involve only stops included in the journey
         transfers_table = gtfs_tables["transfers"]
         itinerary_transfers = transfers_table[transfers_table["from_stop_id"].isin(itinerary_stops["stop_id"])]
         itinerary_transfers = itinerary_transfers[itinerary_transfers["to_stop_id"].isin(itinerary_stops["stop_id"])]
@@ -163,7 +163,8 @@ class OTPVisualizer(object):
         return JourneyInfo(from_place=first_stop_coords, to_place=last_stop_coords)
 
     def _launch_otp2_server(self) -> Popen[str]:
-        command = f"java -Xmx2G -jar {self._otp2_exe_path} --build --serve {self._working_dir}"
+        command = f"java -Xmx2G -jar {self._otp2_exe_path} --build --serve {self._working_dir} " \
+                  f"--port 6900 --securePort 6901"  # TODO add as script args
         logger.debug(f"Starting server with command {command}")
 
         server_process = Popen(args=command.split(" "),
@@ -201,7 +202,7 @@ class OTPVisualizer(object):
             "locale": "en"
         }
         query = "&".join([f"{key}={urllib.parse.quote_plus(value)}" for key, value in query_params.items()])
-        gui_url = f"http://localhost:8080?{query}"
+        gui_url = f"http://localhost:6900?{query}"  # TODO parameterize port number
 
         return gui_url
 
