@@ -223,7 +223,7 @@ def read_gtfs_timetable(
     return gtfs_timetable
 
 
-class GTFSCalendarProcessor(object):
+class GTFSCalendarProcessor:
     """
     Class that handles the processing of the calendar and calendar_dates tables
     of the provided GTFS feed.

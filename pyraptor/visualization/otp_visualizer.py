@@ -19,18 +19,18 @@ from pyraptor.model.structures import AlgorithmOutput
 
 
 @dataclass
-class Coordinates(object):
+class Coordinates:
     lat: float
     long: float
 
 
 @dataclass
-class JourneyInfo(object):
+class JourneyInfo:
     from_place: Coordinates
     to_place: Coordinates
 
 
-class OTPVisualizer(object):
+class OTPVisualizer:
     def __init__(self, otp2_exe_path: str | bytes | os.PathLike,
                  otp_working_dir: str | bytes | os.PathLike,
                  algo_output: AlgorithmOutput):
