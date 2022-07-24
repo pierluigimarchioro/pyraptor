@@ -19,7 +19,7 @@ from loguru import logger
 from pathos.helpers.pp_helper import ApplyResult
 
 from pyraptor.dao import write_timetable
-from pyraptor.util import mkdir_if_not_exists, str2sec, TRANSFER_COST
+from pyraptor.util import mkdir_if_not_exists, str2sec, TRANSFER_COST, get_transport_type_description
 from pyraptor.model.structures import (
     Timetable,
     Stop,
@@ -32,7 +32,7 @@ from pyraptor.model.structures import (
     Stations,
     Routes,
     Transfer,
-    Transfers, TimetableInfo,
+    Transfers, TimetableInfo, RouteInfo,
 )
 
 
@@ -44,6 +44,7 @@ class GtfsTimetable(TimetableInfo):
     calendar: pd.DataFrame = None
     stop_times: pd.DataFrame = None
     stops: pd.DataFrame = None
+    routes: pd.DataFrame = None
 
 
 def parse_arguments():
@@ -218,6 +219,7 @@ def read_gtfs_timetable(
         trips=trips,
         stop_times=stop_times,
         stops=stops,
+        routes=routes
     )
 
     return gtfs_timetable
@@ -379,7 +381,7 @@ class GTFSCalendarProcessor:
             exception_type = int(exception_on_date["exception_type"].iloc[0])
 
             return exception_type
-        except Exception as x:
+        except Exception:
             # Exception not found
             # logger.debug(f"Exception type for service {service_id} on date {date} not found. Reason: {x}")
             return -1
@@ -393,6 +395,7 @@ class TripsProcessor:
     @staticmethod
     def get_processor(trips_row_iterator: Iterable[NamedTuple],
                       stops_info: Stops,
+                      trip_route_info: Mapping[Any, RouteInfo],
                       stop_times_by_trip_id: Mapping[Any, List],
                       processor_id: uuid.UUID | int | str = uuid.uuid4()) -> Callable[[], Tuple[Trips, TripStopTimes]]:
         """
@@ -403,6 +406,8 @@ class TripsProcessor:
             a GtfsTimetable.trips dataframe
         :param stops_info: collection of stop instances that contain detailed information
             for each stop
+        :param trip_route_info: mapping that pairs trip ids with an object containing
+            information about the route that each trip belongs to
         :param stop_times_by_trip_id: default dictionary where keys are trip ids and
             values are collections of stop times.
         :param processor_id: id to assign to this processor.
@@ -430,8 +435,10 @@ class TripsProcessor:
 
                 trip = Trip()
 
-                # This is an optionally defined attribute in the GTFS standard
-                trip.hint = getattr(row, "trip_short_name", "missing_hint")  # i.e. train number
+                # Transport description as hint
+                route_info = trip_route_info[row.trip_id]
+                trip.route_info = route_info
+                trip.hint = str(route_info)
 
                 # Iterate over stops, ordered by sequence number:
                 # the first stop will be the one with stop_sequence == 1
@@ -482,13 +489,13 @@ def gtfs_to_pyraptor_timetable(
 
     platform_code_col = "platform_code"
     if platform_code_col in gtfs_timetable.stops.columns:
-        gtfs_timetable.stops.platform_code = gtfs_timetable.stops.platform_code.fillna("missing_platform_code")
+        gtfs_timetable.stops.platform_code = gtfs_timetable.stops.platform_code.fillna(-1)
 
     for s in gtfs_timetable.stops.itertuples():
         station = Station(s.stop_name, s.stop_name)
         station = stations.add(station)
 
-        platform_code = getattr(s, platform_code_col, "missing_platform_code")
+        platform_code = getattr(s, platform_code_col, -1)
         stop_id = f"{s.stop_name}-{platform_code}"
         stop = Stop(s.stop_id, stop_id, station, platform_code)
 
@@ -499,6 +506,15 @@ def gtfs_to_pyraptor_timetable(
     stop_times = defaultdict(list)
     for stop_time in gtfs_timetable.stop_times.itertuples():
         stop_times[stop_time.trip_id].append(stop_time)
+
+    logger.debug("Extracting transport type for each trip")
+
+    trip_route_info: dict[Any, RouteInfo] = {}
+    trips_and_routes: pd.DataFrame = pd.merge(gtfs_timetable.trips, gtfs_timetable.routes, on="route_id")
+    for row in trips_and_routes.itertuples():
+        route_name = getattr(row, "route_long_name", None)
+        route_name = route_name if route_name is not None else getattr(row, "route_short_name", "missing_route_name")
+        trip_route_info[row.trip_id] = RouteInfo(name=route_name, transport_type=row.route_type)
 
     # Trips and Trip Stop Times
     logger.debug("Add trips and trip stop times")
@@ -524,6 +540,7 @@ def gtfs_to_pyraptor_timetable(
         processor = TripsProcessor.get_processor(
             trips_row_iterator=itertools.islice(gtfs_timetable.trips.itertuples(), start, end),
             stops_info=stops,
+            trip_route_info=trip_route_info,
             stop_times_by_trip_id=stop_times,
             processor_id=processor_id
         )

@@ -1,7 +1,6 @@
 """Datatypes"""
 from __future__ import annotations
 
-import datetime
 import os
 from itertools import compress
 from collections import defaultdict
@@ -16,7 +15,7 @@ import joblib
 import numpy as np
 from loguru import logger
 
-from pyraptor.util import sec2str, mkdir_if_not_exists
+from pyraptor.util import sec2str, mkdir_if_not_exists, get_transport_type_description
 
 
 def same_type_and_id(first, second):
@@ -257,6 +256,21 @@ class TripStopTimes:
         return in_window[0] if len(in_window) > 0 else None
 
 
+@dataclass(frozen=True)
+class RouteInfo:
+    transport_type: int = None
+    name: str = None
+
+    def __str__(self):
+        return f"Transport: {get_transport_type_description(self.transport_type)} | Route Name: {self.name}"
+
+    def __eq__(self, other):
+        if isinstance(other, RouteInfo):
+            return other.transport_type == self.transport_type and other.name == self.name
+        else:
+            raise Exception(f"Cannot compare {RouteInfo.__name__} with {type(other)}")
+
+
 @attr.s(repr=False, cmp=False)
 class Trip:
     """Trip"""
@@ -266,6 +280,7 @@ class Trip:
     stop_times_index = attr.ib(default=attr.Factory(dict))
     hint = attr.ib(default=None)  # i.e. trip_short_name
     long_name = attr.ib(default=None)  # e.g., Sprinter
+    route_info: RouteInfo = attr.ib(default=None)
 
     def __hash__(self):
         return hash(self.id)
@@ -756,18 +771,25 @@ class Journey:
             return
 
         # Print all legs in journey
+        first_trip = self.legs[0].trip
+        prev_route = first_trip.route_info
         for leg in self:
+            if leg.trip.route_info != prev_route:
+                logger.info("-- Route Change --")
+
+            prev_route = leg.trip.route_info
+
             msg = (
                 str(sec2str(leg.dep))
                 + " "
                 + leg.from_stop.station.name.ljust(20)
-                + "(p. "
+                + " (p. "
                 + str(leg.from_stop.platform_code).rjust(3)
                 + ") TO "
                 + str(sec2str(leg.arr))
                 + " "
                 + leg.to_stop.station.name.ljust(20)
-                + "(p. "
+                + " (p. "
                 + str(leg.to_stop.platform_code).rjust(3)
                 + ") WITH "
                 + str(leg.trip.hint)
