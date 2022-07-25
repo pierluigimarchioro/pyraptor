@@ -127,7 +127,7 @@ class Station:
 
     id = attr.ib(default=None)
     name = attr.ib(default=None)
-    stops = attr.ib(default=attr.Factory(list))
+    stops: List[Stop] = attr.ib(default=attr.Factory(list))
 
     def __hash__(self):
         return hash(self.id)
@@ -471,7 +471,9 @@ class Transfer:
     id = attr.ib(default=None)
     from_stop = attr.ib(default=None)
     to_stop = attr.ib(default=None)
-    layovertime = attr.ib(default=300)
+
+    # Time in seconds that the transfer takes to complete
+    transfer_time = attr.ib(default=300)
 
     def __hash__(self):
         return hash(self.id)
@@ -480,7 +482,7 @@ class Transfer:
         return same_type_and_id(self, trip)
 
     def __repr__(self):
-        return f"Transfer(from_stop={self.from_stop}, to_stop={self.to_stop}, layovertime={self.layovertime})"
+        return f"Transfer(from_stop={self.from_stop}, to_stop={self.to_stop}, transfer_time={self.transfer_time})"
 
 
 class Transfers:

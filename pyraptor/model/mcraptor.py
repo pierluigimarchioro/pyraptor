@@ -229,7 +229,7 @@ class McRaptorAlgorithm:
         Calculate the transfer time from a stop to another stop (usually at one station)
         """
         transfers = self.timetable.transfers
-        return transfers.stop_to_stop_idx[(stop_from, stop_to)].layovertime
+        return transfers.stop_to_stop_idx[(stop_from, stop_to)].transfer_time
 
 
 def best_legs_to_destination_station(
