@@ -45,6 +45,7 @@ class GtfsTimetable(TimetableInfo):
     stop_times: pd.DataFrame = None
     stops: pd.DataFrame = None
     routes: pd.DataFrame = None
+    transfers: pd.DataFrame = None
 
 
 def parse_arguments():
@@ -213,13 +214,26 @@ def read_gtfs_timetable(
     # Filter out the general station codes
     # stops = stops.loc[~stops.parent_station.isna()]
 
+    # Get transfers table only if it exists
+    transfers_path = os.path.join(input_folder, "transfers.txt")
+    if os.path.exists(transfers_path):
+        logger.debug("Read Transfers")
+        transfers = pd.read_csv(transfers_path)
+
+        # Keep only the stops for the current date
+        transfers = transfers[transfers["from_stop_id"].isin(stops["stop_id"])
+                              & transfers["to_stop_id"].isin(stops["stop_id"])]
+    else:
+        transfers = None
+
     gtfs_timetable = GtfsTimetable(
         original_gtfs_dir=input_folder,
         date=departure_date,
         trips=trips,
         stop_times=stop_times,
         stops=stops,
-        routes=routes
+        routes=routes,
+        transfers=transfers
     )
 
     return gtfs_timetable
@@ -578,17 +592,28 @@ def gtfs_to_pyraptor_timetable(
     # Transfers
     logger.debug("Add transfers")
 
+    # Add transfers between parent and child stations
     transfers = Transfers()
     for station in stations:
         station_stops = station.stops
         station_transfers = [
-            Transfer(from_stop=stop_i, to_stop=stop_j, layovertime=TRANSFER_COST)
+            Transfer(from_stop=stop_i, to_stop=stop_j, transfer_time=TRANSFER_COST)
             for stop_i in station_stops
             for stop_j in station_stops
             if stop_i != stop_j
         ]
         for st in station_transfers:
             transfers.add(st)
+
+    # Add transfers based on the transfers.txt table, if it exists
+    if gtfs_timetable.transfers is not None:
+        for t_row in gtfs_timetable.transfers.itertuples():
+            from_stop = stops[t_row.from_stop_id]
+            to_stop = stops[t_row.to_stop_id]
+            t_time = t_row.min_transfer_time
+
+            t = Transfer(from_stop=from_stop, to_stop=to_stop, transfer_time=t_time)
+            transfers.add(t)
 
     # Timetable
     timetable = Timetable(
