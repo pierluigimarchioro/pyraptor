@@ -18,6 +18,9 @@ import pyraptor.gtfs.io as io
 from pyraptor.model.structures import AlgorithmOutput
 
 
+# TODO generate (if not existing) files such as otp-config.json and build-config.json
+
+
 @dataclass
 class Coordinates:
     lat: float

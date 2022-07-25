@@ -1,0 +1,9 @@
+{
+    "otpFeatures" : {
+        "APIBikeRental" : true,
+        "APIServerInfo" : true,
+        "APIGraphInspectorTile" : true,
+        "APIUpdaterStatus" : true,
+        "TransferConstraints" : true
+    }
+}
