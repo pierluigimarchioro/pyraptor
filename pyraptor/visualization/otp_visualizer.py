@@ -72,7 +72,7 @@ class OTPVisualizer:
         starting from the GTFS originally used to calculate the Raptor timetable and the aforementioned journey.
         Returns an object containing the coordinates of the first and the last stop of the journey.
 
-        :return:object containing the coordinates of the first and the last stop of the journey
+        :return: object containing the coordinates of the first and the last stop of the journey
         """
 
         # Extract all the stop ids included in the journey

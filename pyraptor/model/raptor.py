@@ -1,5 +1,7 @@
 """RAPTOR algorithm"""
 from __future__ import annotations
+
+import itertools
 from typing import List, Tuple, Dict
 from dataclasses import dataclass
 from copy import deepcopy
@@ -44,21 +46,34 @@ class RaptorAlgorithm:
         self.bag_star = None
 
     def run(self, from_stops, dep_secs, rounds) -> Dict[int, Dict[Stop, Label]]:
-        """Run Round-Based Algorithm"""
+        """
+        Run Round-Based Algorithm
+
+        :param from_stops: collection of stops to depart from
+        :param dep_secs: departure time in seconds from midnight
+        :param rounds: total number of rounds to execute
+        :return:
+        """
 
         # Initialize empty bag of labels, i.e. B_k(p) = Label() for every k and p
+        # Dictionary is keyed by round and contains another dictionary, where, for each stop, there
+        # is a label representing the earliest arrival time (initialized at +inf)
         bag_round_stop: Dict[int, Dict[Stop, Label]] = {}
         for k in range(0, rounds + 1):
             bag_round_stop[k] = {}
             for p in self.timetable.stops:
                 bag_round_stop[k][p] = Label()
 
-        # Initialize bag with earliest arrival tiems
+        # Initialize bag with the earliest arrival times
+        # This bag is used as a side-collection to efficiently retrieve
+        # the earliest arrival time for each reachable stop at round k.
+        # Look for "local pruning" in the Microsoft paper for a better description.
         self.bag_star = {}
         for p in self.timetable.stops:
             self.bag_star[p] = Label()
 
-        # Initialize bag with start node taking DEP_SECS seconds to reach
+        # Initialize bags with starting stops taking dep_secs to reach
+        # Remember that dep_secs is the departure_time expressed in seconds
         logger.debug(f"Starting from Stop IDs: {str(from_stops)}")
         marked_stops = []
         for from_stop in from_stops:
@@ -69,15 +84,18 @@ class RaptorAlgorithm:
         # Run rounds
         for k in range(1, rounds + 1):
             logger.info(f"Analyzing possibilities round {k}")
+
+            # Initialize round k (current) with the labels of round k-1 (previous)
             bag_round_stop[k] = deepcopy(bag_round_stop[k - 1])
 
             # Get list of stops to evaluate in the process
             logger.debug(f"Stops to evaluate count: {len(marked_stops)}")
 
-            # Get marked route stops
+            # Get (route, marked stop) pairs, where marked stop
+            # is the first reachable stop of the route
             route_marked_stops = self.accumulate_routes(marked_stops)
 
-            # Update time to stops calculated based on stops reachable
+            # Update stop arrival times calculated basing on reachable stops
             bag_round_stop, marked_trip_stops = self.traverse_routes(
                 bag_round_stop, k, route_marked_stops
             )
@@ -96,6 +114,7 @@ class RaptorAlgorithm:
 
     def accumulate_routes(self, marked_stops: List[Stop]) -> List[Tuple[Route, Stop]]:
         """Accumulate routes serving marked stops from previous round, i.e. Q"""
+
         route_marked_stops = {}  # i.e. Q
         for marked_stop in marked_stops:
             routes_serving_stop = self.timetable.routes.get_routes_of_stop(marked_stop)
@@ -118,7 +137,7 @@ class RaptorAlgorithm:
         route_marked_stops: List[Tuple[Route, Stop]],
     ) -> Tuple:
         """
-        Iterator through the stops reachable and add all new reachable stops
+        Iterate through the stops reachable and add all new reachable stops
         by following all trips from the reached stations. Trips are only followed
         in the direction of travel and beyond already added points.
 
@@ -211,8 +230,10 @@ class RaptorAlgorithm:
 
         # Add in transfers to other platforms
         for current_stop in marked_stops:
+            # Note: transfers are transitive, which means that for each reachable stops (a, b) there
+            # is transfer (a, b) as well as (b, a)
             other_station_stops = [
-                st for st in current_stop.station.stops if st != current_stop
+                t.to_stop for t in self.timetable.transfers if t.from_stop == current_stop
             ]
 
             time_sofar = bag_round_stop[k][current_stop].earliest_arrival_time
