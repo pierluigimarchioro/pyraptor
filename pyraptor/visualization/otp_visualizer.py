@@ -6,7 +6,7 @@ import urllib.parse
 import webbrowser as web
 from dataclasses import dataclass
 from subprocess import Popen, PIPE
-from typing import Tuple
+from typing import Tuple, List
 from datetime import datetime, timedelta, time
 from time import sleep
 
@@ -76,22 +76,26 @@ class OTPVisualizer:
         """
 
         # Extract all the stop ids included in the journey
+        # Convert them to string to make sure comparison work as intended
         journey_stops = []
         for leg in self._algo_output.journey.legs:
             journey_stops.append(leg.from_stop)
             journey_stops.append(leg.to_stop)
-        journey_stop_ids = list(set([s.id for s in journey_stops]))
+        journey_stop_ids: List[str] = list(set([str(s.id) for s in journey_stops]))
 
         gtfs_tables = io.read_gtfs_tables(self._algo_output.original_gtfs_dir)
 
         # Keep only the GTFS data related to the stops included in the journey
         # and the departures for the provided time window
         stops_table = gtfs_tables["stops"]
+        stops_table["stop_id"] = stops_table["stop_id"].astype(str)
         itinerary_stops = stops_table[stops_table["stop_id"].isin(journey_stop_ids)]
         itinerary_stops = itinerary_stops[itinerary_stops["stop_id"].isin(journey_stop_ids)]
 
         # Extract only the stop times of stops included in the journey
         deps_table = gtfs_tables["stop_times"]
+        deps_table["stop_id"] = deps_table["stop_id"].astype(str)
+        deps_table["trip_id"] = deps_table["trip_id"].astype(str)
         itinerary_deps = deps_table[deps_table["stop_id"].isin(itinerary_stops["stop_id"])]
 
         # Extract only the stop times that are included in the journey time interval
@@ -115,19 +119,24 @@ class OTPVisualizer:
 
         # Get only trips included in the stop_times table
         trips_table = gtfs_tables["trips"]
+        trips_table["trip_id"] = trips_table["trip_id"].astype(str)
+        trips_table["route_id"] = trips_table["route_id"].astype(str)
         itinerary_trips = trips_table[trips_table["trip_id"].isin(itinerary_deps["trip_id"])]
 
         # Get only the routes for the filtered trips
         routes_table = gtfs_tables["routes"]
+        routes_table["route_id"] = routes_table["route_id"].astype(str)
         itinerary_routes = routes_table[routes_table["route_id"].isin(itinerary_trips["route_id"])]
 
         # Get only the transfers that involve only stops included in the journey
         transfers_table = gtfs_tables["transfers"]
+        transfers_table["from_stop_id"] = transfers_table["from_stop_id"].astype(str)
+        transfers_table["to_stop_id"] = transfers_table["to_stop_id"].astype(str)
         itinerary_transfers = transfers_table[transfers_table["from_stop_id"].isin(itinerary_stops["stop_id"])]
         itinerary_transfers = itinerary_transfers[itinerary_transfers["to_stop_id"].isin(itinerary_stops["stop_id"])]
 
         # Set colors for visualization
-        itinerary_routes["route_color"] = "31EB53"  # green
+        itinerary_routes.loc[:, "route_color"] = "31EB53"  # green
 
         # Save the GTFS
         to_save = gtfs_tables
