@@ -19,7 +19,7 @@ from loguru import logger
 from pathos.helpers.pp_helper import ApplyResult
 
 from pyraptor.dao import write_timetable
-from pyraptor.util import mkdir_if_not_exists, str2sec, TRANSFER_COST, get_transport_type_description
+from pyraptor.util import mkdir_if_not_exists, str2sec, TRANSFER_COST
 from pyraptor.model.structures import (
     Timetable,
     Stop,
@@ -32,7 +32,9 @@ from pyraptor.model.structures import (
     Stations,
     Routes,
     Transfer,
-    Transfers, TimetableInfo, RouteInfo,
+    Transfers,
+    TimetableInfo,
+    RouteInfo,
 )
 
 
