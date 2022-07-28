@@ -190,7 +190,11 @@ class TripStopTime:
     trip: Trip = attr.ib(default=attr.NOTHING)
     stopidx = attr.ib(default=attr.NOTHING)
     stop = attr.ib(default=attr.NOTHING)
+
+    # Time of arrival in seconds past midnight
     dts_arr = attr.ib(default=attr.NOTHING)
+
+    # Time of departure in seconds past midnight
     dts_dep = attr.ib(default=attr.NOTHING)
     fare = attr.ib(default=0.0)
 
@@ -780,10 +784,12 @@ class Journey:
         first_trip = self.legs[0].trip
         prev_route = first_trip.route_info
         for leg in self:
-            if leg.trip.route_info != prev_route:
+            current_trip = leg.trip
+            if current_trip is not None and leg.trip.route_info != prev_route:
                 logger.info("-- Route Change --")
 
             prev_route = leg.trip.route_info
+            hint = current_trip.hint if current_trip is not None else "Transfer"
 
             msg = (
                     str(sec2str(leg.dep))
@@ -798,7 +804,7 @@ class Journey:
                     + " (p. "
                     + str(leg.to_stop.platform_code).rjust(3)
                     + ") WITH "
-                    + str(leg.trip.hint)
+                    + str(hint)
             )
             logger.info(msg)
 
