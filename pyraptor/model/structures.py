@@ -15,7 +15,7 @@ import joblib
 import numpy as np
 from loguru import logger
 
-from pyraptor.util import sec2str, mkdir_if_not_exists, get_transport_type_description
+from pyraptor.util import sec2str, mkdir_if_not_exists, get_transport_type_description, TRANSFER_TRIP
 
 
 def same_type_and_id(first, second):
@@ -785,11 +785,17 @@ class Journey:
         prev_route = first_trip.route_info
         for leg in self:
             current_trip = leg.trip
-            if current_trip is not None and leg.trip.route_info != prev_route:
-                logger.info("-- Route Change --")
+            if current_trip == TRANSFER_TRIP:
+                logger.info("-- Transfer --")
+
+                hint = "Transfer"
+            else:
+                hint = current_trip.hint
+
+                if current_trip.route_info != prev_route:
+                    logger.info("-- Trip Change --")
 
             prev_route = leg.trip.route_info
-            hint = current_trip.hint if current_trip is not None else "Transfer"
 
             msg = (
                     str(sec2str(leg.dep))
