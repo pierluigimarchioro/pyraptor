@@ -24,7 +24,7 @@ class McRaptorAlgorithm:
 
     def run(
         self, from_stops: List[Stop], dep_secs: int, rounds: int, previous_run: Dict[int, Bag] = None
-    ) -> Dict[int, Dict[int, Bag]]:
+    ) -> Tuple[Dict[int, Dict[Stop, Bag]], int]:
         """Run Round-Based Algorithm"""
 
         s = perf_counter()
@@ -42,7 +42,7 @@ class McRaptorAlgorithm:
         # Initialize bag for round 0, i.e. add Labels with criterion 0 for all from stops
         if previous_run is not None:
             # For the range query
-            bag_round_stop[0] = copy(previous_run)
+            bag_round_stop[0] = copy(previous_run)  # TODO type of previous_run should be Dict[Stop, Bag]?
 
         for from_stop in from_stops:
             bag_round_stop[0][from_stop].add(Label(dep_secs, 0, None, from_stop))
@@ -177,7 +177,7 @@ class McRaptorAlgorithm:
 
         logger.debug(f"{len(new_marked_stops)} reachable stops added")
 
-        return bag_round_stop, new_marked_stops
+        return bag_round_stop, list(new_marked_stops)
 
     def add_transfer_time(
         self,
@@ -210,7 +210,7 @@ class McRaptorAlgorithm:
                     )
                     temp_bag.add(label)
 
-                # Merg temp bag into B_k(p_j)
+                # Merge temp bag into B_k(p_j)
                 bag_round_stop[k][other_stop] = bag_round_stop[k][other_stop].merge(
                     temp_bag
                 )

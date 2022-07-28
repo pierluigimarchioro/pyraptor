@@ -238,8 +238,8 @@ class TripStopTimes:
             tst
             for tst in self
             if tst.dts_dep >= dep_secs_min
-            and tst.dts_dep <= dep_secs_max
-            and tst.stop in stops
+               and tst.dts_dep <= dep_secs_max
+               and tst.stop in stops
         ]
         return in_window
 
@@ -312,7 +312,7 @@ class Trip:
         if np.isfinite(stop_time.dts_arr) and np.isfinite(stop_time.dts_dep):
             assert stop_time.dts_arr <= stop_time.dts_dep
             assert (
-                not self.stop_times or self.stop_times[-1].dts_dep <= stop_time.dts_arr
+                    not self.stop_times or self.stop_times[-1].dts_dep <= stop_time.dts_arr
             )
         self.stop_times.append(stop_time)
         self.stop_times_index[stop_time.stop] = len(self.stop_times) - 1
@@ -320,7 +320,7 @@ class Trip:
     def get_stop(self, stop: Stop) -> TripStopTime:
         """Get stop"""
         return self.stop_times[self.stop_times_index[stop]]
-    
+
     def get_fare(self, depart_stop: Stop) -> int:
         """Get fare from depart_stop"""
         stop_time = self.get_stop(depart_stop)
@@ -370,7 +370,7 @@ class Route:
         return same_type_and_id(self, trip)
 
     def __repr__(self):
-        return "Route(id={0.id}, trips={trips})".format(self, trips=len(self.trips),)
+        return "Route(id={0.id}, trips={trips})".format(self, trips=len(self.trips), )
 
     def __getitem__(self, n):
         return self.trips[n]
@@ -557,7 +557,7 @@ class Leg:
           the other leg (current leg is instance of this class)
         """
         arrival_time_compatible = (
-            other_leg.earliest_arrival_time >= self.earliest_arrival_time
+                other_leg.earliest_arrival_time >= self.earliest_arrival_time
         )
         n_trips_compatible = (
             other_leg.n_trips >= self.n_trips
@@ -656,12 +656,16 @@ class Bag:
         self.labels.append(label)
 
     def merge(self, other_bag: Bag) -> Bag:
-        """Merge other bag in bag and return true if bag is updated"""
+        """Merge other bag in bag and return updated Bag"""
+
         pareto_labels = self.labels + other_bag.labels
+
         if len(pareto_labels) == 0:
             return Bag(labels=[], update=False)
+
         pareto_labels = pareto_set(pareto_labels)
         bag_update = True if pareto_labels != self.labels else False
+
         return Bag(labels=pareto_labels, update=bag_update)
 
     def labels_with_trip(self):
@@ -754,12 +758,12 @@ class Journey:
         return (
             True
             if (
-                (self.dep() >= jrny.dep())
-                and (self.arr() <= jrny.arr())
-                and (self.fare() <= jrny.fare())
-                and (self.number_of_trips() <= jrny.number_of_trips())
-            )
-            and (self != jrny)
+                       (self.dep() >= jrny.dep())
+                       and (self.arr() <= jrny.arr())
+                       and (self.fare() <= jrny.fare())
+                       and (self.number_of_trips() <= jrny.number_of_trips())
+               )
+               and (self != jrny)
             else False
         )
 
@@ -782,19 +786,19 @@ class Journey:
             prev_route = leg.trip.route_info
 
             msg = (
-                str(sec2str(leg.dep))
-                + " "
-                + leg.from_stop.station.name.ljust(20)
-                + " (p. "
-                + str(leg.from_stop.platform_code).rjust(3)
-                + ") TO "
-                + str(sec2str(leg.arr))
-                + " "
-                + leg.to_stop.station.name.ljust(20)
-                + " (p. "
-                + str(leg.to_stop.platform_code).rjust(3)
-                + ") WITH "
-                + str(leg.trip.hint)
+                    str(sec2str(leg.dep))
+                    + " "
+                    + leg.from_stop.station.name.ljust(20)
+                    + " (p. "
+                    + str(leg.from_stop.platform_code).rjust(3)
+                    + ") TO "
+                    + str(sec2str(leg.arr))
+                    + " "
+                    + leg.to_stop.station.name.ljust(20)
+                    + " (p. "
+                    + str(leg.to_stop.platform_code).rjust(3)
+                    + ") WITH "
+                    + str(leg.trip.hint)
             )
             logger.info(msg)
 
@@ -826,11 +830,18 @@ def pareto_set(labels: List[Label], keep_equal=False):
     for i, label in enumerate(labels_criteria):
         if is_efficient[i]:
             # Keep any point with a lower cost
+            # TODO qui vengono effettuati i confronti multicriterio:
+            #   i criteri sono hardcoded dentro la proprietà criteria di structures.Label
+            #   bisogna trovare un modo di definirli dinamicamente
             if keep_equal:
                 # keep point with all labels equal or one lower
+                # Note: list1 < list2 determines if list1 is smaller than list2
+                #   based on lexicographic ordering
+                #   (i.e. the smaller list is the one with the smaller leftmost element)
                 is_efficient[is_efficient] = np.any(
                     labels_criteria[is_efficient] < label, axis=1
                 ) + np.all(labels_criteria[is_efficient] == label, axis=1)
+
             else:
                 is_efficient[is_efficient] = np.any(
                     labels_criteria[is_efficient] < label, axis=1
