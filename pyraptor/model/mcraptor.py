@@ -36,14 +36,14 @@ class McRaptorAlgorithm:
             for p in self.timetable.stops:
                 bag_round_stop[k][p] = Bag()
 
-        # Add origin stops to bag
         logger.debug(f"Starting from Stop IDs: {str(from_stops)}")
 
         # Initialize bag for round 0, i.e. add Labels with criterion 0 for all from stops
-        if previous_run is not None:
+        if previous_run is not None:  # TODO previous_run never used? whats the purpose of this arg?
             # For the range query
             bag_round_stop[0] = copy(previous_run)  # TODO type of previous_run should be Dict[Stop, Bag]?
 
+        # Add origin stops to bag
         for from_stop in from_stops:
             bag_round_stop[0][from_stop].add(Label(dep_secs, 0, None, from_stop))
 
@@ -127,15 +127,19 @@ class McRaptorAlgorithm:
             marked_stop_index = marked_route.stop_index(marked_stop)
             remaining_stops_in_route = marked_route.stops[marked_stop_index:]
 
-            for stop_idx, current_stop in enumerate(remaining_stops_in_route):
+            # The following steps refer to the three-part processing done for each stop,
+            # described in the McRAPTOR section of the MSFT paper.
+            for current_stop_idx, current_stop in enumerate(remaining_stops_in_route):
 
                 # Step 1: update the earliest arrival times and criteria for each label L in route-bag
-                update_labels = []
+                updated_labels = []
                 for label in route_bag.labels:
                     trip_stop_time = label.trip.get_stop(current_stop)
 
                     # Take fare of previous stop in trip as fare is defined on start
-                    previous_stop = remaining_stops_in_route[stop_idx - 1]
+                    # TODO this is another part relevant for the multi-criteria approach:
+                    #   here fares for each label are updated based on the traversed trips
+                    previous_stop = remaining_stops_in_route[current_stop_idx - 1]
                     from_fare = label.trip.get_fare(previous_stop)
 
                     label = label.update(
@@ -143,27 +147,33 @@ class McRaptorAlgorithm:
                         fare_addition=from_fare,
                     )
 
-                    update_labels.append(label)
-                route_bag = Bag(labels=update_labels)
+                    updated_labels.append(label)
+                route_bag = Bag(labels=updated_labels)
 
                 # Step 2: merge bag_route into bag_round_stop and remove dominated labels
                 # The label contains the trip with which one arrives at current stop with k legs
-                # and we boarded the trip at from_stop.
+                #   and we boarded the trip at from_stop.
+                # NOTE: merging two bags returns a bag containing the most efficient labels of the two
                 bag_round_stop[k][current_stop] = bag_round_stop[k][current_stop].merge(
                     route_bag
                 )
                 bag_update = bag_round_stop[k][current_stop].update
 
-                # Mark stop if bag is updated
+                # Mark stop if bag is updated.
+                # Updated bag means that the current stop brought some improvements
                 if bag_update:
                     new_marked_stops.add(current_stop)
 
                 # Step 3: merge B_{k-1}(p) into B_r
+                # TODO why merging with the bag of the previous round?
+                #   what does route_bag represent?
                 route_bag = route_bag.merge(bag_round_stop[k - 1][current_stop])
 
                 # Assign trips to all newly added labels in route_bag
                 # This is the trip on which we board
-                update_labels = []
+                # TODO this is tbe last part of step 3.
+                #  Need to understand what this does and why it is needed.
+                updated_labels = []
                 for label in route_bag.labels:
                     earliest_trip = marked_route.earliest_trip(
                         label.earliest_arrival_time, current_stop
@@ -172,8 +182,8 @@ class McRaptorAlgorithm:
                         # Update label with earliest trip in route leaving from this station
                         # If trip is different we board the trip at current_stop
                         label = label.update_trip(earliest_trip, current_stop)
-                        update_labels.append(label)
-                route_bag = Bag(labels=update_labels)
+                        updated_labels.append(label)
+                route_bag = Bag(labels=updated_labels)
 
         logger.debug(f"{len(new_marked_stops)} reachable stops added")
 
@@ -191,7 +201,11 @@ class McRaptorAlgorithm:
 
         # Add in transfers to other platforms
         for stop in marked_stops:
-            other_station_stops = [st for st in stop.station.stops if st != stop]
+            # Note: transfers are transitive, which means that for each reachable stops (a, b) there
+            # is transfer (a, b) as well as (b, a)
+            other_station_stops = [
+                t.to_stop for t in self.timetable.transfers if t.from_stop == stop
+            ]
 
             for other_stop in other_station_stops:
                 # Create temp copy of B_k(p_i)

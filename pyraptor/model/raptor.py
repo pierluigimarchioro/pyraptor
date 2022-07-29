@@ -192,6 +192,9 @@ class RaptorAlgorithm:
 
                 # Can we catch an earlier trip at p_i
                 # if tau_{k-1}(next_stop) <= tau_dep(t, next_stop)
+                # TODO chiedere a seba: non riesco a capire perché questo confronto
+                #   per stabilire se c'è un trip che arriva prima
+                #   non capisco neanche qual è il senso di questa parte in realtà
                 previous_earliest_arrival_time = bag_round_stop[k][
                     current_stop
                 ].earliest_arrival_time
@@ -237,7 +240,7 @@ class RaptorAlgorithm:
 
             time_sofar = bag_round_stop[k][current_stop].earliest_arrival_time
             for arrive_stop in other_station_stops:
-                new_earliest_arrival = time_sofar + self.get_transfer_time(
+                arrival_time_with_transfer = time_sofar + self.get_transfer_time(
                     current_stop, arrive_stop
                 )
                 previous_earliest_arrival = self.bag_star[
@@ -245,14 +248,14 @@ class RaptorAlgorithm:
                 ].earliest_arrival_time
 
                 # Domination criteria
-                if new_earliest_arrival < previous_earliest_arrival:
+                if arrival_time_with_transfer < previous_earliest_arrival:
                     bag_round_stop[k][arrive_stop].update(
-                        new_earliest_arrival,
+                        arrival_time_with_transfer,
                         TRANSFER_TRIP,
                         current_stop,
                     )
                     self.bag_star[arrive_stop].update(
-                        new_earliest_arrival, TRANSFER_TRIP, current_stop
+                        arrival_time_with_transfer, TRANSFER_TRIP, current_stop
                     )
                     new_stops.append(arrive_stop)
 
@@ -295,6 +298,7 @@ def reconstruct_journey(destination: Stop, bag: Dict[Stop, Label]) -> Journey:
         jrny = jrny.prepend_leg(leg)
         to_stop = from_stop
 
+    # TODO comment to add transfer legs to the journey
     jrny = jrny.remove_transfer_legs()
 
     return jrny

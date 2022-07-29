@@ -607,10 +607,21 @@ class Label:
     @property
     def criteria(self):
         """Criteria"""
+        # TODO this is the multi-criteria part of the label:
+        #   most important is arrival time, then fare (where is fare info retrieved from?),
+        #   then, at last, number of trips necessary
         return [self.earliest_arrival_time, self.fare, self.n_trips]
 
-    def update(self, earliest_arrival_time=None, fare_addition=None, from_stop=None):
-        """Update earliest arrival time and add fare_addition to fare"""
+    def update(self, earliest_arrival_time=None, fare_addition=None, from_stop=None) -> Label:
+        """
+        Updates the current label with the provided earliest arrival time and fare_addition.
+        Returns the updated label
+
+        :param earliest_arrival_time: new earliest arrival time
+        :param fare_addition: fare to add to the current
+        :param from_stop: new stop that the label refers to
+        :return: updated label
+        """
         return copy(
             Label(
                 earliest_arrival_time=earliest_arrival_time
@@ -626,14 +637,23 @@ class Label:
             )
         )
 
-    def update_trip(self, trip: Trip, current_stop: Stop):
-        """Update trip"""
+    def update_trip(self, trip: Trip, new_boarding_stop: Stop) -> Label:
+        """
+        Updates the trip and the boarding stop associated with the current label.
+        Returns the updated label.
+
+        :param trip: new trip to update the label with
+        :param new_boarding_stop: new boarding stop to update the label with, only if the provided
+            trip is different from the current one. Otherwise, the current stop is not updated.
+        :return: updated label
+        """
+
         return copy(
             Label(
                 earliest_arrival_time=self.earliest_arrival_time,
                 fare=self.fare,
                 trip=trip,
-                from_stop=current_stop if self.trip != trip else self.from_stop,
+                from_stop=new_boarding_stop if self.trip != trip else self.from_stop,
                 n_trips=self.n_trips + 1 if self.trip != trip else self.n_trips,
                 infinite=self.infinite,
             )
@@ -660,7 +680,7 @@ class Bag:
         self.labels.append(label)
 
     def merge(self, other_bag: Bag) -> Bag:
-        """Merge other bag in bag and return updated Bag"""
+        """Merge other bag in current bag and return updated Bag"""
 
         pareto_labels = self.labels + other_bag.labels
 
@@ -832,6 +852,7 @@ class Journey:
 def pareto_set(labels: List[Label], keep_equal=False):
     """
     Find the pareto-efficient points
+
     :param labels: list with labels
     :param keep_equal: return also labels with equal criteria
     :return: list with pairwise non-dominating labels
