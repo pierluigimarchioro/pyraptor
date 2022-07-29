@@ -64,4 +64,5 @@ coverage.xml
 # Repository
 data/
 output/
+otp2/
 test-output.xml
