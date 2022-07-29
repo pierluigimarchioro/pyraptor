@@ -192,9 +192,7 @@ class RaptorAlgorithm:
 
                 # Can we catch an earlier trip at p_i
                 # if tau_{k-1}(next_stop) <= tau_dep(t, next_stop)
-                # TODO chiedere a seba: non riesco a capire perché questo confronto
-                #   per stabilire se c'è un trip che arriva prima
-                #   non capisco neanche qual è il senso di questa parte in realtà
+                # TODO why bag[k] and not bag[k-1]? Try putting k-1 and see what happens
                 previous_earliest_arrival_time = bag_round_stop[k][
                     current_stop
                 ].earliest_arrival_time
