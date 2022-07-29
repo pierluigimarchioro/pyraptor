@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import os
+import uuid
 from itertools import compress
 from collections import defaultdict
 from operator import attrgetter
@@ -15,7 +16,7 @@ import joblib
 import numpy as np
 from loguru import logger
 
-from pyraptor.util import sec2str, mkdir_if_not_exists, get_transport_type_description, TRANSFER_TRIP
+from pyraptor.util import sec2str, mkdir_if_not_exists, get_transport_type_description, TRANSFER_TRIP, WALK_TRANSPORT_TYPE
 
 
 def same_type_and_id(first, second):
@@ -188,7 +189,7 @@ class TripStopTime:
     """Trip Stop"""
 
     trip: Trip = attr.ib(default=attr.NOTHING)
-    stopidx = attr.ib(default=attr.NOTHING)
+    stop_idx = attr.ib(default=attr.NOTHING)
     stop = attr.ib(default=attr.NOTHING)
 
     # Time of arrival in seconds past midnight
@@ -199,7 +200,7 @@ class TripStopTime:
     fare = attr.ib(default=0.0)
 
     def __hash__(self):
-        return hash((self.trip, self.stopidx))
+        return hash((self.trip, self.stop_idx))
 
     def __repr__(self):
         return (
@@ -233,7 +234,7 @@ class TripStopTimes:
 
     def add(self, trip_stop_time: TripStopTime):
         """Add trip stop time"""
-        self.set_idx[(trip_stop_time.trip, trip_stop_time.stopidx)] = trip_stop_time
+        self.set_idx[(trip_stop_time.trip, trip_stop_time.stop_idx)] = trip_stop_time
         self.stop_trip_idx[trip_stop_time.stop].append(trip_stop_time)
 
     def get_trip_stop_times_in_range(self, stops, dep_secs_min, dep_secs_max):
@@ -265,6 +266,10 @@ class RouteInfo:
     transport_type: int = None
     name: str = None
 
+    @staticmethod
+    def get_transfer_route() -> RouteInfo:
+        return RouteInfo(transport_type=WALK_TRANSPORT_TYPE, name="Transfer")
+
     def __str__(self):
         return f"Transport: {get_transport_type_description(self.transport_type)} | Route Name: {self.name}"
 
@@ -285,6 +290,25 @@ class Trip:
     hint = attr.ib(default=None)  # i.e. trip_short_name
     long_name = attr.ib(default=None)  # e.g., Sprinter
     route_info: RouteInfo = attr.ib(default=None)
+
+    @staticmethod
+    def get_transfer_trip(from_stop: Stop, to_stop: Stop, dep_time: int, arr_time: int) -> Trip:
+        transfer_route = RouteInfo.get_transfer_route()
+
+        transfer_trip = Trip(
+            id=f"Transfer Trip - {uuid.uuid4()}",
+            long_name=f"Transfer Trip from {from_stop.name} to {to_stop.name}",
+            route_info=transfer_route,
+            hint=str(transfer_route)
+        )
+
+        dep_stop_time = TripStopTime(trip=transfer_trip, stop_idx=0, stop=from_stop, dts_arr=dep_time, dts_dep=dep_time)
+        arr_stop_time = TripStopTime(trip=transfer_trip, stop_idx=1, stop=to_stop, dts_arr=arr_time, dts_dep=arr_time)
+
+        transfer_trip.add_stop_time(dep_stop_time)
+        transfer_trip.add_stop_time(arr_stop_time)
+
+        return transfer_trip
 
     def __hash__(self):
         return hash(self.id)
@@ -534,15 +558,15 @@ class Leg:
         return [self.earliest_arrival_time, self.fare, self.n_trips]
 
     @property
-    def dep(self):
-        """Departure time"""
+    def dep(self) -> int:
+        """Departure time in seconds past midnight"""
         return [
             tst.dts_dep for tst in self.trip.stop_times if self.from_stop == tst.stop
         ][0]
 
     @property
-    def arr(self):
-        """Arrival time"""
+    def arr(self) -> int:
+        """Arrival time in seconds past midnight"""
         return [
             tst.dts_arr for tst in self.trip.stop_times if self.to_stop == tst.stop
         ][0]
@@ -555,7 +579,7 @@ class Leg:
         """
         Check if Leg is allowed before another leg. That is,
         - It is possible to go from current leg to other leg concerning arrival time
-        - Number of trips of current leg differs by > 1, i.e. a differen trip,
+        - Number of trips of current leg differs by > 1, i.e. a different trip,
           or >= 0 when the other_leg is a transfer_leg
         - The accumulated value of a criteria of current leg is larger or equal to the accumulated value of
           the other leg (current leg is instance of this class)
@@ -736,7 +760,7 @@ class Journey:
         jrny = Journey(legs=legs)
         return jrny
 
-    def remove_transfer_legs(self) -> Journey:
+    def remove_empty_legs(self) -> Journey:
         """Remove all transfer legs"""
         legs = [
             leg
@@ -802,20 +826,18 @@ class Journey:
 
         # Print all legs in journey
         first_trip = self.legs[0].trip
-        prev_route = first_trip.route_info
+        prev_route = first_trip.route_info if first_trip is not None else None
         for leg in self:
             current_trip = leg.trip
-            if current_trip == TRANSFER_TRIP:
-                logger.info("-- Transfer --")
-
-                hint = "Transfer"
-            else:
+            if current_trip is not None:
                 hint = current_trip.hint
 
                 if current_trip.route_info != prev_route:
                     logger.info("-- Trip Change --")
 
-            prev_route = leg.trip.route_info
+                prev_route = current_trip.route_info
+            else:
+                raise Exception(f"Unhandled leg trip. Value: {current_trip}")
 
             msg = (
                     str(sec2str(leg.dep))

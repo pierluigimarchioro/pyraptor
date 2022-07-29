@@ -303,7 +303,7 @@ def reconstruct_journeys(
 
             # End of journey if we are at origin stop or journey is not feasible
             if current_leg.trip is None or current_leg.from_stop in from_stops:
-                jrny = jrny.remove_transfer_legs()
+                jrny = jrny.remove_empty_legs()
                 if jrny.is_valid() is True:
                     yield jrny
                 continue

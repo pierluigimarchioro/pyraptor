@@ -5,7 +5,7 @@ import numpy as np
 
 TRANSFER_COST = 2 * 60  # Default transfer time is 2 minutes
 LARGE_NUMBER = 2147483647  # Earliest arrival time at start of algorithm
-TRANSFER_TRIP = None
+TRANSFER_TRIP = None  # TODO remove when Trip.get_transfer_trip is implemented
 
 
 def mkdir_if_not_exists(name: str) -> None:
@@ -46,6 +46,9 @@ def sec2str(scnds: int, show_sec: bool = False) -> str:
     )
 
 
+WALK_TRANSPORT_TYPE = -1
+
+
 def get_transport_type_description(transport_type: int) -> str:
     """
     Returns a description for the provided transport type,
@@ -55,7 +58,9 @@ def get_transport_type_description(transport_type: int) -> str:
     :return: transport type description
     """
 
+    # TODO maybe refactor transport_type to enum?
     transport_descriptions = {
+        WALK_TRANSPORT_TYPE: "Walk",
         0: "Light Rail (e.g. Tram)",
         1: "Metro",
         2: "Rail",

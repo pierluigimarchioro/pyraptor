@@ -121,8 +121,8 @@ class RaptorAlgorithm:
                 # Check if new_stop is before existing stop in Q
                 current_stop_for_route = route_marked_stops.get(route, None)  # p'
                 if (current_stop_for_route is None) or (
-                    route.stop_index(current_stop_for_route)
-                    > route.stop_index(marked_stop)
+                        route.stop_index(current_stop_for_route)
+                        > route.stop_index(marked_stop)
                 ):
                     route_marked_stops[route] = marked_stop
         route_marked_stops = [(r, p) for r, p in route_marked_stops.items()]
@@ -130,10 +130,10 @@ class RaptorAlgorithm:
         return route_marked_stops
 
     def traverse_routes(
-        self,
-        bag_round_stop: Dict[int, Dict[Stop, Label]],
-        k: int,
-        route_marked_stops: List[Tuple[Route, Stop]],
+            self,
+            bag_round_stop: Dict[int, Dict[Stop, Label]],
+            k: int,
+            route_marked_stops: List[Tuple[Route, Stop]],
     ) -> Tuple:
         """
         Iterate through the stops reachable and add all new reachable stops
@@ -202,9 +202,9 @@ class RaptorAlgorithm:
                     previous_earliest_arrival_time, current_stop
                 )
                 if (
-                    earliest_trip_stop_time is not None
-                    and previous_earliest_arrival_time
-                    <= earliest_trip_stop_time.dts_dep
+                        earliest_trip_stop_time is not None
+                        and previous_earliest_arrival_time
+                        <= earliest_trip_stop_time.dts_dep
                 ):
                     current_trip = earliest_trip_stop_time.trip
                     boarding_stop = current_stop
@@ -215,10 +215,10 @@ class RaptorAlgorithm:
         return bag_round_stop, new_stops
 
     def add_transfer_time(
-        self,
-        bag_round_stop: Dict[int, Dict[Stop, Label]],
-        k: int,
-        marked_stops: List[Stop],
+            self,
+            bag_round_stop: Dict[int, Dict[Stop, Label]],
+            k: int,
+            marked_stops: List[Stop],
     ) -> Tuple:
         """
         Add transfers between platforms.
@@ -249,13 +249,18 @@ class RaptorAlgorithm:
 
                 # Domination criteria
                 if arrival_time_with_transfer < previous_earliest_arrival:
+                    transfer_trip = Trip.get_transfer_trip(from_stop=current_stop,
+                                                           to_stop=arrive_stop,
+                                                           dep_time=time_sofar,
+                                                           arr_time=arrival_time_with_transfer)
+
                     bag_round_stop[k][arrive_stop].update(
                         arrival_time_with_transfer,
-                        TRANSFER_TRIP,
+                        transfer_trip,
                         current_stop,
                     )
                     self.bag_star[arrive_stop].update(
-                        arrival_time_with_transfer, TRANSFER_TRIP, current_stop
+                        arrival_time_with_transfer, transfer_trip, current_stop
                     )
                     new_stops.append(arrive_stop)
 
@@ -292,14 +297,14 @@ def reconstruct_journey(destination: Stop, bag: Dict[Stop, Label]) -> Journey:
     while to_stop is not None:
         from_stop = bag[to_stop].from_stop
         bag_to_stop = bag[to_stop]
+
         leg = Leg(
             from_stop, to_stop, bag_to_stop.trip, bag_to_stop.earliest_arrival_time
         )
         jrny = jrny.prepend_leg(leg)
         to_stop = from_stop
 
-    # TODO comment to add transfer legs to the journey
-    jrny = jrny.remove_transfer_legs()
+    jrny = jrny.remove_empty_legs()
 
     return jrny
 
@@ -331,6 +336,6 @@ def is_dominated(original_journey: List[Leg], new_journey: List[Leg]) -> bool:
     return (
         True
         if (original_depart >= new_depart and original_arrival < new_arrival)
-        or (original_depart > new_depart and original_arrival <= new_arrival)
+           or (original_depart > new_depart and original_arrival <= new_arrival)
         else False
     )
