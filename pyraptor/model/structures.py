@@ -16,7 +16,7 @@ import joblib
 import numpy as np
 from loguru import logger
 
-from pyraptor.util import sec2str, mkdir_if_not_exists, get_transport_type_description, TRANSFER_TRIP, WALK_TRANSPORT_TYPE
+from pyraptor.util import sec2str, mkdir_if_not_exists, get_transport_type_description, WALK_TRANSPORT_TYPE
 
 
 def same_type_and_id(first, second):
@@ -171,7 +171,7 @@ class Stations:
             self.set_idx[station.id] = station
         return station
 
-    def get(self, station: Station):
+    def get(self, station: Station | str):
         """Get station"""
         if isinstance(station, Station):
             station = station.id
@@ -179,7 +179,7 @@ class Stations:
             return None
         return self.set_idx[station]
 
-    def get_stops(self, station_name):
+    def get_stops(self, station_name) -> List[Stop]:
         """Get all stop ids from station, i.e. platform stop ids belonging to station"""
         return self.set_idx[station_name].stops
 
@@ -691,13 +691,13 @@ class Bag:
     """
 
     labels: List[Label] = field(default_factory=list)
-    update: bool = False
+    updated: bool = False
 
     def __len__(self):
         return len(self.labels)
 
     def __repr__(self):
-        return f"Bag({self.labels}, update={self.update})"
+        return f"Bag({self.labels}, updated={self.updated})"
 
     def add(self, label: Label):
         """Add"""
@@ -709,12 +709,12 @@ class Bag:
         pareto_labels = self.labels + other_bag.labels
 
         if len(pareto_labels) == 0:
-            return Bag(labels=[], update=False)
+            return Bag(labels=[], updated=False)
 
         pareto_labels = pareto_set(pareto_labels)
         bag_update = True if pareto_labels != self.labels else False
 
-        return Bag(labels=pareto_labels, update=bag_update)
+        return Bag(labels=pareto_labels, updated=bag_update)
 
     def labels_with_trip(self):
         """All labels with trips, i.e. all labels that are reachable with a trip with given criterion"""

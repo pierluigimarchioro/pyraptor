@@ -9,7 +9,7 @@ from loguru import logger
 
 from pyraptor.dao.timetable import Timetable
 from pyraptor.model.structures import Stop, Trip, Route, Leg, Journey
-from pyraptor.util import LARGE_NUMBER, TRANSFER_TRIP
+from pyraptor.util import LARGE_NUMBER
 
 
 @dataclass
@@ -235,6 +235,13 @@ class RaptorAlgorithm:
             other_station_stops = [
                 t.to_stop for t in self.timetable.transfers if t.from_stop == current_stop
             ]
+
+            # TODO this should be the better version: better to manually include
+            #  transfers between parent and child stations
+            # other_station_stops = set(itertools.chain(
+            #     [st for st in current_stop.station.stops if st != current_stop],
+            #     [t.to_stop for t in self.timetable.transfers if t.from_stop == current_stop]
+            # ))
 
             time_sofar = bag_round_stop[k][current_stop].earliest_arrival_time
             for arrive_stop in other_station_stops:

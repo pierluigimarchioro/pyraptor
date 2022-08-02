@@ -1,4 +1,5 @@
 """McRAPTOR algorithm"""
+import itertools
 from typing import List, Tuple, Dict
 from copy import copy
 from time import perf_counter
@@ -157,7 +158,7 @@ class McRaptorAlgorithm:
                 bag_round_stop[k][current_stop] = bag_round_stop[k][current_stop].merge(
                     route_bag
                 )
-                bag_update = bag_round_stop[k][current_stop].update
+                bag_update = bag_round_stop[k][current_stop].updated
 
                 # Mark stop if bag is updated.
                 # Updated bag means that the current stop brought some improvements
@@ -200,7 +201,7 @@ class McRaptorAlgorithm:
         marked_stops_transfers = set()
 
         # Add in transfers to other platforms
-        for stop in marked_stops:
+        for current_stop in marked_stops:
             # Note: transfers are transitive, which means that for each reachable stops (a, b) there
             # is transfer (a, b) as well as (b, a)
             other_station_stops = [
@@ -210,17 +211,17 @@ class McRaptorAlgorithm:
             for other_stop in other_station_stops:
                 # Create temp copy of B_k(p_i)
                 temp_bag = Bag()
-                for label in bag_round_stop[k][stop].labels:
+                for label in bag_round_stop[k][current_stop].labels:
                     # Add arrival time to each label
                     transfer_arrival_time = (
                         label.earliest_arrival_time
-                        + self.get_transfer_time(stop, other_stop)
+                        + self.get_transfer_time(current_stop, other_stop)
                     )
                     # Update label with new earliest arrival time at other_stop
                     label = label.update(
                         earliest_arrival_time=transfer_arrival_time,
                         fare_addition=0,
-                        from_stop=stop,
+                        from_stop=current_stop,
                     )
                     temp_bag.add(label)
 
@@ -228,7 +229,7 @@ class McRaptorAlgorithm:
                 bag_round_stop[k][other_stop] = bag_round_stop[k][other_stop].merge(
                     temp_bag
                 )
-                bag_update = bag_round_stop[k][other_stop].update
+                bag_update = bag_round_stop[k][other_stop].updated
 
                 # Mark stop if bag is updated
                 if bag_update:

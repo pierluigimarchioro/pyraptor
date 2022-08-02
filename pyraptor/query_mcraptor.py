@@ -1,13 +1,13 @@
 """Run query with RAPTOR algorithm"""
 import argparse
-from typing import List, Dict
+from typing import List, Dict, Any
 from copy import copy
 from time import perf_counter
 
 from loguru import logger
 
 from pyraptor.dao.timetable import read_timetable
-from pyraptor.model.structures import Timetable, Journey, Station
+from pyraptor.model.structures import Timetable, Journey, Station, Stop
 from pyraptor.model.mcraptor import (
     McRaptorAlgorithm,
     reconstruct_journeys,
@@ -91,6 +91,8 @@ def main(
     if len(journeys) != 0:
         for jrny in journeys:
             jrny.print(dep_secs=dep_secs)
+    else:
+        logger.debug(f"No journeys found to {destination_station}")
 
 
 def run_mcraptor(
@@ -118,7 +120,7 @@ def run_mcraptor(
     logger.info("Calculating journeys to all destinations")
     s = perf_counter()
 
-    destination_stops = {
+    destination_stops: Dict[Any, List[Stop]] = {
         st.name: timetable.stations.get_stops(st.name) for st in timetable.stations
     }
     destination_stops.pop(origin_station, None)
@@ -134,8 +136,8 @@ def run_mcraptor(
         destination_legs = best_legs_to_destination_station(to_stops, last_round_bag)
 
         if len(destination_legs) == 0:
-            # TODO log more significant information (maybe debug level)
-            logger.info("Destination unreachable with given parameters")
+            logger.debug(f"Destination '{destination_station_name}' unreachable with given parameters."
+                         f"Station stops: {to_stops}")
             continue
 
         journeys = reconstruct_journeys(
