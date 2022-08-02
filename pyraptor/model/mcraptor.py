@@ -208,11 +208,8 @@ class McRaptorAlgorithm:
             # TODO original line
             # other_station_stops = [st for st in current_stop.station.stops if st != current_stop]
 
-            other_station_stops = itertools.chain(
-                [st for st in current_stop.station.stops if st != current_stop],
-                # TODO uncommenting breaks McRaptor
-                # [t.to_stop for t in self.timetable.transfers if t.from_stop == current_stop]
-            )
+            # TODO uncommenting breaks McRaptor
+            other_station_stops = [t.to_stop for t in self.timetable.transfers if t.from_stop == current_stop]
 
             for other_stop in other_station_stops:
                 # Create temp copy of B_k(p_i)
@@ -315,6 +312,8 @@ def reconstruct_journeys(
             # End of journey if we are at origin stop or journey is not feasible
             if current_leg.trip is None or current_leg.from_stop in from_stops:
                 jrny = jrny.remove_empty_legs()
+
+                # TODO is_valid() breaks if transfers are added from the transfers table
                 if jrny.is_valid() is True:
                     yield jrny
                 continue
