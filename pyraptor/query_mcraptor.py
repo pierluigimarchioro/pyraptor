@@ -133,6 +133,9 @@ def run_mcraptor(
         #  questo è scomodo sia per la visualizzazione,
         #  perché è importante sapere anche le fermate intermedie,
         #  sia per il debugging in generale
+        # TODO debug
+        if "qt8 m1--1" in [s.name for s in to_stops]:
+            print("here")
         destination_legs = best_legs_to_destination_station(to_stops, last_round_bag)
 
         if len(destination_legs) == 0:

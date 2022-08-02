@@ -204,9 +204,15 @@ class McRaptorAlgorithm:
         for current_stop in marked_stops:
             # Note: transfers are transitive, which means that for each reachable stops (a, b) there
             # is transfer (a, b) as well as (b, a)
-            other_station_stops = [
-                t.to_stop for t in self.timetable.transfers if t.from_stop == stop
-            ]
+
+            # TODO original line
+            # other_station_stops = [st for st in current_stop.station.stops if st != current_stop]
+
+            other_station_stops = itertools.chain(
+                [st for st in current_stop.station.stops if st != current_stop],
+                # TODO uncommenting breaks McRaptor
+                # [t.to_stop for t in self.timetable.transfers if t.from_stop == current_stop]
+            )
 
             for other_stop in other_station_stops:
                 # Create temp copy of B_k(p_i)
@@ -291,6 +297,10 @@ def reconstruct_journeys(
     Construct Journeys for destinations from bags by recursively
     looping from destination to origin.
     """
+
+    # TODO debug
+    if "qt8 m1--1" in [leg.to_stop.name for leg in destination_legs]:
+        print("here")
 
     def loop(
         bag_round_stop: Dict[int, Dict[Stop, Bag]], k: int, journeys: List[Journey]
