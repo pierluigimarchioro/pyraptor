@@ -13,6 +13,7 @@ from collections import defaultdict
 from collections.abc import Mapping
 from datetime import datetime
 
+import numpy as np
 import pandas as pd
 import pathos.pools as p
 from loguru import logger
@@ -136,9 +137,8 @@ def read_gtfs_timetable(
     if t_short_name_col in trips.columns:
         trips_col_selector.append(t_short_name_col)
 
-        # TODO error because some values are missing - fillna with -1?
-        trips[t_short_name_col] = trips[t_short_name_col].fillna(value=-1)
-        trips[t_short_name_col] = trips[t_short_name_col].astype(int)
+        trips[t_short_name_col] = trips[t_short_name_col].fillna(value="missing_short_name")
+        trips[t_short_name_col] = trips[t_short_name_col].astype(str)
 
     trips = trips[trips_col_selector]
 
@@ -148,8 +148,10 @@ def read_gtfs_timetable(
 
     # Trips here are already filtered by agency ids
     valid_ids = trips["service_id"].values
-    active_service_ids = calendar_processor.get_active_service_ids(on_date=departure_date,
-                                                                   valid_service_ids=valid_ids)
+    active_service_ids = calendar_processor.get_active_service_ids(
+        on_date=departure_date,
+        valid_service_ids=valid_ids
+    )
 
     # Filter trips based on the service ids active on the provided dep. date
     trips = trips[trips["service_id"].isin(active_service_ids)]
@@ -184,10 +186,29 @@ def read_gtfs_timetable(
         stops_full["stop_id"].isin(stop_times.stop_id.unique())
     ].copy()
 
-    # Read stopareas, i.e. stations # TODO parent_station is optional? it might need to be handled
-    stopareas = stops["parent_station"].unique()
-    # stops = stops.append(.copy())
-    stops = pd.concat([stops, stops_full.loc[stops_full["stop_id"].isin(stopareas)]])
+    # Add columns to the selector only if they exist in the stops dataframe
+    stops_col_selector = [
+        "stop_id"
+    ]
+
+    platform_code_col = "platform_code",
+    if platform_code_col in stops.columns:
+        stops_col_selector.append(platform_code_col)
+
+    stop_name_col = "stop_name"
+    if stop_name_col in stops.columns:
+        stops_col_selector.append(stop_name_col)
+
+    # Read stop areas, i.e. stations
+    parent_station_col = "parent_station"
+    if parent_station_col in stops.columns:
+        stop_areas = stops[parent_station_col].unique()
+
+        stops_col_selector.append(parent_station_col)
+    else:
+        stop_areas = []
+
+    stops = pd.concat([stops, stops_full.loc[stops_full["stop_id"].isin(stop_areas)]])
 
     # Make sure that stop_code is of string type
     stop_code_col = "stop_code"
@@ -195,26 +216,7 @@ def read_gtfs_timetable(
 
     stops[stop_code_col] = stops.stop_code.str.upper()
 
-    stops_col_selector = [
-        "stop_id",
-        "stop_name",  # TODO this is optional too (conditionally required)
-        "parent_station",  # TODO conditionally required too
-    ]
-
-    platform_code_col = "platform_code",
-    if platform_code_col in stops.columns:
-        stops_col_selector.append(platform_code_col)
-
     stops: pd.DataFrame = stops[stops_col_selector]
-
-    # TODO commented because it excludes stops with location_type 0 or empty,
-    #   which are standalone stops that should not be discarded.
-    #   I think the rationale behind removing parent stations
-    #   is that the child stops are already included, so including the station would basically
-    #   mean double-counting. This means that the stops that should actually be removed are the ones
-    #   with location_type == 1 (Stations) and parent_station == empty
-    # Filter out the general station codes
-    # stops = stops.loc[~stops.parent_station.isna()]
 
     # Get transfers table only if it exists
     transfers_path = os.path.join(input_folder, "transfers.txt")
@@ -474,7 +476,7 @@ class TripsProcessor:
                     trip_stop_times.add(trip_stop_time)
                     trip.add_stop_time(trip_stop_time)
 
-                # Add trip TODO why this if? isn't trip always != None?
+                # Add trip
                 if trip:
                     trips.add(trip)
 
@@ -503,15 +505,11 @@ def gtfs_to_pyraptor_timetable(
     stations = Stations()
     stops = Stops()
 
-    platform_code_col = "platform_code"
-    if platform_code_col in gtfs_timetable.stops.columns:
-        gtfs_timetable.stops.platform_code = gtfs_timetable.stops.platform_code.fillna(-1)
-
     for s in gtfs_timetable.stops.itertuples():
         station = Station(s.stop_name, s.stop_name)
         station = stations.add(station)
 
-        platform_code = getattr(s, platform_code_col, -1)
+        platform_code = getattr(s, "platform_code", -1)
         stop_id = f"{s.stop_name}-{platform_code}"
         stop = Stop(s.stop_id, stop_id, station, platform_code)
 
