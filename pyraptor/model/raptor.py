@@ -1,6 +1,7 @@
 """RAPTOR algorithm"""
 from __future__ import annotations
 
+import itertools
 from typing import List, Tuple, Dict
 from dataclasses import dataclass
 from copy import deepcopy
@@ -228,20 +229,13 @@ class RaptorAlgorithm:
 
         new_stops = []
 
-        # Add in transfers to other platforms
+        # Add in transfers from the transfers table
         for current_stop in marked_stops:
             # Note: transfers are transitive, which means that for each reachable stops (a, b) there
             # is transfer (a, b) as well as (b, a)
             other_station_stops = [
                 t.to_stop for t in self.timetable.transfers if t.from_stop == current_stop
             ]
-
-            # TODO this should be the better version: better to manually include
-            #  transfers between parent and child stations
-            # other_station_stops = set(itertools.chain(
-            #     [st for st in current_stop.station.stops if st != current_stop],
-            #     [t.to_stop for t in self.timetable.transfers if t.from_stop == current_stop]
-            # ))
 
             time_sofar = bag_round_stop[k][current_stop].earliest_arrival_time
             for arrive_stop in other_station_stops:
