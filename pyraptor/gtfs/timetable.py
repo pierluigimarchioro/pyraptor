@@ -216,6 +216,19 @@ def read_gtfs_timetable(
 
     stops[stop_code_col] = stops.stop_code.str.upper()
 
+    # Filter out the general station rows (location_type == 1 and parent_station == empty)
+    # Rationale is that general station are just "container stops" for their child stops
+    if parent_station_col in stops.columns and "location_type" in stops.columns:
+        to_remove_mask = stops[parent_station_col].isna()
+        to_remove_mask &= (stops["location_type"].astype(str) == "1")
+    else:
+        to_remove_mask = np.zeros(shape=len(stops), dtype=bool)
+
+    # Remove the general station rows and make sure that stops and stop_times
+    # are all referring to the same stop_ids
+    stops = stops.loc[~to_remove_mask]
+    stop_times = stop_times[stop_times["stop_id"].isin(stops["stop_id"])]
+
     stops: pd.DataFrame = stops[stops_col_selector]
 
     # Get transfers table only if it exists
