@@ -560,16 +560,26 @@ class Leg:
     @property
     def dep(self) -> int:
         """Departure time in seconds past midnight"""
-        return [
-            tst.dts_dep for tst in self.trip.stop_times if self.from_stop == tst.stop
-        ][0]
+
+        try:
+            return [
+                tst.dts_dep for tst in self.trip.stop_times if self.from_stop == tst.stop
+            ][0]
+        except IndexError as ex:
+            raise Exception(f"No departure time for to_stop: {self.to_stop}.\n"
+                            f"Current Leg: {self}. \n Original Error: {ex}")
 
     @property
     def arr(self) -> int:
         """Arrival time in seconds past midnight"""
-        return [
-            tst.dts_arr for tst in self.trip.stop_times if self.to_stop == tst.stop
-        ][0]
+
+        try:
+            return [
+                tst.dts_arr for tst in self.trip.stop_times if self.to_stop == tst.stop
+            ][0]
+        except IndexError as ex:
+            raise Exception(f"No arrival time for to_stop: {self.to_stop}.\n"
+                            f"Current Leg: {self}. \n Original Error: {ex}")
 
     def is_transfer(self):
         """Is transfer leg"""
@@ -587,10 +597,16 @@ class Leg:
         arrival_time_compatible = (
                 other_leg.earliest_arrival_time >= self.earliest_arrival_time
         )
+
+        # TODO this might cause problems because transfers now are added also between stops of different trips#
         n_trips_compatible = (
+            # TODO original
+            # other_leg.n_trips >= self.n_trips
+            # if other_leg.is_transfer()
+            # else other_leg.n_trips > self.n_trips
+
+            # TODO new one that does not differentiate transfer legs with other legs
             other_leg.n_trips >= self.n_trips
-            if other_leg.is_transfer()
-            else other_leg.n_trips > self.n_trips
         )
         criteria_compatible = np.all(
             np.array([c for c in other_leg.criteria])
@@ -765,13 +781,22 @@ class Journey:
         legs = [
             leg
             for leg in self.legs
-            if (leg.trip is not None) and (leg.from_stop.station != leg.to_stop.station)
+            if (leg.trip is not None)
+                # TODO might want to remove this part: I just want to remove empty legs,
+                #   and not transfer legs between parent and child stops
+               and (leg.from_stop.station != leg.to_stop.station)
         ]
         jrny = Journey(legs=legs)
         return jrny
 
     def is_valid(self) -> bool:
-        """Is valid journey"""
+        """
+        Returns true if the journey is considered valid.
+        Notably, a journey is valid if, for each leg, leg k arrival time
+        is not greater than leg k+1 departure time
+        :return: True if journey is valid, False otherwise
+        """
+
         for index in range(len(self.legs) - 1):
             if self.legs[index].arr > self.legs[index + 1].dep:
                 return False

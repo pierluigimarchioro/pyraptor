@@ -200,7 +200,7 @@ class McRaptorAlgorithm:
 
         marked_stops_transfers = set()
 
-        # Add in transfers to other platforms
+        # Add in transfers to other platforms (same station) and stops
         for current_stop in marked_stops:
             # Note: transfers are transitive, which means that for each reachable stops (a, b) there
             # is transfer (a, b) as well as (b, a)
@@ -208,7 +208,7 @@ class McRaptorAlgorithm:
             # TODO original line
             # other_station_stops = [st for st in current_stop.station.stops if st != current_stop]
 
-            # TODO uncommenting breaks McRaptor
+            # TODO uncommenting breaks McRaptor: some journeys are not found
             other_station_stops = [t.to_stop for t in self.timetable.transfers if t.from_stop == current_stop]
 
             for other_stop in other_station_stops:
@@ -222,9 +222,15 @@ class McRaptorAlgorithm:
                     )
                     # Update label with new earliest arrival time at other_stop
                     label = label.update(
+                        # TODO what does a label actually represent? is earliest_arrival_time referring
+                        #  to current_stop or other_stop? It seems to be referring to other_stop, but then
+                        #  why isn't that information stored in the label? why is there only a "from_stop" field?
                         earliest_arrival_time=transfer_arrival_time,
                         fare_addition=0,
                         from_stop=current_stop,
+                        # TODO the fact that now transfers also relate to stops belonging to different trips
+                        #  causes problems, because here the transfer is assumed to happen on the same trip.
+                        #  A way to update the trip with a transfer trip needs to be found
                     )
                     temp_bag.add(label)
 
@@ -314,22 +320,23 @@ def reconstruct_journeys(
                 jrny = jrny.remove_empty_legs()
 
                 # TODO is_valid() breaks if transfers are added from the transfers table
+                # Journey is valid if leg k ends before the start of leg k+1
                 if jrny.is_valid() is True:
                     yield jrny
                 continue
 
-            # Loop trough each new leg
+            # Loop trough each new leg. These are the legs that come before the current and that lead to from_stop
             labels_to_from_stop = last_round_bags[current_leg.from_stop].labels
             for new_label in labels_to_from_stop:
                 new_leg = Leg(
                     new_label.from_stop,
                     current_leg.from_stop,
-                    new_label.trip,
+                    new_label.trip,  # TODO when adding transfer time, the transfer trip is never added/set
                     new_label.earliest_arrival_time,
                     new_label.fare,
                     new_label.n_trips,
                 )
-                # Only add new_leg if compatible before current leg, e.g. earlier arrival time, etc.
+                # Only prepend new_leg if compatible before current leg, e.g. earlier arrival time, etc.
                 if new_leg.is_compatible_before(current_leg):
                     new_jrny = jrny.prepend_leg(new_leg)
                     for i in loop(bag_round_stop, k, [new_jrny]):
