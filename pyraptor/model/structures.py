@@ -7,9 +7,14 @@ from itertools import compress
 from collections import defaultdict
 from operator import attrgetter
 from pathlib import Path
-from typing import List, Dict, Tuple
+from typing import List, Dict, Tuple, Iterable, Mapping
+from enum import Enum
 from dataclasses import dataclass, field
 from copy import copy
+from json import loads
+from urllib.request import urlopen
+
+
 
 import attr
 import joblib
@@ -66,6 +71,7 @@ class Stop:
     station: Station = attr.ib(default=None)
     platform_code = attr.ib(default=None)
     index = attr.ib(default=None)
+    geo: Tuple[float, float] = attr.ib(default=None)  # latitude and longitude
 
     def __hash__(self):
         return hash(self.id)
@@ -606,7 +612,7 @@ class Leg:
             # else other_leg.n_trips > self.n_trips
 
             # TODO new one that does not differentiate transfer legs with other legs
-            other_leg.n_trips >= self.n_trips
+                other_leg.n_trips >= self.n_trips
         )
         criteria_compatible = np.all(
             np.array([c for c in other_leg.criteria])
@@ -782,8 +788,8 @@ class Journey:
             leg
             for leg in self.legs
             if (leg.trip is not None)
-                # TODO might want to remove this part: I just want to remove empty legs,
-                #   and not transfer legs between parent and child stops
+               # TODO might want to remove this part: I just want to remove empty legs,
+               #   and not transfer legs between parent and child stops
                and (leg.from_stop.station != leg.to_stop.station)
         ]
         jrny = Journey(legs=legs)
@@ -990,3 +996,39 @@ class AlgorithmOutput(TimetableInfo):
 
         mkdir_if_not_exists(output_dir)
         write_joblib(algo_output, _ALGO_OUTPUT_FILENAME)
+
+
+""" GBFS """
+
+
+class ShareVehicleType(Enum):
+    Car = 'car'
+    Bicycle = 'bicycle'
+
+
+@attr.s
+class PhysicalStation(Stop):
+
+    vehicleType: ShareVehicleType = attr.ib(default=None) # type of vehicle rentable in the Station
+
+
+class SharedDataFeed:
+    """GBFSFeed"""
+
+    def __init__(self, url: str, lang: str = 'it'):
+        self.url: str = url
+        self.lang: str = lang
+        self.stops: Iterable[PhysicalStation] = None  # shared-mobilty stops
+
+    @property
+    def stops(self) -> Iterable[PhysicalStation]:
+
+        def open_json(url:str) -> Mapping[str, Mapping]:
+            return loads(urlopen(url=url).read())
+
+        if self.stops is not None:  # already computed
+            return self.stops
+        else:
+            info = open_json(url=self.url)
+            feeds = info['data'][self.lang][['feed']]
+            
