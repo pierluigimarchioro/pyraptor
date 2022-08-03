@@ -36,6 +36,9 @@ from pyraptor.model.structures import (
     Transfers,
     TimetableInfo,
     RouteInfo,
+    PhysicalStation,
+    ShareVehicleType,
+    ShareDataFeed
 )
 
 
@@ -87,11 +90,14 @@ def main(
 ):
     """Main function"""
 
+    BIKEMI_URL = "https://gbfs.urbansharing.com/bikemi.com/gbfs.json" # TODO as an input
+
     logger.info("Parse timetable from GTFS files")
     mkdir_if_not_exists(output_folder)
 
     gtfs_timetable = read_gtfs_timetable(input_folder, departure_date, agencies)
     timetable = gtfs_to_pyraptor_timetable(gtfs_timetable, n_jobs)
+
     write_timetable(output_folder, timetable)
 
 
@@ -169,7 +175,7 @@ def read_gtfs_timetable(
             "stop_sequence",
             "stop_id",
             "arrival_time",
-            "departure_time",
+            "departure_time"
         ]
     ]
     # Convert times to seconds
@@ -188,7 +194,9 @@ def read_gtfs_timetable(
 
     # Add columns to the selector only if they exist in the stops dataframe
     stops_col_selector = [
-        "stop_id"
+        "stop_id",
+        "stop_lat",  # added for Stop.geo field
+        "stop_lon"  # added for Stop.geo field
     ]
 
     platform_code_col = "platform_code",
@@ -521,13 +529,20 @@ def gtfs_to_pyraptor_timetable(
     for s in gtfs_timetable.stops.itertuples():
         station = Station(s.stop_name, s.stop_name)
         station = stations.add(station)
+        #   if station_id (same of first stop_name) is already present
+        #   existing station with that station_id is returned
 
         platform_code = getattr(s, "platform_code", -1)
         stop_id = f"{s.stop_name}-{platform_code}"
         stop = Stop(s.stop_id, stop_id, station, platform_code)
+        stop.geo = (s.stop_lat, s.stop_lon)  # geocoordinates
 
         station.add_stop(stop)
         stops.add(stop)
+
+    stations = stations
+    stops = stops
+
 
     # Stop Times
     stop_times = defaultdict(list)
