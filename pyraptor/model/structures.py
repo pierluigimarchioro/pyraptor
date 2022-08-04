@@ -13,6 +13,8 @@ from dataclasses import dataclass, field
 from copy import copy
 from json import loads
 from urllib.request import urlopen
+from geopy.distance import geodesic
+
 
 import attr
 import joblib
@@ -81,6 +83,14 @@ class Stop:
         if self.id == self.name:
             return f"Stop({self.id})"
         return f"Stop({self.name} [{self.id}])"
+
+    @staticmethod
+    def stop_distance(a: Stop, b: Stop):
+        """Returns stop distance in km"""
+        return geodesic(a.geo, b.geo).km
+
+    def distance_from(self, s: Stop):
+        return Stop.stop_distance(self, s)
 
 
 class Stops:

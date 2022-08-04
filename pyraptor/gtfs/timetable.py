@@ -1,26 +1,22 @@
 """Parse timetable from GTFS files"""
 from __future__ import annotations
 
-import itertools
-import math
-import os
 import argparse
 import calendar as cal
+import math
+import os
 import uuid
-from typing import List, Iterable, Any, NamedTuple, Tuple, Callable
-from dataclasses import dataclass
 from collections import defaultdict
 from collections.abc import Mapping
+from dataclasses import dataclass
 from datetime import datetime
+from typing import List, Iterable, Any, NamedTuple, Tuple, Callable
 
 import numpy as np
 import pandas as pd
-import pathos.pools as p
 from loguru import logger
-from pathos.helpers.pp_helper import ApplyResult
 
 from pyraptor.dao import write_timetable
-from pyraptor.util import mkdir_if_not_exists, str2sec, TRANSFER_COST
 from pyraptor.model.structures import (
     Timetable,
     Stop,
@@ -31,7 +27,6 @@ from pyraptor.model.structures import (
     TripStopTimes,
     Station,
     Stations,
-    Routes,
     Transfer,
     Transfers,
     TimetableInfo,
@@ -39,6 +34,7 @@ from pyraptor.model.structures import (
     SharedMobilityPhysicalStation,
     SharedDataFeed
 )
+from pyraptor.util import mkdir_if_not_exists, str2sec, TRANSFER_COST
 
 
 @dataclass
@@ -662,7 +658,7 @@ def gtfs_to_pyraptor_timetable(
 
     # TODO move to a separeted function
     # Add transfers between physical station and stops
-
+    shared_mobility_station = []
 
     # Timetable
     timetable = Timetable(
