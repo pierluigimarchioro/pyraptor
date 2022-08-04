@@ -1014,38 +1014,22 @@ class PhysicalStation(Stop):
 class SharedDataFeed:
     """GBFSFeed"""
 
-    def __init__(self, url: str, lang: str = 'it'):
+    def __init__(self, url: str,
+                 lang: str = 'it', vtype: str = 'bicycle'):
         self.url: str = url
         self.lang: str = lang
         self.feeds_url: Mapping[str, str] = self._get_feeds_url()
-        self.stops: Iterable[PhysicalStation] = []
+        self.vtype: SharedVehicleType = SharedVehicleType(vtype)
+        self.id_: str = self._get_item_list(feed_name='system_information')['name']
 
     @property
     def feeds(self):
         return list(self.feeds_url.keys())
 
-    def get_stops(self) -> Iterable[PhysicalStation]:
+    @property
+    def stops(self) -> Iterable[Dict]:
 
-        if self.stops:  # different from empty string: already computed
-            return self.stops
-        else:
-            # TODO same building process of timetable
-            stops = Stops()
-            station = Stations()
-            for s in self._get_item_list(feed_name='station_information'):
-                """
-                station = Station(s.stop_name, s.stop_name)
-                station = stations.add(station)
-                #   if station_id (same of first stop_name) is already present
-                #   existing station with that station_id is returned
-
-                platform_code = getattr(s, "platform_code", -1)
-                stop_id = f"{s.stop_name}-{platform_code}"
-                stop = Stop(s.stop_id, stop_id, station, platform_code, None, (s.stop_lat, s.stop_lon))
-
-                station.add_stop(stop)
-                stops.add(stop)
-                """
+        return self._get_item_list(feed_name='station_information')
 
     @staticmethod
     def open_json(url: str) -> Mapping[str, Dict]:
@@ -1062,6 +1046,9 @@ class SharedDataFeed:
             raise Exception(f"{feed_name} not in {self.feeds}")
         feed = SharedDataFeed.open_json(url=self.feeds_url[feed_name])
         datas = feed['data']
-        items_name = next(iter(datas.keys()))  # name of items is only key in datas (e.g. 'stations', 'vehicles', ...)
-        return datas[items_name]
+        if feed_name != 'system_information':
+            items_name = next(iter(datas.keys()))  # name of items is only key in datas (e.g. 'stations', 'vehicles', ...)
+            return datas[items_name]
+        else:
+            return datas
 

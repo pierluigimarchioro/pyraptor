@@ -90,20 +90,14 @@ def main(
 ):
     """Main function"""
 
-    BIKEMI_URL = "https://gbfs.urbansharing.com/bikemi.com/gbfs.json" # TODO as an input
-
     logger.info("Parse timetable from GTFS files")
     mkdir_if_not_exists(output_folder)
 
-    feed = SharedDataFeed(url=BIKEMI_URL, lang='it')
-    stops = feed.get_stops()
-
-    """
     gtfs_timetable = read_gtfs_timetable(input_folder, departure_date, agencies)
     timetable = gtfs_to_pyraptor_timetable(gtfs_timetable, n_jobs)
 
     write_timetable(output_folder, timetable)
-    """
+
 
 
 def read_gtfs_timetable(
@@ -544,8 +538,23 @@ def gtfs_to_pyraptor_timetable(
         station.add_stop(stop)
         stops.add(stop)
 
-    stations = stations
-    stops = stops
+    # TODO here for trial, move in other function
+    BIKEMI_URL = "https://gbfs.urbansharing.com/bikemi.com/gbfs.json" # TODO as an input
+    feed = SharedDataFeed(url=BIKEMI_URL, lang='it', vtype='bicycle')
+    print(feed.id_)
+    for s in feed.stops:
+        s_name = s['name']
+        station = Station(s_name, s_name)
+        station = stations.add(station)
+
+        platform_code = -1
+        stop_id = f"{s_name}-{platform_code}"
+        # stops for shared mobility
+        stop = PhysicalStation(s['station_id'], stop_id, station, platform_code, None, (s['lat'], s['lon']), s['capacity'], feed.vtype)
+        
+        station.add_stop(stop)
+        stops.add(stop)
+
 
 
     # Stop Times
@@ -563,6 +572,7 @@ def gtfs_to_pyraptor_timetable(
         trip_route_info[row.trip_id] = RouteInfo(name=route_name, transport_type=row.route_type)
 
     # Trips and Trip Stop Times
+    """
     logger.debug("Add trips and trip stop times")
 
     job_results: dict[int, ApplyResult] = {}
@@ -613,23 +623,27 @@ def gtfs_to_pyraptor_timetable(
 
     # Make sure all the jobs are finished
     pool.join()
-
+    
     # Routes
     logger.debug("Add routes")
 
     routes = Routes()
     for trip in trips:
         routes.add(trip)
-
+    """
     # Transfers
     logger.debug("Add transfers")
 
     # Add transfers between parent and child stations
     transfers = Transfers()
+
+    # 1. transfer between each stop of the same station:
+    #   transfer between stop with same 'stop_name' field
     for station in stations:
         station_stops = station.stops
         station_transfers = [
-            Transfer(from_stop=stop_i, to_stop=stop_j, transfer_time=TRANSFER_COST)
+            Transfer(from_stop=stop_i, to_stop=stop_j, transfer_time=TRANSFER_COST)  # TRANSFER_COST is a macro like
+            # variable, constant value is set to 120 sec
             for stop_i in station_stops
             for stop_j in station_stops
             if stop_i != stop_j
@@ -637,7 +651,7 @@ def gtfs_to_pyraptor_timetable(
         for st in station_transfers:
             transfers.add(st)
 
-    # Add transfers based on the transfers.txt table, if it exists
+    # 2. Add transfers based on the transfers.txt table, if it exists
     if gtfs_timetable.transfers is not None:
         for t_row in gtfs_timetable.transfers.itertuples():
             from_stop = stops[t_row.from_stop_id]
@@ -646,6 +660,10 @@ def gtfs_to_pyraptor_timetable(
 
             t = Transfer(from_stop=from_stop, to_stop=to_stop, transfer_time=t_time)
             transfers.add(t)
+
+    # TODO move to a separeted function
+    # Add transfers between physical station and stops
+    
 
     # Timetable
     timetable = Timetable(
