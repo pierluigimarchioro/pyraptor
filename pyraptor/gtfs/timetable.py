@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import argparse
 import calendar as cal
+import json
 import math
 import os
 import uuid
@@ -32,7 +33,7 @@ from pyraptor.model.structures import (
     TimetableInfo,
     RouteInfo,
     SharedMobilityPhysicalStation,
-    SharedDataFeed
+    SharedMobilityFeed, Routes
 )
 from pyraptor.util import mkdir_if_not_exists, str2sec, TRANSFER_COST, MEAN_FOOT_SPEED, MIN_DIST
 
@@ -70,7 +71,7 @@ def parse_arguments():
         "-d", "--date", type=str, default="20210906", help="Departure date (yyyymmdd)"
     )
     parser.add_argument("-a", "--agencies", nargs="+", default=["NS"])
-    parser.add_argument("-m", "--sharedmobility", type=str, default="data/input/milan/gbfs/bikemi.json",
+    parser.add_argument("-s", "--shared", type=str, default="",
                         help="GBFS input file: json with url, lang and vtype (car | bicycle)")
     parser.add_argument("-j", "--jobs", type=int, default=1, help="Number of jobs to run")
 
@@ -83,6 +84,7 @@ def main(
         output_folder: str,
         departure_date: str,
         agencies: List[str],
+        shared: str,
         n_jobs: int
 ):
     """Main function"""
@@ -92,7 +94,8 @@ def main(
 
     gtfs_timetable = read_gtfs_timetable(input_folder, departure_date, agencies)
     timetable = gtfs_to_pyraptor_timetable(gtfs_timetable, n_jobs)
-    timetatable = add_gbfs_to_pyraptor_timetable(timetable,)
+    timetable = add_shared_mobility_to_pyraptor_timetable(timetable, shared)
+    timetable.counts()
 
     write_timetable(output_folder, timetable)
 
@@ -535,25 +538,6 @@ def gtfs_to_pyraptor_timetable(
         station.add_stop(stop)
         stops.add(stop)
 
-    print(stops)
-
-    # TODO here for trial, move in other function
-
-    feed = SharedDataFeed(url=BIKEMI_URL, lang='it', vtype='bicycle')
-    for s in feed.stops:
-        s_name = s['name']
-        station = Station(s_name, s_name)
-        station = stations.add(station)
-
-        platform_code = -1
-        stop_id = f"{s_name}-{platform_code}"
-        # stops for shared mobility
-        stop = SharedMobilityPhysicalStation(s['station_id'], stop_id, station, platform_code, stops.last_index + 1,
-                                             (s['lat'], s['lon']), s['capacity'], feed.vtype)
-
-        station.add_stop(stop)
-        stops.add(stop)
-
     # Stop Times
     stop_times = defaultdict(list)
     for stop_time in gtfs_timetable.stop_times.itertuples():
@@ -569,7 +553,6 @@ def gtfs_to_pyraptor_timetable(
         trip_route_info[row.trip_id] = RouteInfo(name=route_name, transport_type=row.route_type)
 
     # Trips and Trip Stop Times
-    """
     logger.debug("Add trips and trip stop times")
 
     job_results: dict[int, ApplyResult] = {}
@@ -627,7 +610,7 @@ def gtfs_to_pyraptor_timetable(
     routes = Routes()
     for trip in trips:
         routes.add(trip)
-    """
+
     # Transfers
     logger.debug("Add transfers")
 
@@ -658,25 +641,9 @@ def gtfs_to_pyraptor_timetable(
             t = Transfer(from_stop=from_stop, to_stop=to_stop, transfer_time=t_time)
             transfers.add(t)
 
-    # TODO move to a separeted function
-    # Add transfers between physical station and stops
-    others: List[Stop] = [s for s in stops if not issubclass(type(s), SharedMobilityPhysicalStation)]
-    mobility: List[SharedMobilityPhysicalStation] = [s for s in stops if issubclass(type(s), SharedMobilityPhysicalStation)]
-
-    for i, m in zip(range(len(mobility)), mobility):
-        if(i%100 == 0):
-            logger.debug(f'Transfer processing: {i*100/len(mobility):0.3f}%')
-        for o in others:
-            dist = m.distance_from(o)
-            if dist < MIN_DIST:
-                transfer_time = dist * 3600 / MEAN_FOOT_SPEEDSPEED  # dist / speed --> time in hours, *3600 --> time in seconds
-                # add both A->B and B->A
-                transfers.add(Transfer(from_stop=m.id, to_stop=o.id, transfer_time=transfer_time))
-                transfers.add(Transfer(from_stop=o.id, to_stop=m.id, transfer_time=transfer_time))
-
-    print(transfers)
-
-    exit(1)
+    trips = Trips()
+    trip_stop_times = TripStopTimes()
+    routes = Routes()
 
     # Timetable
     timetable = Timetable(
@@ -689,7 +656,48 @@ def gtfs_to_pyraptor_timetable(
         original_gtfs_dir=gtfs_timetable.original_gtfs_dir,
         date=gtfs_timetable.date
     )
-    timetable.counts()
+
+    return timetable
+
+
+def add_shared_mobility_to_pyraptor_timetable(timetable: Timetable, shared: str):
+
+    logger.info("Adding mobility services datas")
+
+    feed_info = json.load(open(shared))
+    feed = SharedMobilityFeed(feed_info['url'], feed_info['lang'])
+
+    logger.debug("Add stations and stops")
+
+    for s in feed.stops:
+        s_name = s['name']
+        station = Station(s_name, s_name)
+        station = timetable.stations.add(station)
+
+        platform_code = -1
+        stop_id = f"{s_name}-{platform_code}"
+        # stops for shared mobility
+        stop = SharedMobilityPhysicalStation(s['station_id'], stop_id, station, platform_code, timetable.stops.last_index + 1,
+                                            (s['lat'], s['lon']), s['capacity'], feed.vtype)
+
+        station.add_stop(stop)
+        timetable.stops.add(stop)
+
+    logger.debug("Add transfers")
+
+    others = [s for s in timetable.stops if not issubclass(type(s), SharedMobilityPhysicalStation)]
+    mobility = [s for s in timetable.stops if issubclass(type(s), SharedMobilityPhysicalStation)]
+
+    for i, m in zip(range(len(mobility)), mobility):
+        if i % 10 == 0:
+            logger.debug(f'   > Creating transfers: {i * 100 / len(mobility):0.3f}%')
+        for o in others:
+            dist = m.distance_from(o)
+            if dist < MIN_DIST:
+                transfer_time = dist * 3600 / MEAN_FOOT_SPEED  # dist / speed --> time in hours, *3600 --> time in seconds
+                # add both A->B and B->A
+                timetable.transfers.add(Transfer(from_stop=m.id, to_stop=o.id, transfer_time=transfer_time))
+                timetable.transfers.add(Transfer(from_stop=o.id, to_stop=m.id, transfer_time=transfer_time))
 
     return timetable
 
@@ -698,4 +706,4 @@ if __name__ == "__main__":
     args = parse_arguments()
     main(input_folder=args.input, output_folder=args.output,
          departure_date=args.date, agencies=args.agencies,
-         n_jobs=args.jobs)
+         shared=args.shared, n_jobs=args.jobs)

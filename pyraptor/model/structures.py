@@ -1021,16 +1021,18 @@ class SharedMobilityPhysicalStation(Stop):
     vehicleType: SharedVehicleType = attr.ib(default=None)  # type of vehicle rentable in the Station
 
 
-class SharedDataFeed:
+class SharedMobilityFeed:
     """GBFSFeed"""
 
     def __init__(self, url: str,
-                 lang: str = 'it', vtype: str = 'bicycle'):
+                 lang: str = 'it'):
         self.url: str = url
         self.lang: str = lang
         self.feeds_url: Mapping[str, str] = self._get_feeds_url()
-        self.vtype: SharedVehicleType = SharedVehicleType(vtype)
         self.id_: str = self._get_item_list(feed_name='system_information')['name']
+        self.vtype: SharedVehicleType = SharedVehicleType(next(iter(
+            self._get_item_list(feed_name='vehicle_types'))
+        )['form_factor'])  # TODO type of first item; we consider all stations having only this vehicle type
 
     @property
     def feeds(self):
@@ -1046,7 +1048,7 @@ class SharedDataFeed:
         return loads(urlopen(url=url).read())
 
     def _get_feeds_url(self):
-        info = SharedDataFeed.open_json(url=self.url)
+        info = SharedMobilityFeed.open_json(url=self.url)
         feeds = info['data'][self.lang]['feeds']  # list of feed items
         feed_url = {feed['name']: feed['url'] for feed in feeds}
         return feed_url
@@ -1054,7 +1056,7 @@ class SharedDataFeed:
     def _get_item_list(self, feed_name: str):
         if feed_name not in self.feeds:
             raise Exception(f"{feed_name} not in {self.feeds}")
-        feed = SharedDataFeed.open_json(url=self.feeds_url[feed_name])
+        feed = SharedMobilityFeed.open_json(url=self.feeds_url[feed_name])
         datas = feed['data']
         if feed_name != 'system_information':
             items_name = next(iter(datas.keys()))  # name of items is only key in datas (e.g. 'stations', 'vehicles', ...)
