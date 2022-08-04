@@ -1021,6 +1021,12 @@ class SharedMobilityPhysicalStation(Stop):
     vehicleType: SharedVehicleType = attr.ib(default=None)  # type of vehicle rentable in the Station
 
 
+@attr.s
+class SharedMobilityTransfer(Transfer):
+
+    vehicle: SharedVehicleType = attr.ib(default=None)
+
+
 class SharedMobilityFeed:
     """GBFSFeed"""
 
