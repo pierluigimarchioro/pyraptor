@@ -34,7 +34,7 @@ from pyraptor.model.structures import (
     SharedMobilityPhysicalStation,
     SharedDataFeed
 )
-from pyraptor.util import mkdir_if_not_exists, str2sec, TRANSFER_COST
+from pyraptor.util import mkdir_if_not_exists, str2sec, TRANSFER_COST, MEAN_FOOT_SPEED, MIN_DIST
 
 
 @dataclass
@@ -70,6 +70,8 @@ def parse_arguments():
         "-d", "--date", type=str, default="20210906", help="Departure date (yyyymmdd)"
     )
     parser.add_argument("-a", "--agencies", nargs="+", default=["NS"])
+    parser.add_argument("-m", "--sharedmobility", type=str, default="data/input/milan/gbfs/bikemi.json",
+                        help="GBFS input file: json with url, lang and vtype (car | bicycle)")
     parser.add_argument("-j", "--jobs", type=int, default=1, help="Number of jobs to run")
 
     arguments = parser.parse_args()
@@ -90,9 +92,9 @@ def main(
 
     gtfs_timetable = read_gtfs_timetable(input_folder, departure_date, agencies)
     timetable = gtfs_to_pyraptor_timetable(gtfs_timetable, n_jobs)
+    timetatable = add_gbfs_to_pyraptor_timetable(timetable,)
 
     write_timetable(output_folder, timetable)
-
 
 
 def read_gtfs_timetable(
@@ -528,15 +530,16 @@ def gtfs_to_pyraptor_timetable(
 
         platform_code = getattr(s, "platform_code", -1)
         stop_id = f"{s.stop_name}-{platform_code}"
-        stop = Stop(s.stop_id, stop_id, station, platform_code, None, (s.stop_lat, s.stop_lon))
+        stop = Stop(s.stop_id, stop_id, station, platform_code, stops.last_index + 1, (s.stop_lat, s.stop_lon))
 
         station.add_stop(stop)
         stops.add(stop)
 
+    print(stops)
+
     # TODO here for trial, move in other function
-    BIKEMI_URL = "https://gbfs.urbansharing.com/bikemi.com/gbfs.json" # TODO as an input
+
     feed = SharedDataFeed(url=BIKEMI_URL, lang='it', vtype='bicycle')
-    print(feed.id_)
     for s in feed.stops:
         s_name = s['name']
         station = Station(s_name, s_name)
@@ -545,12 +548,11 @@ def gtfs_to_pyraptor_timetable(
         platform_code = -1
         stop_id = f"{s_name}-{platform_code}"
         # stops for shared mobility
-        stop = SharedMobilityPhysicalStation(s['station_id'], stop_id, station, platform_code, None, (s['lat'], s['lon']), s['capacity'], feed.vtype)
-        
+        stop = SharedMobilityPhysicalStation(s['station_id'], stop_id, station, platform_code, stops.last_index + 1,
+                                             (s['lat'], s['lon']), s['capacity'], feed.vtype)
+
         station.add_stop(stop)
         stops.add(stop)
-
-
 
     # Stop Times
     stop_times = defaultdict(list)
@@ -658,7 +660,23 @@ def gtfs_to_pyraptor_timetable(
 
     # TODO move to a separeted function
     # Add transfers between physical station and stops
-    shared_mobility_station = []
+    others: List[Stop] = [s for s in stops if not issubclass(type(s), SharedMobilityPhysicalStation)]
+    mobility: List[SharedMobilityPhysicalStation] = [s for s in stops if issubclass(type(s), SharedMobilityPhysicalStation)]
+
+    for i, m in zip(range(len(mobility)), mobility):
+        if(i%100 == 0):
+            logger.debug(f'Transfer processing: {i*100/len(mobility):0.3f}%')
+        for o in others:
+            dist = m.distance_from(o)
+            if dist < MIN_DIST:
+                transfer_time = dist * 3600 / MEAN_FOOT_SPEEDSPEED  # dist / speed --> time in hours, *3600 --> time in seconds
+                # add both A->B and B->A
+                transfers.add(Transfer(from_stop=m.id, to_stop=o.id, transfer_time=transfer_time))
+                transfers.add(Transfer(from_stop=o.id, to_stop=m.id, transfer_time=transfer_time))
+
+    print(transfers)
+
+    exit(1)
 
     # Timetable
     timetable = Timetable(
