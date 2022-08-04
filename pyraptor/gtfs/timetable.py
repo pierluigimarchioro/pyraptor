@@ -36,8 +36,7 @@ from pyraptor.model.structures import (
     Transfers,
     TimetableInfo,
     RouteInfo,
-    PhysicalStation,
-    SharedVehicleType,
+    SharedMobilityPhysicalStation,
     SharedDataFeed
 )
 
@@ -550,7 +549,7 @@ def gtfs_to_pyraptor_timetable(
         platform_code = -1
         stop_id = f"{s_name}-{platform_code}"
         # stops for shared mobility
-        stop = PhysicalStation(s['station_id'], stop_id, station, platform_code, None, (s['lat'], s['lon']), s['capacity'], feed.vtype)
+        stop = SharedMobilityPhysicalStation(s['station_id'], stop_id, station, platform_code, None, (s['lat'], s['lon']), s['capacity'], feed.vtype)
         
         station.add_stop(stop)
         stops.add(stop)
@@ -663,7 +662,7 @@ def gtfs_to_pyraptor_timetable(
 
     # TODO move to a separeted function
     # Add transfers between physical station and stops
-    
+
 
     # Timetable
     timetable = Timetable(
