@@ -7,6 +7,7 @@ import json
 import math
 import os
 import uuid
+import itertools
 from collections import defaultdict
 from collections.abc import Mapping
 from dataclasses import dataclass
@@ -15,6 +16,7 @@ from typing import List, Iterable, Any, NamedTuple, Tuple, Callable
 
 import numpy as np
 import pandas as pd
+import pathos.pools as p
 from loguru import logger
 
 from pyraptor.dao import write_timetable
@@ -72,7 +74,7 @@ def parse_arguments():
     )
     parser.add_argument("-a", "--agencies", nargs="+", default=["NS"])
     parser.add_argument("-s", "--shared", type=str, default="",
-                        help="GBFS input file: json with url, lang and vtype (car | bicycle)")
+                        help="path to .json file specifying url and lang")
     parser.add_argument("-j", "--jobs", type=int, default=1, help="Number of jobs to run")
 
     arguments = parser.parse_args()
@@ -94,7 +96,8 @@ def main(
 
     gtfs_timetable = read_gtfs_timetable(input_folder, departure_date, agencies)
     timetable = gtfs_to_pyraptor_timetable(gtfs_timetable, n_jobs)
-    timetable = add_shared_mobility_to_pyraptor_timetable(timetable, shared)
+    if shared:  # if default empty string, no shared-mobility service is considered
+        timetable = add_shared_mobility_to_pyraptor_timetable(timetable, shared)
     timetable.counts()
 
     write_timetable(output_folder, timetable)
@@ -641,10 +644,6 @@ def gtfs_to_pyraptor_timetable(
             t = Transfer(from_stop=from_stop, to_stop=to_stop, transfer_time=t_time)
             transfers.add(t)
 
-    trips = Trips()
-    trip_stop_times = TripStopTimes()
-    routes = Routes()
-
     # Timetable
     timetable = Timetable(
         stations=stations,
@@ -688,9 +687,10 @@ def add_shared_mobility_to_pyraptor_timetable(timetable: Timetable, shared: str)
     others = [s for s in timetable.stops if not issubclass(type(s), SharedMobilityPhysicalStation)]
     mobility = [s for s in timetable.stops if issubclass(type(s), SharedMobilityPhysicalStation)]
 
+    # TODO multiprocessor ?
     for i, m in zip(range(len(mobility)), mobility):
-        if i % 10 == 0:
-            logger.debug(f'   > Creating transfers: {i * 100 / len(mobility):0.3f}%')
+        if i % 25 == 0:
+            logger.debug(f'Progress: {i * 100 / len(mobility):0.0f}% [stop #{i} of {len(mobility)}]')
         for o in others:
             dist = m.distance_from(o)
             if dist < MIN_DIST:
