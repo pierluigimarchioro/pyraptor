@@ -3,11 +3,11 @@ import os
 import numpy as np
 
 
-TRANSFER_COST = 2 * 60  # Default transfer between stop in same station time is 2 minutes
-LARGE_NUMBER = 2147483647  # Earliest arrival time at start of algorithm
+TRANSFER_COST: int = 2 * 60  # Default transfer between stop in same station time is 2 minutes
+LARGE_NUMBER: int = 2147483647  # Earliest arrival time at start of algorithm
 
-MIN_DIST = 0.3  # Minimum distance in kilometers to consider transfer
-MEAN_FOOT_SPEED = 4 # Default foot-speed as the crow flies in km/h
+MIN_DIST: float = 0.3  # Minimum distance in kilometers to consider transfer
+MEAN_FOOT_SPEED: float = 4 # Default foot-speed as the crow flies in km/h
 
 
 def mkdir_if_not_exists(name: str) -> None:
