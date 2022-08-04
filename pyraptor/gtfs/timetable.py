@@ -17,6 +17,7 @@ from typing import List, Iterable, Any, NamedTuple, Tuple, Callable
 import numpy as np
 import pandas as pd
 import pathos.pools as p
+from pathos.helpers.pp_helper import ApplyResult
 from loguru import logger
 
 from pyraptor.dao import write_timetable
@@ -35,7 +36,7 @@ from pyraptor.model.structures import (
     TimetableInfo,
     RouteInfo,
     SharedMobilityPhysicalStation,
-    SharedMobilityFeed, Routes
+    SharedMobilityFeed, Routes, VEHICLE_SPEED, SharedMobilityTransfer
 )
 from pyraptor.util import mkdir_if_not_exists, str2sec, TRANSFER_COST, MEAN_FOOT_SPEED, MIN_DIST
 
@@ -694,10 +695,28 @@ def add_shared_mobility_to_pyraptor_timetable(timetable: Timetable, shared: str)
         for o in others:
             dist = m.distance_from(o)
             if dist < MIN_DIST:
-                transfer_time = dist * 3600 / MEAN_FOOT_SPEED  # dist / speed --> time in hours, *3600 --> time in seconds
+                transfer_time = int(dist * 3600 / MEAN_FOOT_SPEED)  # dist / speed --> time in hours, *3600 --> time in seconds
                 # add both A->B and B->A
                 timetable.transfers.add(Transfer(from_stop=m.id, to_stop=o.id, transfer_time=transfer_time))
                 timetable.transfers.add(Transfer(from_stop=o.id, to_stop=m.id, transfer_time=transfer_time))
+
+    logger.debug("Adding shared-mobility transfers")
+
+    vtype = feed.vtype
+    v_speed = VEHICLE_SPEED[vtype]
+    for i in range(len(mobility)-1):
+        for j in range(i+1, len(mobility)):
+            s_a: Stop = mobility[i]
+            s_b: Stop = mobility[j]
+            dist = Stop.stop_distance(s_a, s_b)
+            time = int(dist * 3600 / v_speed)
+            SharedMobilityTransfer()
+            timetable.transfers.add(SharedMobilityTransfer(
+                from_stop=s_a.id, to_stop=s_b.id, transfer_time=time, vehicle=vtype
+            ))
+            timetable.transfers.add(SharedMobilityTransfer(
+                from_stop=s_b.id, to_stop=s_a.id, transfer_time=time, vehicle=vtype
+            ))
 
     return timetable
 
