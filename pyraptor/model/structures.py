@@ -15,7 +15,6 @@ from json import loads
 from urllib.request import urlopen
 from geopy.distance import geodesic
 
-
 import attr
 import joblib
 import numpy as np
@@ -554,6 +553,34 @@ class Transfers:
         self.stop_to_stop_idx[(transfer.from_stop, transfer.to_stop)] = transfer
         self.last_id += 1
 
+    def remove(self, transfer: Transfer):
+        """Remove transfer"""
+        del (self.set_idx[transfer.id])
+
+        to_del = []
+        for from_, to in self.stop_to_stop_idx.keys():
+            if from_ == transfer.from_stop or to == transfer.to_stop:
+                to_del.append((from_, to))
+        for d in to_del:
+            del(self.stop_to_stop_idx[d])
+
+    def with_from_stop(self, from_) -> List[Transfer]:
+        """Returns all stops with given from_stop  """
+        from_list: List[Transfer] = [
+            self.stop_to_stop_idx[(f, t)] for f, t in self.stop_to_stop_idx.keys() if f == from_
+        ]
+        return from_list
+
+    def with_to_stop(self, to) -> List[Transfer]:
+        """Returns all stops with given from_stop  """
+        from_list: List[Transfer] = [
+            self.stop_to_stop_idx[(f, t)] for f, t in self.stop_to_stop_idx.keys() if t == to
+        ]
+        return from_list
+
+    def with_stop(self, s) -> List[Transfer]:
+        return self.with_from_stop(s) + self.with_to_stop(s)
+
 
 @dataclass
 class Leg:
@@ -1014,16 +1041,20 @@ class SharedVehicleType(Enum):
     Bicycle = 'bicycle'
 
 
+VEHICLE_SPEED: Mapping[SharedVehicleType, float] = {
+    SharedVehicleType.Bicycle: 10,  # Default speed as the crow flies in km/h
+    SharedVehicleType.Car: 50  # Default speed as the crow flies in km/h
+}
+
+
 @attr.s
 class SharedMobilityPhysicalStation(Stop):
-
     capacity: int = attr.ib(default=0)
     vehicleType: SharedVehicleType = attr.ib(default=None)  # type of vehicle rentable in the Station
 
 
 @attr.s
 class SharedMobilityTransfer(Transfer):
-
     vehicle: SharedVehicleType = attr.ib(default=None)
 
 
@@ -1065,8 +1096,8 @@ class SharedMobilityFeed:
         feed = SharedMobilityFeed.open_json(url=self.feeds_url[feed_name])
         datas = feed['data']
         if feed_name != 'system_information':
-            items_name = next(iter(datas.keys()))  # name of items is only key in datas (e.g. 'stations', 'vehicles', ...)
+            items_name = next(
+                iter(datas.keys()))  # name of items is only key in datas (e.g. 'stations', 'vehicles', ...)
             return datas[items_name]
         else:
             return datas
-
