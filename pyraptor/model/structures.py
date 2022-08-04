@@ -14,8 +14,6 @@ from copy import copy
 from json import loads
 from urllib.request import urlopen
 
-
-
 import attr
 import joblib
 import numpy as np
@@ -1001,7 +999,7 @@ class AlgorithmOutput(TimetableInfo):
 """ GBFS """
 
 
-class ShareVehicleType(Enum):
+class SharedVehicleType(Enum):
     Car = 'car'
     Bicycle = 'bicycle'
 
@@ -1009,7 +1007,8 @@ class ShareVehicleType(Enum):
 @attr.s
 class PhysicalStation(Stop):
 
-    vehicleType: ShareVehicleType = attr.ib(default=None) # type of vehicle rentable in the Station
+    capacity: int = attr.ib(default=0)
+    vehicleType: SharedVehicleType = attr.ib(default=None)  # type of vehicle rentable in the Station
 
 
 class SharedDataFeed:
@@ -1018,17 +1017,51 @@ class SharedDataFeed:
     def __init__(self, url: str, lang: str = 'it'):
         self.url: str = url
         self.lang: str = lang
-        self.stops: Iterable[PhysicalStation] = None  # shared-mobilty stops
+        self.feeds_url: Mapping[str, str] = self._get_feeds_url()
+        self.stops: Iterable[PhysicalStation] = []
 
     @property
-    def stops(self) -> Iterable[PhysicalStation]:
+    def feeds(self):
+        return list(self.feeds_url.keys())
 
-        def open_json(url:str) -> Mapping[str, Mapping]:
-            return loads(urlopen(url=url).read())
+    def get_stops(self) -> Iterable[PhysicalStation]:
 
-        if self.stops is not None:  # already computed
+        if self.stops:  # different from empty string: already computed
             return self.stops
         else:
-            info = open_json(url=self.url)
-            feeds = info['data'][self.lang][['feed']]
-            
+            # TODO same building process of timetable
+            stops = Stops()
+            station = Stations()
+            for s in self._get_item_list(feed_name='station_information'):
+                """
+                station = Station(s.stop_name, s.stop_name)
+                station = stations.add(station)
+                #   if station_id (same of first stop_name) is already present
+                #   existing station with that station_id is returned
+
+                platform_code = getattr(s, "platform_code", -1)
+                stop_id = f"{s.stop_name}-{platform_code}"
+                stop = Stop(s.stop_id, stop_id, station, platform_code, None, (s.stop_lat, s.stop_lon))
+
+                station.add_stop(stop)
+                stops.add(stop)
+                """
+
+    @staticmethod
+    def open_json(url: str) -> Mapping[str, Dict]:
+        return loads(urlopen(url=url).read())
+
+    def _get_feeds_url(self):
+        info = SharedDataFeed.open_json(url=self.url)
+        feeds = info['data'][self.lang]['feeds']  # list of feed items
+        feed_url = {feed['name']: feed['url'] for feed in feeds}
+        return feed_url
+
+    def _get_item_list(self, feed_name: str):
+        if feed_name not in self.feeds:
+            raise Exception(f"{feed_name} not in {self.feeds}")
+        feed = SharedDataFeed.open_json(url=self.feeds_url[feed_name])
+        datas = feed['data']
+        items_name = next(iter(datas.keys()))  # name of items is only key in datas (e.g. 'stations', 'vehicles', ...)
+        return datas[items_name]
+

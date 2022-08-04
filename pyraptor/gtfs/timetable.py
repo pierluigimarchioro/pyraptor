@@ -37,8 +37,8 @@ from pyraptor.model.structures import (
     TimetableInfo,
     RouteInfo,
     PhysicalStation,
-    ShareVehicleType,
-    ShareDataFeed
+    SharedVehicleType,
+    SharedDataFeed
 )
 
 
@@ -95,10 +95,15 @@ def main(
     logger.info("Parse timetable from GTFS files")
     mkdir_if_not_exists(output_folder)
 
+    feed = SharedDataFeed(url=BIKEMI_URL, lang='it')
+    stops = feed.get_stops()
+
+    """
     gtfs_timetable = read_gtfs_timetable(input_folder, departure_date, agencies)
     timetable = gtfs_to_pyraptor_timetable(gtfs_timetable, n_jobs)
 
     write_timetable(output_folder, timetable)
+    """
 
 
 def read_gtfs_timetable(
@@ -534,8 +539,7 @@ def gtfs_to_pyraptor_timetable(
 
         platform_code = getattr(s, "platform_code", -1)
         stop_id = f"{s.stop_name}-{platform_code}"
-        stop = Stop(s.stop_id, stop_id, station, platform_code)
-        stop.geo = (s.stop_lat, s.stop_lon)  # geocoordinates
+        stop = Stop(s.stop_id, stop_id, station, platform_code, None, (s.stop_lat, s.stop_lon))
 
         station.add_stop(stop)
         stops.add(stop)
