@@ -33,6 +33,13 @@ def parse_arguments():
         help="Origin station of the journey",
     )
     parser.add_argument(
+        "-s",
+        "--shared",
+        type=str,
+        default="",
+        help="path to .json file specifying url and lang",
+    )
+    parser.add_argument(
         "-d",
         "--destination",
         type=str,
@@ -63,6 +70,7 @@ def parse_arguments():
 
 def main(
     input_folder: str,
+    shared: str,
     origin_station: str,
     destination_station: str,
     departure_time: str,
@@ -71,11 +79,12 @@ def main(
 ):
     """Run RAPTOR algorithm"""
 
-    logger.debug("Input directory     : {}", input_folder)
-    logger.debug("Origin station      : {}", origin_station)
-    logger.debug("Destination station : {}", destination_station)
-    logger.debug("Departure time      : {}", departure_time)
-    logger.debug("Rounds              : {}", str(rounds))
+    logger.debug("Input directory       : {}", input_folder)
+    logger.debug("Input shared-mobility : {}", shared)
+    logger.debug("Origin station        : {}", origin_station)
+    logger.debug("Destination station   : {}", destination_station)
+    logger.debug("Departure time        : {}", departure_time)
+    logger.debug("Rounds                : {}", str(rounds))
 
     timetable = read_timetable(input_folder)
 
