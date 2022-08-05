@@ -685,38 +685,20 @@ def add_shared_mobility_to_pyraptor_timetable(timetable: Timetable, shared: str)
 
     logger.debug("Add transfers")
 
-    others = [s for s in timetable.stops if not issubclass(type(s), SharedMobilityPhysicalStation)]
-    mobility = [s for s in timetable.stops if issubclass(type(s), SharedMobilityPhysicalStation)]
+    public = timetable.stops.public_transport_stop
+    shared_mob = timetable.stops.shared_mobility_stop
 
     # TODO multiprocessor ?
-    for i, m in zip(range(len(mobility)), mobility):
+    for i, m in zip(range(len(shared_mob)), shared_mob):
         if i % 25 == 0:
-            logger.debug(f'Progress: {i * 100 / len(mobility):0.0f}% [stop #{i} of {len(mobility)}]')
-        for o in others:
+            logger.debug(f'Progress: {i * 100 / len(shared_mob):0.0f}% [stop #{i} of {len(shared_mob)}]')
+        for o in public:
             dist = m.distance_from(o)
             if dist < MIN_DIST:
                 transfer_time = int(dist * 3600 / MEAN_FOOT_SPEED)  # dist / speed --> time in hours, *3600 --> time in seconds
                 # add both A->B and B->A
                 timetable.transfers.add(Transfer(from_stop=m.id, to_stop=o.id, transfer_time=transfer_time))
                 timetable.transfers.add(Transfer(from_stop=o.id, to_stop=m.id, transfer_time=transfer_time))
-
-    logger.debug("Adding shared-mobility transfers")
-
-    vtype = feed.vtype
-    v_speed = VEHICLE_SPEED[vtype]
-    for i in range(len(mobility)-1):
-        for j in range(i+1, len(mobility)):
-            s_a: Stop = mobility[i]
-            s_b: Stop = mobility[j]
-            dist = Stop.stop_distance(s_a, s_b)
-            time = int(dist * 3600 / v_speed)
-            SharedMobilityTransfer()
-            timetable.transfers.add(SharedMobilityTransfer(
-                from_stop=s_a.id, to_stop=s_b.id, transfer_time=time, vehicle=vtype
-            ))
-            timetable.transfers.add(SharedMobilityTransfer(
-                from_stop=s_b.id, to_stop=s_a.id, transfer_time=time, vehicle=vtype
-            ))
 
     return timetable
 
