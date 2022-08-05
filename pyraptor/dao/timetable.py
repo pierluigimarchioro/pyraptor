@@ -29,6 +29,8 @@ def read_timetable(input_folder: str) -> Timetable:
 
     timetable: Timetable = load_joblib("timetable")
 
+    logger.debug(timetable.counts())
+
     return timetable
 
 
