@@ -158,7 +158,7 @@ def run_raptor(
     destination_stops.pop(origin_station, None)
 
     # Run Round-Based Algorithm
-    raptor = RaptorAlgorithm(timetable)
+    raptor = RaptorAlgorithm(timetable, shared_mobility)
     bag_round_stop = raptor.run(from_stops, dep_secs, rounds)
     best_labels = bag_round_stop[rounds]
 
