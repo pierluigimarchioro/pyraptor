@@ -1080,6 +1080,29 @@ class SharedMobilityFeed:
 
         return self._get_item_list(feed_name='station_information')
 
+    @property
+    def stops_info(self) -> Iterable[Dict]:
+
+        return self._get_item_list(feed_name='station_status')
+
+    @property
+    def stops_no_source(self) -> List:
+        vname = 'bikes' if self.vtype == SharedVehicleType.Bicycle else 'cars'
+        not_source = [s['station_id'] for s in self.stops_info if not (
+                s['is_installed'] == 1 and
+                s['is_renting'] == 1 and
+                s[f'num_{vname}_available'] > 0
+        )]
+        return not_source
+
+    @property
+    def stops_no_dest(self) -> List:
+        not_source = [s['station_id'] for s in self.stops_info if not (
+                s['is_renting'] == 1 and
+                s[f'num_docks_available'] > 0
+        )]
+        return not_source
+
     @staticmethod
     def open_json(url: str) -> Mapping[str, Dict]:
         return loads(urlopen(url=url).read())
