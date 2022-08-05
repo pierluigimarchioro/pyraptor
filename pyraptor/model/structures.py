@@ -134,6 +134,14 @@ class Stops:
             self.last_index += 1
         return stop
 
+    @property
+    def public_transport_stop(self):
+        return [s for s in self if not isinstance(s, SharedMobilityPhysicalStation)]
+
+    @property
+    def shared_mobility_stop(self):
+        return [s for s in self if isinstance(s, SharedMobilityPhysicalStation)]
+
 
 @attr.s(repr=False, cmp=False)
 class Station:
@@ -1036,25 +1044,25 @@ class AlgorithmOutput(TimetableInfo):
 """ GBFS """
 
 
-class SharedVehicleType(Enum):
+class SharedMobilityVehicleType(Enum):
     Car = 'car'
     Bicycle = 'bicycle'
 
 
-VEHICLE_SPEED: Mapping[SharedVehicleType, float] = {
-    SharedVehicleType.Bicycle: 10,  # Default speed as the crow flies in km/h
-    SharedVehicleType.Car: 50  # Default speed as the crow flies in km/h
+VEHICLE_SPEED: Mapping[SharedMobilityVehicleType, float] = {
+    SharedMobilityVehicleType.Bicycle: 10,  # Default speed as the crow flies in km/h
+    SharedMobilityVehicleType.Car: 50  # Default speed as the crow flies in km/h
 }
 
 
 class SharedMobilityPhysicalStation(Stop):
     capacity: int = attr.ib(default=0)
-    vehicleType: SharedVehicleType = attr.ib(default=None)  # type of vehicle rentable in the Station
+    vehicleType: SharedMobilityVehicleType = attr.ib(default=None)  # type of vehicle rentable in the Station
 
 
 @attr.s
 class SharedMobilityTransfer(Transfer):
-    vehicle: SharedVehicleType = attr.ib(default=None)
+    vehicle: SharedMobilityVehicleType = attr.ib(default=None)
 
 
 class SharedMobilityFeed:
@@ -1066,7 +1074,7 @@ class SharedMobilityFeed:
         self.lang: str = lang
         self.feeds_url: Mapping[str, str] = self._get_feeds_url()
         self.id_: str = self._get_item_list(feed_name='system_information')['name']
-        self.vtype: SharedVehicleType = SharedVehicleType(next(iter(
+        self.vtype: SharedMobilityVehicleType = SharedMobilityVehicleType(next(iter(
             self._get_item_list(feed_name='vehicle_types'))
         )['form_factor'])  # TODO type of first item; we consider all stations having only this vehicle type
 
@@ -1086,7 +1094,7 @@ class SharedMobilityFeed:
 
     @property
     def stops_no_source(self) -> List:
-        vname = 'bikes' if self.vtype == SharedVehicleType.Bicycle else 'cars'
+        vname = 'bikes' if self.vtype == SharedMobilityVehicleType.Bicycle else 'cars'
         not_source = [s['station_id'] for s in self.stops_info if not (
                 s['is_installed'] == 1 and
                 s['is_renting'] == 1 and
