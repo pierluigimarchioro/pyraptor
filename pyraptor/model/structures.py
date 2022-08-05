@@ -1047,7 +1047,6 @@ VEHICLE_SPEED: Mapping[SharedVehicleType, float] = {
 }
 
 
-@attr.s
 class SharedMobilityPhysicalStation(Stop):
     capacity: int = attr.ib(default=0)
     vehicleType: SharedVehicleType = attr.ib(default=None)  # type of vehicle rentable in the Station
