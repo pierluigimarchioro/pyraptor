@@ -678,7 +678,9 @@ def add_shared_mobility_to_pyraptor_timetable(timetable: Timetable, shared: str)
         stop_id = f"{s_name}-{platform_code}"
         # stops for shared mobility
         stop = SharedMobilityPhysicalStation(s['station_id'], stop_id, station, platform_code, timetable.stops.last_index + 1,
-                                            (s['lat'], s['lon']), s['capacity'], feed.vtype)
+                                            (s['lat'], s['lon']))
+        stop.capacity = s['capacity']  # TODO field on parameter
+        stop.vehicleType = feed.vtype  # TODO field on parameter
 
         station.add_stop(stop)
         timetable.stops.add(stop)
