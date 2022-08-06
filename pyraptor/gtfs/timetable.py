@@ -18,6 +18,7 @@ import pandas as pd
 import pathos.pools as p
 from loguru import logger
 from pathos.helpers.pp_helper import ApplyResult
+from pathos.helpers import cpu_count
 
 from pyraptor.dao import write_timetable
 from pyraptor.util import mkdir_if_not_exists, str2sec, TRANSFER_COST
@@ -51,33 +52,6 @@ class GtfsTimetable(TimetableInfo):
     transfers: pd.DataFrame = None
 
 
-def parse_arguments():
-    """Parse arguments"""
-    parser = argparse.ArgumentParser()
-    parser.add_argument(
-        "-i",
-        "--input",
-        type=str,
-        default="data/input/NL-gtfs",
-        help="Input directory",
-    )
-    parser.add_argument(
-        "-o",
-        "--output",
-        type=str,
-        default="data/output",
-        help="Input directory",
-    )
-    parser.add_argument(
-        "-d", "--date", type=str, default="20210906", help="Departure date (yyyymmdd)"
-    )
-    parser.add_argument("-a", "--agencies", nargs="+", default=["NS"])
-    parser.add_argument("-j", "--jobs", type=int, default=1, help="Number of jobs to run")
-
-    arguments = parser.parse_args()
-    return arguments
-
-
 def main(
         input_folder: str,
         output_folder: str,
@@ -95,6 +69,49 @@ def main(
     write_timetable(output_folder, timetable)
 
 
+def parse_arguments():
+    """Parse command line arguments"""
+    parser = argparse.ArgumentParser()
+    parser.add_argument(
+        "-i",
+        "--input",
+        type=str,
+        default="data/input/NL-gtfs",
+        help="Input directory",
+    )
+    parser.add_argument(
+        "-o",
+        "--output",
+        type=str,
+        default="data/output",
+        help="Input directory",
+    )
+    parser.add_argument(
+        "-d",
+        "--date",
+        type=str,
+        default="20210906",
+        help="Departure date (yyyymmdd)"
+    )
+    parser.add_argument(
+        "-a",
+
+        "--agencies",
+        nargs="+",
+        default=["NS"]
+    )
+    parser.add_argument(
+        "-j",
+        "--jobs",
+        type=int,
+        default=-1,
+        help="Number of jobs to run (-1 or greater than 0)"
+    )
+
+    arguments = parser.parse_args()
+    return arguments
+
+
 def read_gtfs_timetable(
         input_folder: str, departure_date: str, agency_names: List[str]
 ) -> GtfsTimetable:
@@ -104,17 +121,17 @@ def read_gtfs_timetable(
 
     # Read agencies
     logger.debug("Reading Agencies")
-    agencies_df = _process_agencies(input_folder=input_folder, agency_names=agency_names)
+    agencies_df = _process_agencies_table(input_folder=input_folder, agency_names=agency_names)
 
     agency_ids = agencies_df["agency_id"].values
 
     # Read routes
     logger.debug("Reading Routes")
-    routes = _process_routes(input_folder=input_folder, agency_ids=agency_ids)
+    routes = _process_routes_table(input_folder=input_folder, agency_ids=agency_ids)
 
     # Read trips
     logger.debug("Read Trips")
-    trips = _process_trips(
+    trips = _process_trips_table(
         input_folder=input_folder,
         route_ids=routes["route_id"].values,
         dep_date=departure_date
@@ -122,17 +139,17 @@ def read_gtfs_timetable(
 
     # Read stop times
     logger.debug("Read Stop Times")
-    stop_times = _process_stop_times(input_folder=input_folder, trip_ids=trips["trip_id"].values)
+    stop_times = _process_stop_times_table(input_folder=input_folder, trip_ids=trips["trip_id"].values)
 
     # Read stops (platforms)
     logger.debug("Read Stops")
-    stops = _process_stops(input_folder=input_folder, stop_times=stop_times)
+    stops = _process_stops_table(input_folder=input_folder, stop_times=stop_times)
 
     # Make sure stop times refer to the same stops as the processed
     stop_times = stop_times[stop_times["stop_id"].isin(stops["stop_id"])]
 
     logger.debug("Reading Transfers")
-    transfers = _process_transfers(input_folder=input_folder, stop_ids=stops["stop_id"].values)
+    transfers = _process_transfers_table(input_folder=input_folder, stop_ids=stops["stop_id"].values)
 
     gtfs_timetable = GtfsTimetable(
         original_gtfs_dir=input_folder,
@@ -147,7 +164,7 @@ def read_gtfs_timetable(
     return gtfs_timetable
 
 
-def _process_agencies(input_folder: str, agency_names: Iterable[str]) -> pd.DataFrame:
+def _process_agencies_table(input_folder: str, agency_names: Iterable[str]) -> pd.DataFrame:
     agencies_df = pd.read_csv(os.path.join(input_folder, "agency.txt"))
 
     agencies_df = agencies_df.loc[agencies_df["agency_name"].isin(agency_names)][
@@ -157,7 +174,7 @@ def _process_agencies(input_folder: str, agency_names: Iterable[str]) -> pd.Data
     return agencies_df
 
 
-def _process_routes(input_folder: str, agency_ids: Iterable) -> pd.DataFrame:
+def _process_routes_table(input_folder: str, agency_ids: Iterable) -> pd.DataFrame:
     routes = pd.read_csv(os.path.join(input_folder, "routes.txt"))
 
     routes = routes[routes.agency_id.isin(agency_ids)]
@@ -168,7 +185,7 @@ def _process_routes(input_folder: str, agency_ids: Iterable) -> pd.DataFrame:
     return routes
 
 
-def _process_trips(input_folder: str, route_ids: Iterable, dep_date: str) -> pd.DataFrame:
+def _process_trips_table(input_folder: str, route_ids: Iterable, dep_date: str) -> pd.DataFrame:
     trips = pd.read_csv(os.path.join(input_folder, "trips.txt"))
     trips = trips[trips.route_id.isin(route_ids)]
 
@@ -205,7 +222,7 @@ def _process_trips(input_folder: str, route_ids: Iterable, dep_date: str) -> pd.
     return trips
 
 
-def _process_stop_times(input_folder: str, trip_ids: Iterable) -> pd.DataFrame:
+def _process_stop_times_table(input_folder: str, trip_ids: Iterable) -> pd.DataFrame:
     stop_times = pd.read_csv(
         os.path.join(input_folder, "stop_times.txt"), dtype={"stop_id": str}
     )
@@ -226,7 +243,7 @@ def _process_stop_times(input_folder: str, trip_ids: Iterable) -> pd.DataFrame:
     return stop_times
 
 
-def _process_stops(input_folder: str, stop_times: pd.DataFrame) -> pd.DataFrame:
+def _process_stops_table(input_folder: str, stop_times: pd.DataFrame) -> pd.DataFrame:
     stops_full = pd.read_csv(
         os.path.join(input_folder, "stops.txt"), dtype={"stop_id": str}
     )
@@ -279,7 +296,7 @@ def _process_stops(input_folder: str, stop_times: pd.DataFrame) -> pd.DataFrame:
     return stops[stops_col_selector]
 
 
-def _process_transfers(input_folder: str, stop_ids: Iterable) -> pd.DataFrame:
+def _process_transfers_table(input_folder: str, stop_ids: Iterable) -> pd.DataFrame:
     # Get transfers table only if it exists
     transfers_path = os.path.join(input_folder, "transfers.txt")
 
@@ -549,9 +566,14 @@ class TripsProcessor:
 
 def gtfs_to_pyraptor_timetable(
         gtfs_timetable: GtfsTimetable,
-        n_jobs: int) -> Timetable:
+        n_jobs: int = -1) -> Timetable:
     """
     Convert timetable for usage in Raptor algorithm.
+
+    :param gtfs_timetable: gtfs timetable instance
+    :param n_jobs: number of parallel jobs to run.
+        Defaults to -1, which means that the number of jobs is auto-detected.
+    :return:
     """
 
     logger.info("Convert GTFS timetable to timetable for PyRaptor algorithm")
@@ -591,6 +613,7 @@ def gtfs_to_pyraptor_timetable(
     logger.debug("Add trips and trip stop times")
 
     job_results: dict[int, ApplyResult] = {}
+    n_jobs = n_jobs if n_jobs != -1 else cpu_count()  # if jobs == -1, auto-detect
     pool = p.ProcessPool(nodes=n_jobs)
     for i in range(n_jobs):
         processor_id = i
