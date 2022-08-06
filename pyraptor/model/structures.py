@@ -912,16 +912,24 @@ class MultiCriteriaLabel(BaseLabel):
         )
 
     def update_trip(self, trip: Trip, boarding_stop: Stop) -> MultiCriteriaLabel:
+        # The leg counter is updated only if the new trip isn't a transfer
+        # between stops of the same station
+        add_new_leg = True
+        if self.trip != trip and isinstance(trip, TransferTrip):
+            # Transfer trips refer to movements between just two stops
+            from_stop = trip.stop_times[0]
+            to_stop = trip.stop_times[1]
+
+            if from_stop.stop.station == to_stop.stop.station:
+                add_new_leg = False
+
         return copy(
             MultiCriteriaLabel(
                 earliest_arrival_time=self.earliest_arrival_time,
                 fare=self.fare,
                 trip=trip,
                 boarding_stop=boarding_stop if self.trip != trip else self.boarding_stop,
-
-                # TODO add 1 even if trip is transfer? we can check with isinstance(trip, TransferTrip)
-                #   Another possibility is also adding 1 only if transport_type of the transfer_trip is != Walk
-                n_trips=self.n_trips + 1 if self.trip != trip else self.n_trips,
+                n_trips=self.n_trips + 1 if add_new_leg else self.n_trips,
                 infinite=self.infinite,
             )
         )
