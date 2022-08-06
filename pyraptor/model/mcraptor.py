@@ -9,10 +9,12 @@ from pyraptor.model.structures import (
     Stop,
     Route,
     Bag,
-    Label,
+    MultiCriteriaLabel,
     Leg,
     Journey,
-    pareto_set, Trip, TransferTrip, TransportType,
+    pareto_set,
+    TransferTrip,
+    TransportType,
 )
 
 
@@ -23,7 +25,7 @@ class McRaptorAlgorithm:
         self.timetable = timetable
 
     def run(
-        self, from_stops: List[Stop], dep_secs: int, rounds: int, previous_run: Dict[Stop, Bag] = None
+            self, from_stops: List[Stop], dep_secs: int, rounds: int, previous_run: Dict[Stop, Bag] = None
     ) -> Tuple[Dict[int, Dict[Stop, Bag]], int]:
         """Run Round-Based Algorithm"""
 
@@ -45,7 +47,14 @@ class McRaptorAlgorithm:
 
         # Add origin stops to bag
         for from_stop in from_stops:
-            bag_round_stop[0][from_stop].add(Label(dep_secs, 0, None, from_stop))
+            bag_round_stop[0][from_stop].add(
+                MultiCriteriaLabel(
+                    earliest_arrival_time=dep_secs,
+                    fare=0.0,
+                    trip=None,
+                    boarding_stop=from_stop
+                )
+            )
 
         marked_stops = from_stops
 
@@ -99,7 +108,7 @@ class McRaptorAlgorithm:
                 # Check if new_stop is before existing stop in Q
                 current_stop_for_route = route_marked_stops.get(route, None)  # p'
                 if (current_stop_for_route is None) or (
-                    route.stop_index(current_stop_for_route) > route.stop_index(marked_stop)
+                        route.stop_index(current_stop_for_route) > route.stop_index(marked_stop)
                 ):
                     route_marked_stops[route] = marked_stop
         route_marked_stops = [(r, p) for r, p in route_marked_stops.items()]
@@ -109,10 +118,10 @@ class McRaptorAlgorithm:
         return route_marked_stops
 
     def traverse_route(
-        self,
-        bag_round_stop: Dict[int, Dict[Stop, Bag]],
-        k: int,
-        route_marked_stops: List[Tuple[Route, Stop]],
+            self,
+            bag_round_stop: Dict[int, Dict[Stop, Bag]],
+            k: int,
+            route_marked_stops: List[Tuple[Route, Stop]],
     ) -> Tuple[Dict[int, Dict[Stop, Bag]], List[Stop]]:
         """
         Traverse through all marked route-stops and update labels accordingly.
@@ -162,9 +171,7 @@ class McRaptorAlgorithm:
                 route_bag = Bag(labels=updated_labels)
 
                 # Step 2: merge bag_route into bag_round_stop and remove dominated labels
-                # NOTE: Each label contains the trip with which one arrives at the current stop with k legs
-                #   by boarding the trip at from_stop.
-                # NOTE2: merging the current stop bag with route bag basically means to keep
+                # NOTE: merging the current stop bag with route bag basically means to keep
                 #   the labels that allow to get to the current stop in the most efficient way
                 bag_round_stop[k][current_stop] = bag_round_stop[k][current_stop].merge(
                     route_bag
@@ -184,7 +191,7 @@ class McRaptorAlgorithm:
                 # Assign trips to all newly added labels in route_bag
                 # This is the trip on which we board
                 # This step is needed because the labels from the previous round need
-                #   to be updated with the new earliest trip to board
+                #   to be updated with the new earliest boardable trip
                 updated_labels = []
                 for label in route_bag.labels:
                     earliest_trip = marked_route.earliest_trip(
@@ -192,7 +199,7 @@ class McRaptorAlgorithm:
                     )
                     if earliest_trip is not None:
                         # Update label with the earliest trip in route leaving from this station
-                        # If trip is different we board the trip at current_stop
+                        # If trip is different, we board the trip at current_stop
                         label = label.update_trip(earliest_trip, current_stop)
                         updated_labels.append(label)
                 route_bag = Bag(labels=updated_labels)
@@ -202,10 +209,10 @@ class McRaptorAlgorithm:
         return bag_round_stop, list(new_marked_stops)
 
     def add_transfer_time(
-        self,
-        bag_round_stop: Dict[int, Dict[Stop, Bag]],
-        k: int,
-        marked_stops: List[Stop],
+            self,
+            bag_round_stop: Dict[int, Dict[Stop, Bag]],
+            k: int,
+            marked_stops: List[Stop],
     ) -> Tuple[Dict[int, Dict[Stop, Bag]], List[Stop]]:
         """
         Updates each stop (label) earliest arrival time by also considering (footpath) transfers between stops.
@@ -230,8 +237,8 @@ class McRaptorAlgorithm:
                 for label in bag_round_stop[k][current_stop].labels:
                     # Add arrival time to each label
                     transfer_arrival_time = (
-                        label.earliest_arrival_time
-                        + self.get_transfer_time(current_stop, other_stop)
+                            label.earliest_arrival_time
+                            + self.get_transfer_time(current_stop, other_stop)
                     )
                     # Update label with new earliest arrival time at other_stop
                     # NOTE: Each label contains the trip with which one arrives at the current stop
@@ -240,7 +247,7 @@ class McRaptorAlgorithm:
                     label = label.update(
                         earliest_arrival_time=transfer_arrival_time,
                         fare_addition=0,
-                        from_stop=current_stop,
+                        boarding_stop=current_stop,
                     )
 
                     # Update the trip with which to arrive at other_stop with a transfer trip
@@ -249,11 +256,14 @@ class McRaptorAlgorithm:
                         to_stop=other_stop,
                         dep_time=label.earliest_arrival_time,
                         arr_time=transfer_arrival_time,
+
+                        # TODO add method or field `transfer_type` to Transfer class
+                        #  such accesser is then overrode by shared mobility Transfer sub-classes
                         transport_type=TransportType.Walk
                     )
                     label = label.update_trip(
                         trip=transfer_trip,
-                        new_boarding_stop=current_stop
+                        boarding_stop=current_stop
                     )
                     temp_bag.add(label)
 
@@ -280,7 +290,7 @@ class McRaptorAlgorithm:
 
 
 def best_legs_to_destination_station(
-    to_stops: List[Stop], last_round_bag: Dict[Stop, Bag]
+        to_stops: List[Stop], last_round_bag: Dict[Stop, Bag]
 ) -> List[Leg]:
     """
     Find the last legs to destination station that are reached by non-dominated labels.
@@ -301,7 +311,7 @@ def best_legs_to_destination_station(
     # Label to leg, i.e. add to_stop
     legs = [
         Leg(
-            label.from_stop,
+            label.boarding_stop,
             to_stop,
             label.trip,
             label.earliest_arrival_time,
@@ -314,10 +324,10 @@ def best_legs_to_destination_station(
 
 
 def reconstruct_journeys(
-    from_stops: List[Stop],
-    destination_legs: List[Leg],
-    bag_round_stop: Dict[int, Dict[Stop, Bag]],
-    k: int,
+        from_stops: List[Stop],
+        destination_legs: List[Leg],
+        bag_round_stop: Dict[int, Dict[Stop, Bag]],
+        k: int,
 ) -> List[Journey]:
     """
     Construct Journeys for destinations from bags by recursively
@@ -329,7 +339,7 @@ def reconstruct_journeys(
         print("here")
 
     def loop(
-        bag_round_stop: Dict[int, Dict[Stop, Bag]], k: int, journeys: List[Journey]
+            bag_round_stop: Dict[int, Dict[Stop, Bag]], k: int, journeys: List[Journey]
     ):
         """Create full journey by prepending legs recursively"""
 
@@ -351,7 +361,7 @@ def reconstruct_journeys(
             labels_to_from_stop = last_round_bags[current_leg.from_stop].labels
             for new_label in labels_to_from_stop:
                 new_leg = Leg(
-                    new_label.from_stop,
+                    new_label.boarding_stop,
                     current_leg.from_stop,
                     new_label.trip,
                     new_label.earliest_arrival_time,

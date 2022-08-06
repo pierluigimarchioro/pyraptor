@@ -1,50 +1,25 @@
 """RAPTOR algorithm"""
 from __future__ import annotations
 
+from collections.abc import Iterable
 from typing import List, Tuple, Dict
-from dataclasses import dataclass
 from copy import deepcopy
 
 from loguru import logger
 
 from pyraptor.dao.timetable import Timetable
-from pyraptor.model.structures import Stop, Trip, Route, Leg, Journey, TransferTrip, TransportType
+from pyraptor.model.structures import Stop, Route, Leg, Journey, TransferTrip, TransportType, Label
 from pyraptor.util import LARGE_NUMBER
-
-
-@dataclass
-class Label:
-    """Label"""
-
-    earliest_arrival_time: int = LARGE_NUMBER
-    trip: Trip = None  # trip to take to obtain earliest_arrival_time
-    from_stop: Stop = None  # stop at which we hop-on trip with trip
-
-    def update(self, earliest_arrival_time=None, trip=None, from_stop=None):
-        """Update"""
-        if earliest_arrival_time is not None:
-            self.earliest_arrival_time = earliest_arrival_time
-        if trip is not None:
-            self.trip = trip
-        if from_stop is not None:
-            self.from_stop = from_stop
-
-    def is_dominating(self, other: Label):
-        """Dominates other label"""
-        return self.earliest_arrival_time <= other.earliest_arrival_time
-
-    def __repr__(self) -> str:
-        return f"Label(earliest_arrival_time={self.earliest_arrival_time}, trip={self.trip}, from_stop={self.from_stop})"
 
 
 class RaptorAlgorithm:
     """RAPTOR Algorithm"""
 
     def __init__(self, timetable: Timetable):
-        self.timetable = timetable
-        self.bag_star = None
+        self.timetable: Timetable = timetable
+        self.bag_star: Dict[Stop, Label] = {}
 
-    def run(self, from_stops, dep_secs, rounds) -> Dict[int, Dict[Stop, Label]]:
+    def run(self, from_stops: Iterable[Stop], dep_secs: int, rounds: int) -> Dict[int, Dict[Stop, Label]]:
         """
         Run Round-Based Algorithm
 
@@ -76,8 +51,12 @@ class RaptorAlgorithm:
         logger.debug(f"Starting from Stop IDs: {str(from_stops)}")
         marked_stops = []
         for from_stop in from_stops:
-            bag_round_stop[0][from_stop].update(dep_secs, None, None)
-            self.bag_star[from_stop].update(dep_secs, None, None)
+            from_label = bag_round_stop[0][from_stop]
+            from_label = from_label.update(earliest_arrival_time=dep_secs, boarding_stop=None)
+
+            bag_round_stop[0][from_stop] = from_label
+            self.bag_star[from_stop] = from_label
+
             marked_stops.append(from_stop)
 
         # Run rounds
@@ -152,7 +131,7 @@ class RaptorAlgorithm:
         n_improvements = 0
 
         # For each route
-        for (marked_route, marked_stop) in route_marked_stops:
+        for marked_route, marked_stop in route_marked_stops:
 
             # Current trip for this marked stop
             current_trip = None
@@ -179,12 +158,18 @@ class RaptorAlgorithm:
                         #   t_k(next_stop) = t_arr(t, pi)
                         #   t_star(p_i) = t_arr(t, pi)
 
-                        bag_round_stop[k][current_stop].update(
-                            new_arrival_time, current_trip, boarding_stop
+                        current_label = bag_round_stop[k][current_stop]
+                        current_label = current_label.update(
+                            earliest_arrival_time=new_arrival_time,
+                            boarding_stop=boarding_stop
                         )
-                        self.bag_star[current_stop].update(
-                            new_arrival_time, current_trip, boarding_stop
+                        current_label = current_label.update_trip(
+                            trip=current_trip,
+                            boarding_stop=boarding_stop
                         )
+
+                        bag_round_stop[k][current_stop] = current_label
+                        self.bag_star[current_stop] = current_label
 
                         # Logging
                         n_improvements += 1
@@ -258,14 +243,21 @@ class RaptorAlgorithm:
                         transport_type=TransportType.Walk
                     )
 
-                    bag_round_stop[k][arrive_stop].update(
-                        arrival_time_with_transfer,
-                        transfer_trip,
-                        current_stop,
+                    # Update the label
+                    arrival_label = bag_round_stop[k][arrive_stop]
+                    arrival_label = arrival_label.update(
+                        earliest_arrival_time=arrival_time_with_transfer,
+                        boarding_stop=current_stop
                     )
-                    self.bag_star[arrive_stop].update(
-                        arrival_time_with_transfer, transfer_trip, current_stop
+                    arrival_label = arrival_label.update_trip(
+                        trip=transfer_trip,
+                        boarding_stop=current_stop
                     )
+
+                    # Assign the updated label to the bags
+                    bag_round_stop[k][arrive_stop] = arrival_label
+                    self.bag_star[arrive_stop] = arrival_label
+
                     new_stops.append(arrive_stop)
 
         return bag_round_stop, new_stops
@@ -299,11 +291,11 @@ def reconstruct_journey(destination: Stop, bag: Dict[Stop, Label]) -> Journey:
     jrny = Journey()
     to_stop = destination
     while to_stop is not None:
-        from_stop = bag[to_stop].from_stop
-        bag_to_stop = bag[to_stop]
+        from_stop = bag[to_stop].boarding_stop
+        to_stop_label = bag[to_stop]
 
         leg = Leg(
-            from_stop, to_stop, bag_to_stop.trip, bag_to_stop.earliest_arrival_time
+            from_stop, to_stop, to_stop_label.trip, to_stop_label.earliest_arrival_time
         )
         jrny = jrny.prepend_leg(leg)
         to_stop = from_stop
@@ -336,7 +328,7 @@ def is_dominated(original_journey: List[Leg], new_journey: List[Leg]) -> bool:
     original_arrival = arrival(original_journey)
     new_arrival = arrival(new_journey)
 
-    # Is dominated, strictly better in one criteria and not worse in other
+    # Is dominated, strictly better in one criterion and not worse in other
     return (
         True
         if (original_depart >= new_depart and original_arrival < new_arrival)

@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import os
 import uuid
+from abc import ABC, abstractmethod
 from collections.abc import Iterable
 from enum import Enum
 from itertools import compress
@@ -18,7 +19,7 @@ import joblib
 import numpy as np
 from loguru import logger
 
-from pyraptor.util import sec2str, mkdir_if_not_exists
+from pyraptor.util import sec2str, mkdir_if_not_exists, LARGE_NUMBER
 
 
 def same_type_and_id(first, second):
@@ -261,9 +262,7 @@ class TripStopTimes:
         in_window = [
             tst
             for tst in self
-            if tst.dts_dep >= dep_secs_min
-               and tst.dts_dep <= dep_secs_max
-               and tst.stop in stops
+            if (dep_secs_min <= tst.dts_dep <= dep_secs_max) and tst.stop in stops
         ]
         return in_window
 
@@ -323,6 +322,8 @@ class RouteInfo:
         return f"Transport: {self.transport_type.get_description()} | Route Name: {self.name}"
 
     def __eq__(self, other):
+        if other is None:
+            return False
         if isinstance(other, RouteInfo):
             return other.transport_type == self.transport_type and other.name == self.name
         else:
@@ -410,7 +411,7 @@ class Trip:
         """Get stop"""
         return self.stop_times[self.stop_times_index[stop]]
 
-    def get_fare(self, depart_stop: Stop) -> int:
+    def get_fare(self, depart_stop: Stop) -> float:
         """Get fare from depart_stop"""
         stop_time = self.get_stop(depart_stop)
         return 0 if stop_time is None else stop_time.fare
@@ -673,7 +674,7 @@ class Leg:
     to_stop: Stop
     trip: Trip
     earliest_arrival_time: int
-    fare: int = 0
+    fare: float = 0.0
     n_trips: int = 0
 
     @property
@@ -760,13 +761,115 @@ class Leg:
 
 
 @dataclass(frozen=True)
-class Label:
-    """Label"""
+class BaseLabel(ABC):
+    """
+    Abstract class representing the base characteristics that a RAPTOR label
+    needs to have. Depending on the algorithm version, there are different types of
+    labels.
 
-    earliest_arrival_time: int
-    fare: int  # total fare
-    trip: Trip | None  # trip to take to obtain travel_time and fare
-    from_stop: Stop  # stop to hop-on the trip
+    Generally speaking, each label contains the trip with which one arrives at the label's associated stop
+    with k legs by boarding the trip at `from_stop`. It also contains the criteria with which each
+    stop is evaluated by the algorithm.
+
+    Reference (RAPTOR paper):
+    https://www.microsoft.com/en-us/research/wp-content/uploads/2012/01/raptor_alenex.pdf
+    """
+
+    earliest_arrival_time: int = LARGE_NUMBER
+    """Earliest time at which the trip is boarded"""
+
+    trip: Trip | None = None
+    """Trip to take to obtain earliest_arrival_time"""
+
+    boarding_stop: Stop = None
+    """Stop at which we hop-on trip with trip"""
+
+    @abstractmethod
+    def update(self, earliest_arrival_time: int = None, boarding_stop: Stop = None) -> BaseLabel:
+        """
+        Returns a new label with updated attributes.
+
+        :param earliest_arrival_time: new time (in secs after midnight) that the trip is boarded at
+        :param boarding_stop: new stop at which the trip is boarded
+        :return: new updated label
+        """
+        pass
+
+    @abstractmethod
+    def update_trip(self, trip: Trip, boarding_stop: Stop) -> BaseLabel:
+        """
+        Returns a new label with updated trip-related attributes.
+
+        :param trip: new trip to board
+        :param boarding_stop: stop at which the new trip is boarded
+        :return: new updated label
+        """
+        pass
+
+    @abstractmethod
+    def is_dominating(self, other: BaseLabel) -> bool:
+        """
+        Returns true if the current label is dominating the provided label,
+        meaning that it is not worse in any of the valuation criteria.
+
+        :param other: other label to compare
+        :return:
+        """
+        pass
+
+
+@dataclass(frozen=True)
+class Label(BaseLabel):
+    """
+    Class that represents a label used in the base RAPTOR version
+    described in the RAPTOR paper
+    (https://www.microsoft.com/en-us/research/wp-content/uploads/2012/01/raptor_alenex.pdf).
+    """
+
+    def update(self, earliest_arrival_time: int = None, boarding_stop: Stop = None) -> Label:
+        earliest_arrival_time = earliest_arrival_time if earliest_arrival_time is not None \
+            else self.earliest_arrival_time
+        boarding_stop = boarding_stop if boarding_stop is not None else self.boarding_stop
+
+        return copy(
+            Label(
+                earliest_arrival_time=earliest_arrival_time,
+                boarding_stop=boarding_stop,
+                trip=self.trip
+            )
+        )
+
+    def update_trip(self, trip: Trip, boarding_stop: Stop) -> Label:
+        trip = trip if trip is not None else self.trip
+        boarding_stop = boarding_stop if boarding_stop is not None else self.boarding_stop
+
+        return copy(
+            Label(
+                earliest_arrival_time=self.earliest_arrival_time,
+                boarding_stop=boarding_stop,
+                trip=trip
+            )
+        )
+
+    def is_dominating(self, other: Label) -> bool:
+        return self.earliest_arrival_time <= other.earliest_arrival_time
+
+    def __repr__(self) -> str:
+        return f"{Label.__name__}(earliest_arrival_time={self.earliest_arrival_time}, " \
+               f"trip={self.trip}, boarding_stop={self.boarding_stop})"
+
+
+@dataclass(frozen=True)
+class MultiCriteriaLabel(BaseLabel):
+    """
+    Class that represents a multi-criteria label.
+
+    The concept this is class is modeled after is that of the multi-label in the
+    `McRAPTOR` section of the RAPTOR paper
+    (https://www.microsoft.com/en-us/research/wp-content/uploads/2012/01/raptor_alenex.pdf)
+    """
+
+    fare: float = 0.0  # total fare
     n_trips: int = 0
     infinite: bool = False
 
@@ -778,52 +881,53 @@ class Label:
         #   then, at last, number of trips necessary
         return [self.earliest_arrival_time, self.fare, self.n_trips]
 
-    def update(self, earliest_arrival_time=None, fare_addition=None, from_stop=None) -> Label:
+    def update(self, earliest_arrival_time: int = None,
+               boarding_stop: Stop = None,
+               fare_addition: float = None) -> MultiCriteriaLabel:
         """
         Updates the current label with the provided earliest arrival time and fare_addition.
-        Returns the updated label
+        Returns the updated label.
 
         :param earliest_arrival_time: new earliest arrival time
-        :param fare_addition: fare to add to the current
-        :param from_stop: new stop that the label refers to
+        :param fare_addition: fare amount to add to the current value
+        :param boarding_stop: new stop at which the trip is boarded
         :return: updated label
         """
+
         return copy(
-            Label(
+            MultiCriteriaLabel(
                 earliest_arrival_time=earliest_arrival_time
                 if earliest_arrival_time is not None
                 else self.earliest_arrival_time,
+
                 fare=self.fare + fare_addition
                 if fare_addition is not None
                 else self.fare,
+
                 trip=self.trip,
-                from_stop=from_stop if from_stop is not None else self.from_stop,
+                boarding_stop=boarding_stop if boarding_stop is not None else self.boarding_stop,
                 n_trips=self.n_trips,
                 infinite=self.infinite,
             )
         )
 
-    def update_trip(self, trip: Trip, new_boarding_stop: Stop) -> Label:
-        """
-        Updates the trip and the boarding stop associated with the current label.
-        Returns the updated label.
-
-        :param trip: new trip to update the label with
-        :param new_boarding_stop: new boarding stop to update the label with, only if the provided
-            trip is different from the current one. Otherwise, the current stop is not updated.
-        :return: updated label
-        """
-
+    def update_trip(self, trip: Trip, boarding_stop: Stop) -> MultiCriteriaLabel:
         return copy(
-            Label(
+            MultiCriteriaLabel(
                 earliest_arrival_time=self.earliest_arrival_time,
                 fare=self.fare,
                 trip=trip,
-                from_stop=new_boarding_stop if self.trip != trip else self.from_stop,
+                boarding_stop=boarding_stop if self.trip != trip else self.boarding_stop,
+
+                # TODO add 1 even if trip is transfer? we can check with isinstance(trip, TransferTrip)
+                #   Another possibility is also adding 1 only if transport_type of the transfer_trip is != Walk
                 n_trips=self.n_trips + 1 if self.trip != trip else self.n_trips,
                 infinite=self.infinite,
             )
         )
+
+    def is_dominating(self, other: MultiCriteriaLabel) -> bool:
+        return self.criteria <= other.criteria
 
 
 @dataclass(frozen=True)
@@ -832,7 +936,7 @@ class Bag:
     Bag B(k,p) or route bag B_r
     """
 
-    labels: List[Label] = field(default_factory=list)
+    labels: List[MultiCriteriaLabel] = field(default_factory=list)
     updated: bool = False
 
     def __len__(self):
@@ -841,7 +945,7 @@ class Bag:
     def __repr__(self):
         return f"Bag({self.labels}, updated={self.updated})"
 
-    def add(self, label: Label):
+    def add(self, label: MultiCriteriaLabel):
         """Add"""
         self.labels.append(label)
 
@@ -860,7 +964,7 @@ class Bag:
 
     def labels_with_trip(self):
         """All labels with trips, i.e. all labels that are reachable with a trip with given criterion"""
-        return [l for l in self.labels if l.trip is not None]
+        return [lbl for lbl in self.labels if lbl.trip is not None]
 
     def earliest_arrival(self) -> int:
         """Earliest arrival"""
@@ -892,7 +996,7 @@ class Journey:
 
     def number_of_trips(self):
         """Return number of distinct trips"""
-        trips = set([l.trip for l in self.legs])
+        trips = set([lbl.trip for lbl in self.legs])
         return len(trips)
 
     def prepend_leg(self, leg: Leg) -> Journey:
@@ -910,9 +1014,11 @@ class Journey:
             if (leg.trip is not None)
                # TODO might want to remove this part: I just want to remove empty legs,
                #   and not transfer legs between parent and child stops
+               #   Also remember that removing this changes test outcomes
                and (leg.from_stop.station != leg.to_stop.station)
         ]
         jrny = Journey(legs=legs)
+
         return jrny
 
     def is_valid(self) -> bool:
@@ -988,7 +1094,7 @@ class Journey:
 
                 prev_route = current_trip.route_info
             else:
-                raise Exception(f"Unhandled leg trip. Value: {current_trip}")
+                raise Exception(f"Leg trip cannot be {None}. Value: {current_trip}")
 
             msg = (
                     str(sec2str(leg.dep))
@@ -1022,7 +1128,7 @@ class Journey:
         return [leg.to_dict(leg_index=idx) for idx, leg in enumerate(self.legs)]
 
 
-def pareto_set(labels: List[Label], keep_equal=False):
+def pareto_set(labels: List[MultiCriteriaLabel], keep_equal=False):
     """
     Find the pareto-efficient points
 

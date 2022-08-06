@@ -164,7 +164,7 @@ def run_range_raptor(
                 last_round_journey = last_round_labels[destination_station_name]
                 last_round_labels[destination_station_name] = journey
 
-                if not is_dominated(last_round_journey, journey):
+                if not is_dominated(last_round_journey, journey.legs):
                     journeys_to_destinations[destination_station_name].append(journey)
 
     return journeys_to_destinations
