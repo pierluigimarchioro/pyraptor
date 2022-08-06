@@ -1,0 +1,11 @@
+/** Each field represents a criteria to evaluate possible itineraries with;
+ * the value represents the weight assigned to that criteria in the evaluation process.
+ * Allowed weights are in the range [0, +inf], where 0 means that the criteria won't be considered.
+ */
+{
+  "distance": 1,
+  "cost": 1,
+  "arrival_time": 1,
+  "n_trips": 1,
+  "co2": 1
+}

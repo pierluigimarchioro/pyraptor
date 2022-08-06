@@ -62,7 +62,8 @@ coverage.xml
 .mypy_cache/
 
 # Repository
-data/
+data
+!data/mc.json.sample
 output/
 otp2/
 test-output.xml
