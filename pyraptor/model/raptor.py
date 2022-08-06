@@ -1,7 +1,6 @@
 """RAPTOR algorithm"""
 from __future__ import annotations
 
-import itertools
 from typing import List, Tuple, Dict
 from dataclasses import dataclass
 from copy import deepcopy
@@ -9,7 +8,7 @@ from copy import deepcopy
 from loguru import logger
 
 from pyraptor.dao.timetable import Timetable
-from pyraptor.model.structures import Stop, Trip, Route, Leg, Journey
+from pyraptor.model.structures import Stop, Trip, Route, Leg, Journey, TransferTrip, TransportType
 from pyraptor.util import LARGE_NUMBER
 
 
@@ -248,10 +247,16 @@ class RaptorAlgorithm:
 
                 # Domination criteria
                 if arrival_time_with_transfer < previous_earliest_arrival:
-                    transfer_trip = Trip.get_transfer_trip(from_stop=current_stop,
-                                                           to_stop=arrive_stop,
-                                                           dep_time=time_sofar,
-                                                           arr_time=arrival_time_with_transfer)
+                    transfer_trip = TransferTrip(
+                        from_stop=current_stop,
+                        to_stop=arrive_stop,
+                        dep_time=time_sofar,
+                        arr_time=arrival_time_with_transfer,
+
+                        # TODO add method or field `transfer_type` to Transfer class
+                        #  such accesser is then overrode by shared mobility Transfer sub-classes
+                        transport_type=TransportType.Walk
+                    )
 
                     bag_round_stop[k][arrive_stop].update(
                         arrival_time_with_transfer,

@@ -4,11 +4,12 @@ from __future__ import annotations
 import os
 import uuid
 from collections.abc import Iterable
+from enum import Enum
 from itertools import compress
 from collections import defaultdict
 from operator import attrgetter
 from pathlib import Path
-from typing import List, Dict, Tuple
+from typing import List, Dict, Tuple, Any
 from dataclasses import dataclass, field
 from copy import copy
 
@@ -17,23 +18,34 @@ import joblib
 import numpy as np
 from loguru import logger
 
-from pyraptor.util import sec2str, mkdir_if_not_exists, get_transport_type_description, WALK_TRANSPORT_TYPE
+from pyraptor.util import sec2str, mkdir_if_not_exists
 
 
 def same_type_and_id(first, second):
-    """Same type and ID"""
+    """
+    Returns true if `first` and `second` have the same type and `id` attribute
+
+    :param first: first object to compare
+    :param second: second object to compare
+    """
+
     return type(first) is type(second) and first.id == second.id
 
 
 @dataclass
 class TimetableInfo:
-    # Path to the directory of the GTFS feed originally
-    # used to generate the current Timetable instance
     original_gtfs_dir: str | bytes | os.PathLike = None
+    """
+    Path to the directory of the GTFS feed originally
+    used to generate the current Timetable instance
+    """
 
-    # Date that the timetable refers to.
-    # Format: YYYYMMDD which is equal to %Y%m%d
     date: str = None
+    """
+    Date that the timetable refers to.
+    
+    Format: `YYYYMMDD`, which is equal to %Y%m%d
+    """
 
 
 @dataclass
@@ -48,7 +60,8 @@ class Timetable(TimetableInfo):
     transfers: Transfers = None
 
     def counts(self) -> None:
-        """Print timetable counts"""
+        """Prints timetable counts"""
+
         logger.debug("Counts:")
         logger.debug("Stations   : {}", len(self.stations))
         logger.debug("Routes     : {}", len(self.routes))
@@ -187,25 +200,30 @@ class Stations:
 
 @attr.s(repr=False)
 class TripStopTime:
-    """Trip Stop"""
+    """
+    Class that represents the arrival and departure times for some stop in some trip
+    """
 
     trip: Trip = attr.ib(default=attr.NOTHING)
-    stop_idx = attr.ib(default=attr.NOTHING)
-    stop = attr.ib(default=attr.NOTHING)
+    stop: Stop = attr.ib(default=attr.NOTHING)
 
-    # Time of arrival in seconds past midnight
-    dts_arr = attr.ib(default=attr.NOTHING)
+    stop_idx: int = attr.ib(default=attr.NOTHING)
+    """Sequence number of the stop in the trip"""
 
-    # Time of departure in seconds past midnight
-    dts_dep = attr.ib(default=attr.NOTHING)
-    fare = attr.ib(default=0.0)
+    dts_arr: int = attr.ib(default=attr.NOTHING)
+    """Time of arrival in seconds past midnight"""
+
+    dts_dep: int = attr.ib(default=attr.NOTHING)
+    """Time of departure in seconds past midnight"""
+
+    fare: float = attr.ib(default=0.0)
 
     def __hash__(self):
         return hash((self.trip, self.stop_idx))
 
     def __repr__(self):
         return (
-            "TripStopTime(trip_id={hint}{trip_id}, stopidx={0.stopidx},"
+            "TripStopTime(trip_id={hint}{trip_id}, stop_idx={0.stop_idx},"
             " stop_id={0.stop.id}, dts_arr={0.dts_arr}, dts_dep={0.dts_dep}, fare={0.fare})"
         ).format(
             self,
@@ -222,7 +240,7 @@ class TripStopTimes:
         self.stop_trip_idx: Dict[Stop, List[TripStopTime]] = defaultdict(list)
 
     def __repr__(self):
-        return f"TripStoptimes(n_tripstoptimes={len(self.set_idx)})"
+        return f"TripStopTimes(n_tripstoptimes={len(self.set_idx)})"
 
     def __getitem__(self, trip_id):
         return self.set_idx[trip_id]
@@ -253,26 +271,56 @@ class TripStopTimes:
         """Earliest trip"""
         trip_stop_times = self.stop_trip_idx[stop]
         in_window = [tst for tst in trip_stop_times if tst.dts_dep >= dep_secs]
+
         return in_window[0].trip if len(in_window) > 0 else None
 
     def get_earliest_trip_stop_time(self, stop: Stop, dep_secs: int) -> TripStopTime:
         """Earliest trip stop time"""
         trip_stop_times = self.stop_trip_idx[stop]
         in_window = [tst for tst in trip_stop_times if tst.dts_dep >= dep_secs]
+
         return in_window[0] if len(in_window) > 0 else None
+
+
+class TransportType(Enum):
+    Walk = 9001,
+    Bike = 9002,
+    Car = 9003
+
+    # The following values match the integer codes defined for the `route_type` field at
+    # https://developers.google.com/transit/gtfs/reference#routestxt
+    LightRail = 0,
+    Metro = 1,
+    Rail = 2,
+    Bus = 3,
+    Ferry = 4,
+    CableTram = 5,
+    AerialLift = 6,
+    Funicular = 7,
+    TrolleyBus = 11,
+    Monorail = 12,
+
+    def get_description(self) -> str:
+        """
+        Returns a more verbose description for the value of the current instance.
+
+        :return: transport type description
+        """
+
+        transport_descriptions: Dict[TransportType, str] = {
+            item: item.name for item in TransportType
+        }
+
+        return transport_descriptions[self]
 
 
 @dataclass(frozen=True)
 class RouteInfo:
-    transport_type: int = None
+    transport_type: TransportType = None
     name: str = None
 
-    @staticmethod
-    def get_transfer_route() -> RouteInfo:
-        return RouteInfo(transport_type=WALK_TRANSPORT_TYPE, name="Transfer")
-
     def __str__(self):
-        return f"Transport: {get_transport_type_description(self.transport_type)} | Route Name: {self.name}"
+        return f"Transport: {self.transport_type.get_description()} | Route Name: {self.name}"
 
     def __eq__(self, other):
         if isinstance(other, RouteInfo):
@@ -281,35 +329,45 @@ class RouteInfo:
             raise Exception(f"Cannot compare {RouteInfo.__name__} with {type(other)}")
 
 
-@attr.s(repr=False, cmp=False)
+class TransferRouteInfo(RouteInfo):
+    """
+    Class that represents information about a transfer route
+    """
+
+    def __init__(self, transport_type: TransportType):
+        """
+        :param transport_type:
+        """
+
+        super(TransferRouteInfo, self).__init__(transport_type=transport_type, name="Transfer")
+
+
+@attr.s(repr=False, cmp=False, init=False)
 class Trip:
-    """Trip"""
+    """
+    Class that represents a Trip, which is a sequence of consecutive stops
+    """
 
-    id = attr.ib(default=None)
-    stop_times = attr.ib(default=attr.Factory(list))
-    stop_times_index = attr.ib(default=attr.Factory(dict))
-    hint = attr.ib(default=None)  # i.e. trip_short_name
-    long_name = attr.ib(default=None)  # e.g., Sprinter
-    route_info: RouteInfo = attr.ib(default=None)
+    def __init__(self,
+                 id_: Any = None,
+                 long_name: str = None,
+                 route_info: RouteInfo = None,
+                 hint: str = None):
+        """
+        :param id_: id of the trip
+        :param long_name: long name of the trip
+        :param route_info: information about the route that the trip belongs to
+        :param hint: additional information about the trip.
+            Defaults to `str(route_info)`.
+        """
 
-    @staticmethod
-    def get_transfer_trip(from_stop: Stop, to_stop: Stop, dep_time: int, arr_time: int) -> Trip:
-        transfer_route = RouteInfo.get_transfer_route()
+        self.id = id_
+        self.long_name: str = long_name
+        self.route_info: RouteInfo = route_info
 
-        transfer_trip = Trip(
-            id=f"Transfer Trip - {uuid.uuid4()}",
-            long_name=f"Transfer Trip from {from_stop.name} to {to_stop.name}",
-            route_info=transfer_route,
-            hint=str(transfer_route)
-        )
-
-        dep_stop_time = TripStopTime(trip=transfer_trip, stop_idx=0, stop=from_stop, dts_arr=dep_time, dts_dep=dep_time)
-        arr_stop_time = TripStopTime(trip=transfer_trip, stop_idx=1, stop=to_stop, dts_arr=arr_time, dts_dep=arr_time)
-
-        transfer_trip.add_stop_time(dep_stop_time)
-        transfer_trip.add_stop_time(arr_stop_time)
-
-        return transfer_trip
+        self.hint: str = str(route_info) if hint is None else hint
+        self.stop_times: List[TripStopTime] = []
+        self.stop_times_index: Dict[Stop, int] = {}
 
     def __hash__(self):
         return hash(self.id)
@@ -334,6 +392,7 @@ class Trip:
 
     def trip_stop_ids(self):
         """Tuple of all stop ids in trip"""
+
         return tuple([s.stop.id for s in self.stop_times])
 
     def add_stop_time(self, stop_time: TripStopTime):
@@ -343,6 +402,7 @@ class Trip:
             assert (
                     not self.stop_times or self.stop_times[-1].dts_dep <= stop_time.dts_arr
             )
+
         self.stop_times.append(stop_time)
         self.stop_times_index[stop_time.stop] = len(self.stop_times) - 1
 
@@ -354,6 +414,41 @@ class Trip:
         """Get fare from depart_stop"""
         stop_time = self.get_stop(depart_stop)
         return 0 if stop_time is None else stop_time.fare
+
+
+class TransferTrip(Trip):
+    """
+    Class that represents a transfer trip made between to stops
+    """
+
+    def __init__(self,
+                 from_stop: Stop,
+                 to_stop: Stop,
+                 dep_time: int,
+                 arr_time: int,
+                 transport_type: TransportType):
+        """
+        :param from_stop: stop that the transfer starts from
+        :param to_stop: stop that the transfer ends at
+        :param dep_time: departure time in seconds past midnight
+        :param arr_time: arrival time in seconds past midnight
+        :param transport_type: type of the transport that the transfer is carried out with
+        """
+        transfer_route = TransferRouteInfo(transport_type=transport_type)
+        super(TransferTrip, self).__init__(id_=f"Transfer Trip - {uuid.uuid4()}",
+                                           long_name=f"Transfer from {from_stop.name} to {to_stop.name}",
+                                           route_info=transfer_route)
+
+        # Add stop times for both origin and end stops
+        dep_stop_time = TripStopTime(
+            trip=self, stop_idx=0, stop=from_stop, dts_arr=dep_time, dts_dep=dep_time
+        )
+        self.add_stop_time(dep_stop_time)
+
+        arr_stop_time = TripStopTime(
+            trip=self, stop_idx=1, stop=to_stop, dts_arr=arr_time, dts_dep=arr_time
+        )
+        self.add_stop_time(arr_stop_time)
 
 
 class Trips:
@@ -533,12 +628,22 @@ class Transfer:
 
 
 class Transfers:
-    """Transfers"""
+    """
+    Class that represents a transfer collection with some additional easier to use access methods.
+    """
 
     def __init__(self):
-        self.set_idx = dict()
-        self.stop_to_stop_idx = dict()
-        self.last_id = 1
+        self.set_idx: Dict[Any, Transfer] = dict()
+        """Dictionary that maps transfer ids with the corresponding transfer instance"""
+
+        self.stop_to_stop_idx: Dict[Tuple[Stop, Stop], Transfer] = dict()
+        """Dictionary that maps (from_stop, to_stop) pairs with the corresponding transfer instance"""
+
+        self.last_id: int = 1
+        """
+        Field used to store the id of the last added transfer.
+        It is incremented by one after a transfer is added.
+        """
 
     def __repr__(self):
         return f"Transfers(n_transfers={len(self.set_idx)})"
@@ -803,8 +908,8 @@ class Journey:
             leg
             for leg in self.legs
             if (leg.trip is not None)
-                # TODO might want to remove this part: I just want to remove empty legs,
-                #   and not transfer legs between parent and child stops
+               # TODO might want to remove this part: I just want to remove empty legs,
+               #   and not transfer legs between parent and child stops
                and (leg.from_stop.station != leg.to_stop.station)
         ]
         jrny = Journey(legs=legs)

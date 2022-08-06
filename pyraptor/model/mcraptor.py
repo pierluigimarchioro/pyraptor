@@ -12,7 +12,7 @@ from pyraptor.model.structures import (
     Label,
     Leg,
     Journey,
-    pareto_set, Trip,
+    pareto_set, Trip, TransferTrip, TransportType,
 )
 
 
@@ -244,11 +244,12 @@ class McRaptorAlgorithm:
                     )
 
                     # Update the trip with which to arrive at other_stop with a transfer trip
-                    transfer_trip = Trip.get_transfer_trip(
+                    transfer_trip = TransferTrip(
                         from_stop=current_stop,
                         to_stop=other_stop,
                         dep_time=label.earliest_arrival_time,
-                        arr_time=transfer_arrival_time
+                        arr_time=transfer_arrival_time,
+                        transport_type=TransportType.Walk
                     )
                     label = label.update_trip(
                         trip=transfer_trip,

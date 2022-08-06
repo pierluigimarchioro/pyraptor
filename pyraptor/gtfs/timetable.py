@@ -464,12 +464,10 @@ class TripsProcessor:
                     log(f"Progress: {current_pct}% [trip #{processed_trips} of {table_length}]")
                     prev_pct_point = current_pct
 
-                trip = Trip()
-
                 # Transport description as hint
-                route_info = trip_route_info[row.trip_id]
-                trip.route_info = route_info
-                trip.hint = str(route_info)
+                trip_id = row.trip_id
+                route_info = trip_route_info[trip_id]
+                trip = Trip(id_=trip_id, route_info=route_info)
 
                 # Iterate over stops, ordered by sequence number:
                 # the first stop will be the one with stop_sequence == 1
@@ -484,7 +482,13 @@ class TripsProcessor:
                     # Trip Stop Times
                     stop = stops_info.get(stop_time.stop_id)
 
-                    trip_stop_time = TripStopTime(trip, stop_number, stop, dts_arr, dts_dep)
+                    trip_stop_time = TripStopTime(
+                        trip=trip,
+                        stop_idx=stop_number,
+                        stop=stop,
+                        dts_arr=dts_arr,
+                        dts_dep=dts_dep
+                    )
 
                     trip_stop_times.add(trip_stop_time)
                     trip.add_stop_time(trip_stop_time)
@@ -606,6 +610,7 @@ def gtfs_to_pyraptor_timetable(
     logger.debug("Add transfers")
 
     # Add transfers between parent and child stations
+    # TODO remove? because they are (should) already be included in the transfers table?
     transfers = Transfers()
     for station in stations:
         station_stops = station.stops

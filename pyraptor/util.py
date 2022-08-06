@@ -43,33 +43,3 @@ def sec2str(scnds: int, show_sec: bool = False) -> str:
         if show_sec
         else "{:02d}:{:02d}".format(hours, minutes)
     )
-
-
-WALK_TRANSPORT_TYPE = -1
-
-
-def get_transport_type_description(transport_type: int) -> str:
-    """
-    Returns a description for the provided transport type,
-    which is the route_type attribute of the routes.txt GTFS table.
-
-    :param transport_type: integer code for a transport type
-    :return: transport type description
-    """
-
-    # TODO maybe refactor transport_type to enum?
-    transport_descriptions = {
-        WALK_TRANSPORT_TYPE: "Walk",
-        0: "Light Rail (e.g. Tram)",
-        1: "Metro",
-        2: "Rail",
-        3: "Bus",
-        4: "Ferry",
-        5: "Cable Tram",
-        6: "Aerial Lift",
-        7: "Funicular",
-        11: "Trolleybus",
-        12: "Monorail",
-    }
-
-    return transport_descriptions[transport_type]

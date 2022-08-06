@@ -96,7 +96,7 @@ def to_timetable(stops_df, stop_times_df, trips_df) -> Timetable:
         sort_stop_times = sorted(
             stop_times[trip_row.trip_id], key=lambda s: int(s.vervoerstrajectindex)
         )
-        for stopidx, stop_time in enumerate(sort_stop_times):
+        for stop_idx, stop_time in enumerate(sort_stop_times):
             # Timestamps
             dts_arr = stop_time.aankomstmoment
             dts_dep = stop_time.vertrekmoment
@@ -106,7 +106,14 @@ def to_timetable(stops_df, stop_times_df, trips_df) -> Timetable:
 
             # Trip Stop Times
             stop = stops.get(stop_time.stop_id)
-            trip_stop_time = TripStopTime(trip, stopidx, stop, dts_arr, dts_dep, fare)
+            trip_stop_time = TripStopTime(
+                trip=trip,
+                stop_idx=stop_idx,
+                stop=stop,
+                dts_arr=dts_arr,
+                dts_dep=dts_dep,
+                fare=fare
+            )
 
             # Trip Stop Times
             trip_stop_times.add(trip_stop_time)
