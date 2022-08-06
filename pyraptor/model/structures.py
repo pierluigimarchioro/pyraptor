@@ -282,22 +282,22 @@ class TripStopTimes:
 
 
 class TransportType(Enum):
-    Walk = 9001,
-    Bike = 9002,
+    Walk = 9001
+    Bike = 9002
     Car = 9003
 
     # The following values match the integer codes defined for the `route_type` field at
     # https://developers.google.com/transit/gtfs/reference#routestxt
-    LightRail = 0,
-    Metro = 1,
-    Rail = 2,
-    Bus = 3,
-    Ferry = 4,
-    CableTram = 5,
-    AerialLift = 6,
-    Funicular = 7,
-    TrolleyBus = 11,
-    Monorail = 12,
+    LightRail = 0
+    Metro = 1
+    Rail = 2
+    Bus = 3
+    Ferry = 4
+    CableTram = 5
+    AerialLift = 6
+    Funicular = 7
+    TrolleyBus = 11
+    Monorail = 12
 
     def get_description(self) -> str:
         """

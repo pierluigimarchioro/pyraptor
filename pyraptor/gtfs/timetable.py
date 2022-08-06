@@ -35,7 +35,7 @@ from pyraptor.model.structures import (
     Transfer,
     Transfers,
     TimetableInfo,
-    RouteInfo,
+    RouteInfo, TransportType,
 )
 
 
@@ -545,7 +545,7 @@ def gtfs_to_pyraptor_timetable(
     for row in trips_and_routes.itertuples():
         route_name = getattr(row, "route_long_name", None)
         route_name = route_name if route_name is not None else getattr(row, "route_short_name", "missing_route_name")
-        trip_route_info[row.trip_id] = RouteInfo(name=route_name, transport_type=row.route_type)
+        trip_route_info[row.trip_id] = RouteInfo(name=route_name, transport_type=TransportType(int(row.route_type)))
 
     # Trips and Trip Stop Times
     logger.debug("Add trips and trip stop times")
