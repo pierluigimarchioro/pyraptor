@@ -914,13 +914,13 @@ class MultiCriteriaLabel(BaseLabel):
     def update_trip(self, trip: Trip, boarding_stop: Stop) -> MultiCriteriaLabel:
         # The leg counter is updated only if the new trip isn't a transfer
         # between stops of the same station
-        add_new_leg = True
-        if self.trip != trip and isinstance(trip, TransferTrip):
+        add_new_leg = self.trip != trip
+        if add_new_leg and isinstance(trip, TransferTrip):
             # Transfer trips refer to movements between just two stops
-            from_stop = trip.stop_times[0]
-            to_stop = trip.stop_times[1]
+            from_stop = trip.stop_times[0].stop
+            to_stop = trip.stop_times[1].stop
 
-            if from_stop.stop.station == to_stop.stop.station:
+            if from_stop.station == to_stop.station:
                 add_new_leg = False
 
         return copy(
