@@ -300,7 +300,7 @@ def reconstruct_journey(destination: Stop, bag: Dict[Stop, Label]) -> Journey:
         jrny = jrny.prepend_leg(leg)
         to_stop = from_stop
 
-    jrny = jrny.remove_empty_legs()
+    jrny = jrny.remove_empty_and_same_station_legs()
 
     return jrny
 

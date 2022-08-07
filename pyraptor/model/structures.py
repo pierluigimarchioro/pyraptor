@@ -1014,8 +1014,14 @@ class Journey:
         jrny = Journey(legs=legs)
         return jrny
 
-    def remove_empty_legs(self) -> Journey:
-        """Remove all transfer legs"""
+    def remove_empty_and_same_station_legs(self) -> Journey:
+        """
+        Removes all empty legs (where the trip is not set)
+        and transfer legs between stops of the same station.
+
+        :return: updated journey
+        """
+
         legs = [
             leg
             for leg in self.legs
@@ -1033,7 +1039,8 @@ class Journey:
         """
         Returns true if the journey is considered valid.
         Notably, a journey is valid if, for each leg, leg k arrival time
-        is not greater than leg k+1 departure time
+        is not greater than leg k+1 departure time.
+
         :return: True if journey is valid, False otherwise
         """
 
