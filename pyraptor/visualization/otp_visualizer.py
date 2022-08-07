@@ -90,7 +90,7 @@ class OTPVisualizer:
         stops_table = gtfs_tables["stops"]
         stops_table["stop_id"] = stops_table["stop_id"].astype(str)
         itinerary_stops = stops_table[stops_table["stop_id"].isin(journey_stop_ids)]
-        itinerary_stops = itinerary_stops[itinerary_stops["stop_id"].isin(journey_stop_ids)]
+        itinerary_stops = itinerary_stops[itinerary_stops["stop_id"].isin(journey_stop_ids)] #TODO rows 92 and 93 are the same thing
 
         # Extract only the stop times of stops included in the journey
         deps_table = gtfs_tables["stop_times"]
@@ -100,7 +100,8 @@ class OTPVisualizer:
 
         # Extract only the stop times that are included in the journey time interval
         # i.e. journey departure time - journey arrival time
-        dep_time, arriv_time = self._get_journey_time_interval()
+        dep_time, arriv_time = self._get_journey_time_interval() #TODO arriv time is 12:28, it should be 12:30
+        #TODO assign the departure time of the first stop to dep_time
 
         def parse_stop_time(t: str) -> time:
             try:
@@ -112,10 +113,10 @@ class OTPVisualizer:
                 return time(hour=0, minute=0, second=0)
 
         stop_dep_times = itinerary_deps["departure_time"].apply(parse_stop_time)
-        itinerary_deps = itinerary_deps[(dep_time <= stop_dep_times) & (stop_dep_times <= arriv_time)]
+        itinerary_deps = itinerary_deps[(dep_time <= stop_dep_times)] #& (stop_dep_times <= arriv_time)] #TODO wrong arriv_time
 
         stop_arriv_times = itinerary_deps["arrival_time"].apply(parse_stop_time)
-        itinerary_deps = itinerary_deps[(dep_time <= stop_arriv_times) & (stop_arriv_times <= arriv_time)]
+        itinerary_deps = itinerary_deps[(dep_time <= stop_arriv_times)] #& (stop_arriv_times <= arriv_time)] #TODO temporary solution
 
         # Get only trips included in the stop_times table
         trips_table = gtfs_tables["trips"]
