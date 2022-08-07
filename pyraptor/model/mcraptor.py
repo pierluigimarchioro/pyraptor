@@ -154,9 +154,16 @@ class McRaptorAlgorithm:
                     # Take fare of previous stop in trip as fare is defined on start
                     # TODO this is another part relevant for the multi-criteria approach:
                     #   here fares for each label are updated based on the traversed trips
+
+                    # TODO need to understand how fare is actually updated: what is tripstoptime.fare?
+                    #   the cumulative fare of the trip up until that point? in similar fashion,
+                    #   co2 and distance attributes can be defined and initialized with
+                    #   stop_times.shape_dist data
                     previous_stop = remaining_stops_in_route[current_stop_idx - 1]
                     from_fare = label.trip.get_fare(previous_stop)
 
+                    # TODO since criteria should not be hardcoded, but dependent on an external
+                    #   config file, find a way to abstract the update method from the actual criteria
                     label = label.update(
                         earliest_arrival_time=trip_stop_time.dts_arr,
                         fare_addition=from_fare,
