@@ -7,12 +7,14 @@ from itertools import compress
 from collections import defaultdict
 from operator import attrgetter
 from pathlib import Path
-from typing import List, Dict, Tuple, Iterable, Mapping
+from typing import List, Dict, Tuple, Iterable, Mapping, overload
 from enum import Enum
 from dataclasses import dataclass, field
 from copy import copy
 from json import loads
 from urllib.request import urlopen
+
+from _distutils_hack import override
 from geopy.distance import geodesic
 
 import attr
@@ -20,7 +22,8 @@ import joblib
 import numpy as np
 from loguru import logger
 
-from pyraptor.util import sec2str, mkdir_if_not_exists, get_transport_type_description, WALK_TRANSPORT_TYPE
+from pyraptor.util import sec2str, mkdir_if_not_exists, get_transport_type_description, WALK_TRANSPORT_TYPE, \
+    MEAN_FOOT_SPEED
 
 
 def same_type_and_id(first, second):
@@ -135,11 +138,11 @@ class Stops:
         return stop
 
     @property
-    def public_transport_stop(self):
+    def public_transport_stop(self) -> List[Stop]:
         return [s for s in self if not isinstance(s, SharedMobilityPhysicalStation)]
 
     @property
-    def shared_mobility_stop(self):
+    def shared_mobility_stop(self) -> List[SharedMobilityPhysicalStation]:
         return [s for s in self if isinstance(s, SharedMobilityPhysicalStation)]
 
 
@@ -532,6 +535,16 @@ class Transfer:
 
     def __repr__(self):
         return f"Transfer(from_stop={self.from_stop}, to_stop={self.to_stop}, transfer_time={self.transfer_time})"
+
+    @staticmethod
+    def get_transfer(sa: Stop, sb: Stop) -> Tuple[Transfer, Transfer]:
+        dist = Stop.stop_distance(sa, sb)
+        time = int(dist * 3600 / MEAN_FOOT_SPEED)
+        return (
+            Transfer(from_stop=sa.id, to_stop=sb.id, transfer_time=time),
+            Transfer(from_stop=sb.id, to_stop=sa.id, transfer_time=time)
+        )
+
 
 
 class Transfers:
@@ -1064,6 +1077,19 @@ class SharedMobilityPhysicalStation(Stop):
 class SharedMobilityTransfer(Transfer):
     vehicle: SharedMobilityVehicleType = attr.ib(default=None)
 
+    @staticmethod
+    def get_shared_mob_transfer(sa: SharedMobilityPhysicalStation, sb: SharedMobilityPhysicalStation,
+                                vtype: SharedMobilityVehicleType, speed: float | None = None) \
+            -> Tuple[SharedMobilityTransfer, SharedMobilityTransfer]:
+        dist = Stop.stop_distance(sa, sb)
+        if speed is None:
+            speed = VEHICLE_SPEED[vtype]
+        time = int(dist * 3600 / speed)
+        return (
+            SharedMobilityTransfer(from_stop=sa.id, to_stop=sb.id, transfer_time=time, vehicle=vtype),
+            SharedMobilityTransfer(from_stop=sb.id, to_stop=sa.id, transfer_time=time, vehicle=vtype)
+        )
+
 
 class SharedMobilityFeed:
     """GBFSFeed"""
@@ -1084,14 +1110,69 @@ class SharedMobilityFeed:
 
     @property
     def stops(self) -> Iterable[Dict]:
-
-        return self._get_item_list(feed_name='station_information')
+        # return self._get_item_list(feed_name='station_information') TODO uncomment after debugging
+        return [
+            {
+                "station_id": "0001",
+                "name": "vicino a bisceglie",  # 0.22228137745786689 km
+                "address": "vicino a bisceglie",
+                "rental_uris": {"android": "bikemi://stations/2318", "ios": "bikemi://stations/2318"},
+                "lat": 45.45699253002271, # bisceglie: 45.45499253002271
+                "lon": 9.112666222940224, # bisceglie: 9.112677333940224
+                "capacity": 20
+            },
+            {
+                "station_id": "0003",
+                "name": "vicino a via zurigo carrozzi",  # 0.22228137745786689 km
+                "address": "vicino a via zurigo carrozzi",
+                "rental_uris": {"android": "bikemi://stations/2318", "ios": "bikemi://stations/2318"},
+                "lat": 45.45318415116365,  # via zurigo carrozzi: 0.3334219894796084
+                "lon": 9.112666222940224,  # via zurigo carrozzi: 9.117162820088408
+                "capacity": 20
+            },
+            {
+                "station_id": "0002",
+                "name": "vicino a qt8", # 0.1444836699865555 km
+                "address": "vicino a qt8",
+                "rental_uris": {"android": "bikemi://stations/2318", "ios": "bikemi://stations/2318"},
+                "lat": 45.48713420653411,  # qt8: 45.48583420653411
+                "lon": 9.137517698940868,  # qt8: 9.137497698940868
+                "capacity": 20
+            }
+        ]
 
     @property
     def stops_info(self) -> Iterable[Dict]:
-
-        return self._get_item_list(feed_name='station_status')
-
+        #return self._get_item_list(feed_name='station_status') TODO uncomment after debugging
+        return [
+            {
+                "station_id": "0001",
+                "is_installed": 1,
+                "is_renting": 1,
+                "is_returning": 1,
+                "last_reported": 1659882170,
+                "num_bikes_available": 10,
+                "num_docks_available": 20
+            },
+            {
+                "station_id": "0003",
+                "is_installed": 1,
+                "is_renting": 1,
+                "is_returning": 1,
+                "last_reported": 1659882170,
+                "num_bikes_available": 10,
+                "num_docks_available": 20
+            },
+            {
+               "station_id": "0002",
+               "is_installed": 1,
+               "is_renting": 1,
+               "is_returning": 1,
+               "last_reported": 1659882170,
+               "num_bikes_available": 10,
+               "num_docks_available": 20
+           }
+        ]
     @property
     def stops_no_source(self) -> List:
         vname = 'bikes' if self.vtype == SharedMobilityVehicleType.Bicycle else 'cars'
@@ -1126,8 +1207,7 @@ class SharedMobilityFeed:
         feed = SharedMobilityFeed.open_json(url=self.feeds_url[feed_name])
         datas = feed['data']
         if feed_name != 'system_information':
-            items_name = next(
-                iter(datas.keys()))  # name of items is only key in datas (e.g. 'stations', 'vehicles', ...)
+            items_name = next(iter(datas.keys()))  # name of items is only key in datas (e.g. 'stations', 'vehicles', ...)
             return datas[items_name]
         else:
             return datas

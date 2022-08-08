@@ -36,7 +36,7 @@ from pyraptor.model.structures import (
     TimetableInfo,
     RouteInfo,
     SharedMobilityPhysicalStation,
-    SharedMobilityFeed, Routes, VEHICLE_SPEED, SharedMobilityTransfer
+    SharedMobilityFeed, Routes, VEHICLE_SPEED, SharedMobilityTransfer, SharedMobilityVehicleType
 )
 from pyraptor.util import mkdir_if_not_exists, str2sec, TRANSFER_COST, MEAN_FOOT_SPEED, MIN_DIST
 
@@ -667,7 +667,10 @@ def add_shared_mobility_to_pyraptor_timetable(timetable: Timetable, shared: str)
     feed_info = json.load(open(shared))
     feed = SharedMobilityFeed(feed_info['url'], feed_info['lang'])
 
-    logger.debug("Add stations and stops")
+    logger.debug("Add stations and shared-mobility-stops")
+
+    stops_start = len(timetable.stops)  # debugging
+    station_start = len(timetable.stations)  # debugging
 
     for s in feed.stops:
         s_name = s['name']
@@ -679,28 +682,37 @@ def add_shared_mobility_to_pyraptor_timetable(timetable: Timetable, shared: str)
         # stops for shared mobility
         stop = SharedMobilityPhysicalStation(s['station_id'], stop_id, station, platform_code, timetable.stops.last_index + 1,
                                             (s['lat'], s['lon']))
-        stop.capacity = s['capacity']  # TODO field on parameter
-        stop.vehicleType = feed.vtype  # TODO field on parameter
+        stop.capacity = s['capacity']  # TODO field on constructor
+        stop.vehicleType = feed.vtype  # TODO field on constructor
 
         station.add_stop(stop)
         timetable.stops.add(stop)
 
+    stops_end = len(timetable.stops)  # debugging
+    station_end = len(timetable.stations)  # debugging
+
+    logger.debug(f"Added {stops_end - stops_start} new shared mobility stops")
+    logger.debug(f"Added {station_end - station_start} new shared mobility stations")
+
     logger.debug("Add transfers")
+
+    transfers_start = len(timetable.transfers)  # debugging
 
     public = timetable.stops.public_transport_stop
     shared_mob = timetable.stops.shared_mobility_stop
 
     # TODO multiprocessor ?
-    for i, m in zip(range(len(shared_mob)), shared_mob):
+    for i, mob in zip(range(len(shared_mob)), shared_mob):
         if i % 25 == 0:
             logger.debug(f'Progress: {i * 100 / len(shared_mob):0.0f}% [stop #{i} of {len(shared_mob)}]')
-        for o in public:
-            dist = m.distance_from(o)
-            if dist < MIN_DIST:
-                transfer_time = int(dist * 3600 / MEAN_FOOT_SPEED)  # dist / speed --> time in hours, *3600 --> time in seconds
-                # add both A->B and B->A
-                timetable.transfers.add(Transfer(from_stop=m.id, to_stop=o.id, transfer_time=transfer_time))
-                timetable.transfers.add(Transfer(from_stop=o.id, to_stop=m.id, transfer_time=transfer_time))
+        for pub in public:
+            if mob.distance_from(pub) < MIN_DIST:
+                t_dir, t_opp = Transfer.get_transfer(mob, pub)
+                timetable.transfers.add(t_dir)
+                timetable.transfers.add(t_opp)
+
+    transfers_end = len(timetable.transfers)  # debugging
+    logger.debug(f"Added new {transfers_end-transfers_start} transfers between public and shared-mobility stops")
 
     return timetable
 
