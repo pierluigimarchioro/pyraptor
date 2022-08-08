@@ -1122,6 +1122,15 @@ class SharedMobilityFeed:
                 "capacity": 20
             },
             {
+                "station_id": "0002",
+                "name": "vicino a qt8", # 0.1444836699865555 km
+                "address": "vicino a qt8",
+                "rental_uris": {"android": "bikemi://stations/2318", "ios": "bikemi://stations/2318"},
+                "lat": 45.48713420653411,  # qt8: 45.48583420653411
+                "lon": 9.137517698940868,  # qt8: 9.137497698940868
+                "capacity": 20
+            },
+            {
                 "station_id": "0003",
                 "name": "vicino a via zurigo carrozzi",  # 0.22228137745786689 km
                 "address": "vicino a via zurigo carrozzi",
@@ -1131,12 +1140,21 @@ class SharedMobilityFeed:
                 "capacity": 20
             },
             {
-                "station_id": "0002",
-                "name": "vicino a qt8", # 0.1444836699865555 km
-                "address": "vicino a qt8",
+                "station_id": "0004",
+                "name": "vicino a BANDE NERE",  # 0.13336894165144514 km
+                "address": "vicino a BANDE NERE",
                 "rental_uris": {"android": "bikemi://stations/2318", "ios": "bikemi://stations/2318"},
-                "lat": 45.48713420653411,  # qt8: 45.48583420653411
-                "lon": 9.137517698940868,  # qt8: 9.137497698940868
+                "lat": 45.460304001042485,  # BANDE NERE: 45.461504001042485
+                "lon": 9.13648450790302,  # BANDE NERE: 9.13648450790302
+                "capacity": 20
+            },
+            {
+                "station_id": "0005",
+                "name": "vicino a WAGNER",  # 0.22228137745786689 km
+                "address": "vicino a WAGNER",
+                "rental_uris": {"android": "bikemi://stations/2318", "ios": "bikemi://stations/2318"},
+                "lat": 45.46495010104053,  # WAGNER: 45.46795010104053
+                "lon": 9.155914407896027,  # WAGNER: 9.155914407896027
                 "capacity": 20
             }
         ]
@@ -1155,6 +1173,15 @@ class SharedMobilityFeed:
                 "num_docks_available": 20
             },
             {
+               "station_id": "0002",
+               "is_installed": 1,
+               "is_renting": 1,
+               "is_returning": 1,
+               "last_reported": 1659882170,
+               "num_bikes_available": 10,
+               "num_docks_available": 20
+            },
+            {
                 "station_id": "0003",
                 "is_installed": 1,
                 "is_renting": 1,
@@ -1164,14 +1191,23 @@ class SharedMobilityFeed:
                 "num_docks_available": 20
             },
             {
-               "station_id": "0002",
-               "is_installed": 1,
-               "is_renting": 1,
-               "is_returning": 1,
-               "last_reported": 1659882170,
-               "num_bikes_available": 10,
-               "num_docks_available": 20
-           }
+                "station_id": "0004",
+                "is_installed": 1,
+                "is_renting": 1,
+                "is_returning": 1,
+                "last_reported": 1659882170,
+                "num_bikes_available": 10,
+                "num_docks_available": 20
+            },
+            {
+                "station_id": "0005",
+                "is_installed": 1,
+                "is_renting": 1,
+                "is_returning": 1,
+                "last_reported": 1659882170,
+                "num_bikes_available": 10,
+                "num_docks_available": 20
+            }
         ]
     @property
     def stops_no_source(self) -> List:
