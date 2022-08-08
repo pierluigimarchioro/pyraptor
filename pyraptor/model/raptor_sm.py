@@ -9,7 +9,7 @@ from copy import deepcopy
 from loguru import logger
 
 from pyraptor.dao.timetable import Timetable
-from pyraptor.model.structures import Stop, Trip, Route, Leg, Journey
+from pyraptor.model.structures import Stop, Trip, Route, Leg, Journey, SharedMobilityFeed
 from pyraptor.util import LARGE_NUMBER
 
 
@@ -38,11 +38,12 @@ class Label:
         return f"Label(earliest_arrival_time={self.earliest_arrival_time}, trip={self.trip}, from_stop={self.from_stop})"
 
 
-class RaptorAlgorithm:
-    """RAPTOR Algorithm"""
+class RaptorAlgorithmSharedMobility:
+    """RAPTOR Algorithm Shared Mobility"""
 
-    def __init__(self, timetable: Timetable):
+    def __init__(self, timetable: Timetable, shared_mob: SharedMobilityFeed):
         self.timetable = timetable
+        self.shared_mob = shared_mob
         self.bag_star = None
 
     def run(self, from_stops, dep_secs, rounds) -> Dict[int, Dict[Stop, Label]]:
