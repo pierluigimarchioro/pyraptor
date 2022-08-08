@@ -83,6 +83,11 @@ class OTPVisualizer:
             journey_stops.append(leg.to_stop)
         journey_stop_ids: List[str] = list(set([str(s.id) for s in journey_stops]))
 
+        #TODO for debug purpose only, need to be deleted
+        self._algo_output.journey.print()
+        # leg.from_stop.station.name
+        # check trips by from_Stop id and remove all not to_stop id
+
         gtfs_tables = io.read_gtfs_tables(self._algo_output.original_gtfs_dir)
 
         # Keep only the GTFS data related to the stops included in the journey
@@ -90,12 +95,10 @@ class OTPVisualizer:
         stops_table = gtfs_tables["stops"]
         stops_table["stop_id"] = stops_table["stop_id"].astype(str)
         itinerary_stops = stops_table[stops_table["stop_id"].isin(journey_stop_ids)]
-        itinerary_stops = itinerary_stops[itinerary_stops["stop_id"].isin(journey_stop_ids)] #TODO rows 92 and 93 are the same thing
 
         # Extract only the stop times of stops included in the journey
         deps_table = gtfs_tables["stop_times"]
         deps_table["stop_id"] = deps_table["stop_id"].astype(str)
-        deps_table["trip_id"] = deps_table["trip_id"].astype(str)
         itinerary_deps = deps_table[deps_table["stop_id"].isin(itinerary_stops["stop_id"])]
 
         # Extract only the stop times that are included in the journey time interval
@@ -114,14 +117,13 @@ class OTPVisualizer:
 
         stop_dep_times = itinerary_deps["departure_time"].apply(parse_stop_time)
         itinerary_deps = itinerary_deps[(dep_time <= stop_dep_times)] #& (stop_dep_times <= arriv_time)] #TODO wrong arriv_time
-
+        #TODO duplicated code?
         stop_arriv_times = itinerary_deps["arrival_time"].apply(parse_stop_time)
         itinerary_deps = itinerary_deps[(dep_time <= stop_arriv_times)] #& (stop_arriv_times <= arriv_time)] #TODO temporary solution
 
         # Get only trips included in the stop_times table
         trips_table = gtfs_tables["trips"]
         trips_table["trip_id"] = trips_table["trip_id"].astype(str)
-        trips_table["route_id"] = trips_table["route_id"].astype(str)
         itinerary_trips = trips_table[trips_table["trip_id"].isin(itinerary_deps["trip_id"])]
 
         # Get only the routes for the filtered trips
