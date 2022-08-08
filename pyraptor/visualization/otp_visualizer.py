@@ -16,6 +16,7 @@ from loguru import logger
 import pyraptor.gtfs.io as io
 
 from pyraptor.model.structures import AlgorithmOutput
+from pyraptor.util import sec2str
 
 
 # TODO generate (if not existing) files such as otp-config.json and build-config.json
@@ -83,7 +84,7 @@ class OTPVisualizer:
             journey_stops.append(leg.to_stop)
         journey_stop_ids: List[str] = list(set([str(s.id) for s in journey_stops]))
 
-        #TODO for debug purpose only, need to be deleted
+        #TODO for debug purpose only, need to be deleted, depart time is now correct, how to show only the right journey?
         self._algo_output.journey.print()
         # leg.from_stop.station.name
         # check trips by from_Stop id and remove all not to_stop id
@@ -103,8 +104,7 @@ class OTPVisualizer:
 
         # Extract only the stop times that are included in the journey time interval
         # i.e. journey departure time - journey arrival time
-        dep_time, arriv_time = self._get_journey_time_interval() #TODO arriv time is 12:28, it should be 12:30
-        #TODO assign the departure time of the first stop to dep_time
+        dep_time, arriv_time = self._get_journey_time_interval()
 
         def parse_stop_time(t: str) -> time:
             try:
@@ -116,10 +116,10 @@ class OTPVisualizer:
                 return time(hour=0, minute=0, second=0)
 
         stop_dep_times = itinerary_deps["departure_time"].apply(parse_stop_time)
-        itinerary_deps = itinerary_deps[(dep_time <= stop_dep_times)] #& (stop_dep_times <= arriv_time)] #TODO wrong arriv_time
-        #TODO duplicated code?
+        itinerary_deps = itinerary_deps[(dep_time <= stop_dep_times) & (stop_dep_times <= arriv_time)]
+
         stop_arriv_times = itinerary_deps["arrival_time"].apply(parse_stop_time)
-        itinerary_deps = itinerary_deps[(dep_time <= stop_arriv_times)] #& (stop_arriv_times <= arriv_time)] #TODO temporary solution
+        itinerary_deps = itinerary_deps[(dep_time <= stop_arriv_times) & (stop_arriv_times <= arriv_time)]
 
         # Get only trips included in the stop_times table
         trips_table = gtfs_tables["trips"]
@@ -223,7 +223,7 @@ class OTPVisualizer:
 
     def _get_departure_datetime(self) -> datetime:
         dep_date = self._algo_output.date
-        dep_time = self._algo_output.departure_time
+        dep_time = sec2str(self._algo_output.journey.legs[0].dep, True)
 
         return datetime.strptime(f"{dep_date} {dep_time}", "%Y%m%d %H:%M:%S")
 
