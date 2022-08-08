@@ -1,18 +1,15 @@
 """Run query with RAPTOR algorithm"""
-from __future__ import annotations
-
 import argparse
-import json
 from typing import Dict
 
 from loguru import logger
 
 from pyraptor.dao.timetable import read_timetable
-from pyraptor.model.structures import Journey, Station, Timetable, AlgorithmOutput, SharedMobilityFeed
-from pyraptor.model.raptor_sm import (
+from pyraptor.model.structures import Journey, Station, Timetable, AlgorithmOutput
+from pyraptor.model.raptor import (
+    RaptorAlgorithm,
     reconstruct_journey,
     best_stop_at_target_station,
-    RaptorAlgorithmSharedMob,
 )
 from pyraptor.util import str2sec
 
@@ -34,13 +31,6 @@ def parse_arguments():
         type=str,
         default="Hertogenbosch ('s)",
         help="Origin station of the journey",
-    )
-    parser.add_argument(
-        "-s",
-        "--shared",
-        type=str,
-        default="data/input/gbfs.json",
-        help="path to .json file specifying url and lang"
     )
     parser.add_argument(
         "-d",
@@ -72,22 +62,20 @@ def parse_arguments():
 
 
 def main(
-        input_folder: str,
-        shared: str,
-        origin_station: str,
-        destination_station: str,
-        departure_time: str,
-        rounds: int,
-        output_folder: str
+    input_folder: str,
+    origin_station: str,
+    destination_station: str,
+    departure_time: str,
+    rounds: int,
+    output_folder: str
 ):
     """Run RAPTOR algorithm"""
 
-    logger.debug("Input directory       : {}", input_folder)
-    logger.debug("Input shared-mobility : {}", shared)
-    logger.debug("Origin station        : {}", origin_station)
-    logger.debug("Destination station   : {}", destination_station)
-    logger.debug("Departure time        : {}", departure_time)
-    logger.debug("Rounds                : {}", str(rounds))
+    logger.debug("Input directory     : {}", input_folder)
+    logger.debug("Origin station      : {}", origin_station)
+    logger.debug("Destination station : {}", destination_station)
+    logger.debug("Departure time      : {}", departure_time)
+    logger.debug("Rounds              : {}", str(rounds))
 
     timetable = read_timetable(input_folder)
 
@@ -97,14 +85,9 @@ def main(
     dep_secs = str2sec(departure_time)
     logger.debug("Departure time (s.)  : " + str(dep_secs))
 
-    # Shared mobility data
-    feed_info = json.load(open(shared))
-    feed = SharedMobilityFeed(feed_info['url'], feed_info['lang'])
-
     # Find route between two stations
     journey_to_destinations = run_raptor(
         timetable,
-        feed,
         origin_station,
         dep_secs,
         rounds,
@@ -126,58 +109,49 @@ def main(
 
 
 def run_raptor(
-        timetable: Timetable,
-        shared_mobility: SharedMobilityFeed | None,
-        origin_station: str,
-        dep_secs: int,
-        rounds: int,
+    timetable: Timetable,
+    origin_station: str,
+    dep_secs: int,
+    rounds: int,
 ) -> Dict[Station, Journey]:
     """
     Run the Raptor algorithm.
-
-    :param shared_mobility:
     :param timetable: timetable
-    :param shared_mobility: feed is raptor consider shared mobility datas, None otherwise
     :param origin_station: Name of origin station
     :param dep_secs: Time of departure in seconds
     :param rounds: Number of iterations to perform
     """
 
     # Get stops for origin and all destinations
-    # try: TODO re-add try except
-    # from_stops: List[Stops]
-    from_stops = timetable.stations.get(origin_station).stops
-    # dest_stops: Mapping[Station.name, List[Stop]]
-    destination_stops = {
-        st.name: timetable.stations.get_stops(st.name) for st in timetable.stations
-    }
-    # origin station is removed
-    destination_stops.pop(origin_station, None)
+    try:
+        from_stops = timetable.stations.get(origin_station).stops
+        destination_stops = {
+            st.name: timetable.stations.get_stops(st.name) for st in timetable.stations
+        }
+        destination_stops.pop(origin_station, None)
 
-    # Run Round-Based Algorithm
-    raptor = RaptorAlgorithmSharedMob(timetable, shared_mobility)
-    bag_round_stop = raptor.run(from_stops, dep_secs, rounds)
-    best_labels = bag_round_stop[rounds]
+        # Run Round-Based Algorithm
+        raptor = RaptorAlgorithm(timetable)
+        bag_round_stop = raptor.run(from_stops, dep_secs, rounds)
+        best_labels = bag_round_stop[rounds]
 
-    # Determine the best journey to all possible destination stations
-    journey_to_destinations = dict()
-    for destination_station_name, to_stops in destination_stops.items():
-        dest_stop = best_stop_at_target_station(to_stops, best_labels)
-        if dest_stop != 0:
-            journey = reconstruct_journey(dest_stop, best_labels)
-            journey_to_destinations[destination_station_name] = journey
+        # Determine the best journey to all possible destination stations
+        journey_to_destinations = dict()
+        for destination_station_name, to_stops in destination_stops.items():
+            dest_stop = best_stop_at_target_station(to_stops, best_labels)
+            if dest_stop != 0:
+                journey = reconstruct_journey(dest_stop, best_labels)
+                journey_to_destinations[destination_station_name] = journey
 
-    return journey_to_destinations
-
-    # except Exception as ex: # TODO re-add try catch
-    #   logger.error(ex)
+        return journey_to_destinations
+    except Exception as ex:
+        logger.error(ex)
 
 
 if __name__ == "__main__":
     args = parse_arguments()
     main(
         input_folder=args.input,
-        shared=args.shared,
         origin_station=args.origin,
         destination_station=args.destination,
         departure_time=args.time,
