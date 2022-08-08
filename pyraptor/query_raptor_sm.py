@@ -1,13 +1,14 @@
 """Run query with RAPTOR algorithm"""
 import argparse
+import json
 from typing import Dict
 
 from loguru import logger
 
 from pyraptor.dao.timetable import read_timetable
-from pyraptor.model.structures import Journey, Station, Timetable, AlgorithmOutput
-from pyraptor.model.raptor import (
-    RaptorAlgorithm,
+from pyraptor.model.structures import Journey, Station, Timetable, AlgorithmOutput, SharedMobilityFeed
+from pyraptor.model.raptor_sm import (
+    RaptorAlgorithmSharedMobility,
     reconstruct_journey,
     best_stop_at_target_station,
 )
@@ -24,6 +25,13 @@ def parse_arguments():
         type=str,
         default="data/output",
         help="Input directory",
+    )
+    parser.add_argument(
+        "-s",
+        "--shared",
+        type=str,
+        default="data/input/gbfs.json",
+        help="path to .json file specifying url and lang",
     )
     parser.add_argument(
         "-or",
@@ -63,15 +71,17 @@ def parse_arguments():
 
 def main(
     input_folder: str,
+    shared: str,
     origin_station: str,
     destination_station: str,
     departure_time: str,
     rounds: int,
     output_folder: str
 ):
-    """Run RAPTOR algorithm"""
+    """Run RAPTOR-sm algorithm"""
 
     logger.debug("Input directory     : {}", input_folder)
+    logger.debug("Input shared-mob    : {}", shared)
     logger.debug("Origin station      : {}", origin_station)
     logger.debug("Destination station : {}", destination_station)
     logger.debug("Departure time      : {}", departure_time)
@@ -85,9 +95,14 @@ def main(
     dep_secs = str2sec(departure_time)
     logger.debug("Departure time (s.)  : " + str(dep_secs))
 
+    # Reading shared mobility feed
+    feed_info = json.load(open(shared))
+    feed = SharedMobilityFeed(feed_info['url'], feed_info['lang'])
+
     # Find route between two stations
     journey_to_destinations = run_raptor(
         timetable,
+        feed,
         origin_station,
         dep_secs,
         rounds,
@@ -110,6 +125,7 @@ def main(
 
 def run_raptor(
     timetable: Timetable,
+    feed: SharedMobilityFeed,
     origin_station: str,
     dep_secs: int,
     rounds: int,
@@ -117,6 +133,7 @@ def run_raptor(
     """
     Run the Raptor algorithm.
     :param timetable: timetable
+    :param shared_mobility: timetable
     :param origin_station: Name of origin station
     :param dep_secs: Time of departure in seconds
     :param rounds: Number of iterations to perform
@@ -131,7 +148,7 @@ def run_raptor(
         destination_stops.pop(origin_station, None)
 
         # Run Round-Based Algorithm
-        raptor = RaptorAlgorithm(timetable)
+        raptor = RaptorAlgorithmSharedMobility(timetable, feed)
         bag_round_stop = raptor.run(from_stops, dep_secs, rounds)
         best_labels = bag_round_stop[rounds]
 
@@ -152,6 +169,7 @@ if __name__ == "__main__":
     args = parse_arguments()
     main(
         input_folder=args.input,
+        shared=args.shared,
         origin_station=args.origin,
         destination_station=args.destination,
         departure_time=args.time,
