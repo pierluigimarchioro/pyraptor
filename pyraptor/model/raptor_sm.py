@@ -9,7 +9,8 @@ from copy import deepcopy
 from loguru import logger
 
 from pyraptor.dao.timetable import Timetable
-from pyraptor.model.structures import Stop, Trip, Route, Leg, Journey, SharedMobilityFeed
+from pyraptor.model.structures import Stop, Trip, Route, Leg, Journey, SharedMobilityFeed, SharedMobilityVehicleType, \
+    SharedMobilityPhysicalStation, SharedMobilityTransfer
 from pyraptor.util import LARGE_NUMBER
 
 
@@ -45,6 +46,37 @@ class RaptorAlgorithmSharedMobility:
         self.timetable = timetable
         self.shared_mob = shared_mob
         self.bag_star = None
+        self.vtype: SharedMobilityVehicleType = self.shared_mob.vtype
+        self.no_source: List[Stop] = []
+        self.no_dest: List[Stop] = []
+
+    def _update_stop_info(self):
+        """Updates object fields analyzing stops availability"""
+        self.no_source: List = self.shared_mob.stops_no_source
+        self.no_dest: List = self.shared_mob.stops_no_dest
+
+    def _add_shared_mob_transfer(self, stop_a: SharedMobilityPhysicalStation, stop_b: SharedMobilityPhysicalStation):
+        """ Given two stop add transfer to timetable depending on availability """
+
+        t_dir, t_opp = SharedMobilityTransfer.get_shared_mob_transfer(stop_a, stop_b, self.vtype)
+
+        if stop_a not in self.no_source and stop_b not in self.no_dest:
+            self.timetable.transfers.add(t_dir)
+
+        if stop_b not in self.no_source and stop_a not in self.no_dest:
+            self.timetable.transfers.add(t_opp)
+
+    def _append_shared_mob_stop(self, stop: SharedMobilityPhysicalStation,
+                                marked_shared: List[SharedMobilityPhysicalStation]) -> SharedMobilityPhysicalStation | None:
+        """ If stop is not already computed, all transfers between it and all others share-mob stops are added; stop is returned as output.
+            If stop was already computed, None is returned """
+        if stop not in marked_shared:  # skip stops already computed
+            for marked in marked_shared:
+                self._add_shared_mob_transfer(stop, marked)
+            marked_shared.append(stop)
+            return stop
+        else:
+            return None
 
     def run(self, from_stops, dep_secs, rounds) -> Dict[int, Dict[Stop, Label]]:
         """
