@@ -140,29 +140,28 @@ def run_raptor(
     """
 
     # Get stops for origin and all destinations
-    try:
-        from_stops = timetable.stations.get(origin_station).stops
-        destination_stops = {
-            st.name: timetable.stations.get_stops(st.name) for st in timetable.stations
-        }
-        destination_stops.pop(origin_station, None)
 
-        # Run Round-Based Algorithm
-        raptor = RaptorAlgorithmSharedMobility(timetable, feed)
-        bag_round_stop = raptor.run(from_stops, dep_secs, rounds)
-        best_labels = bag_round_stop[rounds]
+    from_stops = timetable.stations.get(origin_station).stops
+    destination_stops = {
+        st.name: timetable.stations.get_stops(st.name) for st in timetable.stations
+    }
+    destination_stops.pop(origin_station, None)
 
-        # Determine the best journey to all possible destination stations
-        journey_to_destinations = dict()
-        for destination_station_name, to_stops in destination_stops.items():
-            dest_stop = best_stop_at_target_station(to_stops, best_labels)
-            if dest_stop != 0:
-                journey = reconstruct_journey(dest_stop, best_labels)
-                journey_to_destinations[destination_station_name] = journey
+    # Run Round-Based Algorithm
+    raptor = RaptorAlgorithmSharedMobility(timetable, feed)
+    bag_round_stop = raptor.run(from_stops, dep_secs, rounds)
+    best_labels = bag_round_stop[rounds]
 
-        return journey_to_destinations
-    except Exception as ex:
-        logger.error(ex)
+    # Determine the best journey to all possible destination stations
+    journey_to_destinations = dict()
+    for destination_station_name, to_stops in destination_stops.items():
+        dest_stop = best_stop_at_target_station(to_stops, best_labels)
+        if dest_stop != 0:
+            journey = reconstruct_journey(dest_stop, best_labels)
+            journey_to_destinations[destination_station_name] = journey
+
+    return journey_to_destinations
+
 
 
 if __name__ == "__main__":
