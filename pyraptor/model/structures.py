@@ -3,8 +3,9 @@ from __future__ import annotations
 
 import os
 import uuid
+import json
 from abc import ABC, abstractmethod
-from collections.abc import Iterable
+from collections.abc import Iterable, Sequence
 from enum import Enum
 from itertools import compress
 from collections import defaultdict
@@ -767,6 +768,25 @@ class Leg:
 
 
 @dataclass(frozen=True)
+class LabelUpdate:
+    """
+    Class that represents all the necessary data to update a stop label
+    """
+
+    boarding_stop: Stop
+    """Stop at which the trip is boarded"""
+
+    arrival_stop: Stop
+    """Stop at which the trip is hopped off"""
+
+    old_trip: Trip
+    """Trip currently used to get from `boarding_stop` to `arrival_stop`"""
+
+    new_trip: Trip
+    """New trip to board to get from `boarding_stop` to `arrival_stop`"""
+
+
+@dataclass(frozen=True)
 class BaseLabel(ABC):
     """
     Abstract class representing the base characteristics that a RAPTOR label
@@ -781,9 +801,6 @@ class BaseLabel(ABC):
     https://www.microsoft.com/en-us/research/wp-content/uploads/2012/01/raptor_alenex.pdf
     """
 
-    earliest_arrival_time: int = LARGE_NUMBER
-    """Earliest time at which the trip is boarded"""
-
     trip: Trip | None = None
     """Trip to take to arrive at the destination stop at `earliest_arrival_time`"""
 
@@ -793,23 +810,12 @@ class BaseLabel(ABC):
     # TODO add field `to_stop`?
 
     @abstractmethod
-    def update(self, earliest_arrival_time: int = None, boarding_stop: Stop = None) -> BaseLabel:
+    def update(self, data: LabelUpdate) -> BaseLabel:
         """
         Returns a new label with updated attributes.
+        If the provided values are None, the corresponding attributes are not updated.
 
-        :param earliest_arrival_time: new time (in secs after midnight) that the trip is boarded at
-        :param boarding_stop: new stop at which the trip is boarded
-        :return: new updated label
-        """
-        pass
-
-    @abstractmethod
-    def update_trip(self, trip: Trip, boarding_stop: Stop) -> BaseLabel:
-        """
-        Returns a new label with updated trip-related attributes.
-
-        :param trip: new trip to board
-        :param boarding_stop: stop at which the new trip is boarded
+        :param data: label update data
         :return: new updated label
         """
         pass
@@ -834,29 +840,20 @@ class Label(BaseLabel):
     (https://www.microsoft.com/en-us/research/wp-content/uploads/2012/01/raptor_alenex.pdf).
     """
 
-    def update(self, earliest_arrival_time: int = None, boarding_stop: Stop = None) -> Label:
-        earliest_arrival_time = earliest_arrival_time if earliest_arrival_time is not None \
-            else self.earliest_arrival_time
-        boarding_stop = boarding_stop if boarding_stop is not None else self.boarding_stop
+    earliest_arrival_time: int = LARGE_NUMBER
+    """Earliest time to get to the destination stop by boarding the current trip"""
 
-        return copy(
-            Label(
-                earliest_arrival_time=earliest_arrival_time,
-                boarding_stop=boarding_stop,
-                trip=self.trip
-            )
-        )
+    def update(self, data: LabelUpdate) -> Label:
+        trip = data.new_trip if self.trip != data.new_trip else self.trip
+        boarding_stop = data.boarding_stop if data.boarding_stop is not None else self.boarding_stop
 
-    def update_trip(self, trip: Trip, boarding_stop: Stop) -> Label:
-        trip = trip if trip is not None else self.trip
-        boarding_stop = boarding_stop if boarding_stop is not None else self.boarding_stop
+        # Earliest arrival time to the arrival stop on the updated trip
+        earliest_arrival_time = trip.get_stop(data.arrival_stop).dts_arr
 
-        return copy(
-            Label(
-                earliest_arrival_time=self.earliest_arrival_time,
-                boarding_stop=boarding_stop,
-                trip=trip
-            )
+        return Label(
+            earliest_arrival_time=earliest_arrival_time,
+            boarding_stop=boarding_stop,
+            trip=trip
         )
 
     def is_dominating(self, other: Label) -> bool:
@@ -873,55 +870,114 @@ class Criterion(ABC):
     weight: float
     value: float
 
-    def __add__(self, other: object) -> Criterion:
+    @property
+    def cost(self) -> float:
+        return self.weight * self.value
+
+    def __add__(self, other: object) -> Criterion | float:
+        """
+        Returns the sum between two criteria, which is:
+        - a Criterion instance if the two objects are of type Criterion
+            and have the same name and weight;
+        - a float, which is the weighted sum of their values,
+            if the two objects are of type Criterion but have different names,
+            or if the other object is of type float (which is assumed to be a cost);
+        - an exception if the two objects are not of type Criterion or float
+            or if they have the same name but different weights
+        :param other: second addend of the sum operation
+        :return: Criterion or float instance
+        """
+
         if isinstance(other, Criterion):
-            if other.name != self.name or other.weight != self.weight:
-                raise Exception(f"Cannot add criteria with different characteristics (name, weight).\n"
-                                f"First addend: {self} - Second addend: {other}")
-            return Criterion(name=self.name, weight=self.weight, value=(self.value + other.value))
+            if other.name == self.name:
+                if other.weight != self.weight:
+                    raise Exception(f"Cannot add criteria with the same name but different weights.\n"
+                                    f"First addend: {self} - Second addend: {other}")
+                else:
+                    return Criterion(name=self.name, weight=self.weight, value=(self.value + other.value))
+            else:
+                return self.cost + other.cost
+        elif isinstance(other, float):
+            return self.cost + other
         else:
             raise TypeError(f"Cannot add type {Criterion.__name__} with type {other.__class__.__name__}.\n"
                             f"Second addend: {other}")
 
     @abstractmethod
-    def update(self, data: CriteriaUpdate) -> Criterion:
+    def update(self, data: LabelUpdate) -> Criterion:
         pass
 
 
 class DistanceCriteria(Criterion):
     """
-    Class that represents and handles calculations for the distance criteria
+    Class that represents and handles calculations for the distance criterion
     """
 
-    def update(self, data: CriteriaUpdate) -> DistanceCriteria:
+    def update(self, data: LabelUpdate) -> DistanceCriteria:
         raise NotImplementedError()
+
+    def get_additional_distance(self) -> float:
+        # TODO
+        return None
+
+
+class EmissionsCriteria(DistanceCriteria):
+    """
+    Class that represents and handles calculations for the co2 emissions criterion
+    """
+
+    def update(self, data: LabelUpdate) -> EmissionsCriteria:
+        co2_per_km: Dict[TransportType, float] = {
+
+        }
 
 
 class ArrivalTimeCriteria(Criterion):
     """
-    Class that represents and handles calculations for the arrival time criteria
+    Class that represents and handles calculations for the arrival time criterion
     """
 
-    def update(self, data: CriteriaUpdate) -> ArrivalTimeCriteria:
-        raise NotImplementedError()
+    # TODO arrival time should be a delta from the journey departure time,
+    #   reason being that the weight, this way, isn't excessively big and
+    #   it can be correctly standardized. Is this change actually needed though?
+    #   this means that LabelUpdate should contain that value too
+    def update(self, data: LabelUpdate) -> ArrivalTimeCriteria:
+        new_arrival_time = data.new_trip.get_stop(data.arrival_stop).dts_arr
 
-
-class EmissionsCriteria(Criterion):
-    """
-    Class that represents and handles calculations for the co2 emissions criteria
-    """
-
-    def update(self, data: CriteriaUpdate) -> EmissionsCriteria:
-        raise NotImplementedError()
+        # The value is the previously set arrival time
+        # Update only if new arrival time is better (less)
+        if new_arrival_time < self.value:
+            return ArrivalTimeCriteria(
+                name=self.name,
+                weight=self.weight,
+                value=new_arrival_time
+            )
+        else:
+            return copy(self)
 
 
 class TransfersNumberCriteria(Criterion):
     """
-    Class that represents and handles calculations for the number of transfers criteria
+    Class that represents and handles calculations for the number of transfers criterion
     """
 
-    def update(self, data: CriteriaUpdate) -> TransfersNumberCriteria:
-        raise NotImplementedError()
+    def update(self, data: LabelUpdate) -> TransfersNumberCriteria:
+        # The leg counter is updated only if the new trip isn't a transfer
+        # between stops of the same station
+        add_new_leg = data.new_trip != data.old_trip
+        if add_new_leg and isinstance(data.new_trip, TransferTrip):
+            # Transfer trips refer to movements between just two stops
+            from_stop = data.new_trip.stop_times[0].stop
+            to_stop = data.new_trip.stop_times[1].stop
+
+            if from_stop.station == to_stop.station:
+                add_new_leg = False
+
+        return TransfersNumberCriteria(
+            name=self.name,
+            weight=self.weight,
+            value=self.value if not add_new_leg else self.value + 1
+        )
 
 
 class CriteriaProvider:
@@ -941,7 +997,7 @@ class CriteriaProvider:
         self._criteria_config_path: str | bytes | os.PathLike = criteria_config_path
         self._criteria_weights: Dict[str, float] = {}
 
-    def get_criteria(self) -> Iterable[Criterion]:
+    def get_criteria(self) -> Sequence[Criterion]:
         """
         Returns a collection of criteria objects that are based on the name and weights provided
         in the configuration file.
@@ -968,35 +1024,8 @@ class CriteriaProvider:
         return criteria
 
     def _load_config(self):
-        # TODO read json
-        raise NotImplementedError()
-
-
-@dataclass(frozen=True)
-class CriteriaUpdate:
-    """
-    Class that represents all the necessary data to update a collection of criteria
-    """
-
-    # TODO this might not be necessary, since I think all the data about the stops/trip
-    #  can be obtained with the trip instance, because it provides access to route information and stop times
-    timetable: Timetable
-    """
-    Reference to the timetable used by the RAPTOR algorithm, 
-    which contains all the data about each stop, route, trip, etc.
-    """
-
-    boarding_stop: Stop
-    """Stop at which the trip is boarded"""
-
-    arrival_stop: Stop
-    """Stop at which the trip is hopped off"""
-
-    current_trip: Trip
-    """Trip currently used to get from `boarding_stop` to `arrival_stop`"""
-
-    new_trip: Trip
-    """New trip to board to get from `boarding_stop` to `arrival_stop`"""
+        with open(self._criteria_config_path) as f:
+            self._criteria_weights = json.load(f)
 
 
 @dataclass(frozen=True)
@@ -1009,73 +1038,43 @@ class MultiCriteriaLabel(BaseLabel):
     (https://www.microsoft.com/en-us/research/wp-content/uploads/2012/01/raptor_alenex.pdf)
     """
 
-    fare: float = 0.0  # total fare
-    n_trips: int = 0
-    infinite: bool = False
+    criteria: Sequence[Criterion] = field(default_factory=list)
+    """Collection of criteria used to compare labels"""
 
+    # TODO make it function that accepts argument `standardized: bool`
+    #   this way all the weights are on the same scale
+    #   and maybe just implement a standardized_cost abstract func in the Criterion class
+    #   should cost be standardized or scaled in the min-max range?
     @property
-    def criteria(self):
-        """Criteria"""
-        # TODO this is the multi-criteria part of the label:
-        #   most important is arrival time, then fare (where is fare info retrieved from?),
-        #   then, at last, number of trips necessary
-        return [self.earliest_arrival_time, self.fare, self.n_trips]
-
-    def update(self, earliest_arrival_time: int = None,
-               boarding_stop: Stop = None,
-               fare_addition: float = None) -> MultiCriteriaLabel:
+    def total_cost(self) -> float:
         """
-        Updates the current label with the provided earliest arrival time and fare_addition.
-        Returns the updated label.
-
-        :param earliest_arrival_time: new earliest arrival time
-        :param fare_addition: fare amount to add to the current value
-        :param boarding_stop: new stop at which the trip is boarded
-        :return: updated label
+        Returns the total cost assigned to the label, which corresponds to
+        the weighted sum of its criteria.
+        :return: float instance representing the total cost
         """
 
-        return copy(
-            MultiCriteriaLabel(
-                earliest_arrival_time=earliest_arrival_time
-                if earliest_arrival_time is not None
-                else self.earliest_arrival_time,
+        if len(self.criteria) == 0:
+            raise Exception("No criteria to calculate cost with")
 
-                fare=self.fare + fare_addition
-                if fare_addition is not None
-                else self.fare,
+        return sum(self.criteria, start=0.0)
 
-                trip=self.trip,
-                boarding_stop=boarding_stop if boarding_stop is not None else self.boarding_stop,
-                n_trips=self.n_trips,
-                infinite=self.infinite,
-            )
-        )
+    def update(self, data: LabelUpdate) -> MultiCriteriaLabel:
+        updated_criteria = []
+        for c in self.criteria:
+            updated_c = c.update(data=data)
+            updated_criteria.append(updated_c)
 
-    def update_trip(self, trip: Trip, boarding_stop: Stop) -> MultiCriteriaLabel:
-        # The leg counter is updated only if the new trip isn't a transfer
-        # between stops of the same station
-        add_new_leg = self.trip != trip
-        if add_new_leg and isinstance(trip, TransferTrip):
-            # Transfer trips refer to movements between just two stops
-            from_stop = trip.stop_times[0].stop
-            to_stop = trip.stop_times[1].stop
+        return MultiCriteriaLabel(
+            boarding_stop=data.boarding_stop if data.boarding_stop is not None else self.boarding_stop,
 
-            if from_stop.station == to_stop.station:
-                add_new_leg = False
+            # TODO is this the correct way of updating stop?
+            # boarding_stop=boarding_stop if self.trip != trip else self.boarding_stop,
 
-        return copy(
-            MultiCriteriaLabel(
-                earliest_arrival_time=self.earliest_arrival_time,
-                fare=self.fare,
-                trip=trip,
-                boarding_stop=boarding_stop if self.trip != trip else self.boarding_stop,
-                n_trips=self.n_trips + 1 if add_new_leg else self.n_trips,
-                infinite=self.infinite,
-            )
+            criteria=updated_criteria
         )
 
     def is_dominating(self, other: MultiCriteriaLabel) -> bool:
-        return self.criteria <= other.criteria
+        return self.total_cost <= other.total_cost
 
 
 @dataclass(frozen=True)
@@ -1113,10 +1112,6 @@ class Bag:
     def labels_with_trip(self):
         """All labels with trips, i.e. all labels that are reachable with a trip with given criterion"""
         return [lbl for lbl in self.labels if lbl.trip is not None]
-
-    def earliest_arrival(self) -> int:
-        """Earliest arrival"""
-        return min([self.labels[i].earliest_arrival_time for i in range(len(self))])
 
 
 @dataclass(frozen=True)
@@ -1293,7 +1288,7 @@ def pareto_set(labels: List[MultiCriteriaLabel], keep_equal=False):
     """
 
     is_efficient = np.ones(len(labels), dtype=bool)
-    labels_criteria = np.array([label.criteria for label in labels])
+    labels_criteria = np.array([label.total_cost for label in labels])
     for i, label in enumerate(labels_criteria):
         if is_efficient[i]:
             # Keep any point with a lower cost
