@@ -8,7 +8,7 @@ from copy import deepcopy
 from loguru import logger
 
 from pyraptor.dao.timetable import Timetable
-from pyraptor.model.structures import Stop, Route, Leg, Journey, TransferTrip, TransportType, Label
+from pyraptor.model.structures import Stop, Route, Leg, Journey, TransferTrip, TransportType, Label, LabelUpdate
 from pyraptor.util import LARGE_NUMBER
 
 
@@ -51,11 +51,10 @@ class RaptorAlgorithm:
         logger.debug(f"Starting from Stop IDs: {str(from_stops)}")
         marked_stops = []
         for from_stop in from_stops:
-            from_label = bag_round_stop[0][from_stop]
-            from_label = from_label.update(earliest_arrival_time=dep_secs, boarding_stop=None)
+            departure_label = Label(earliest_arrival_time=dep_secs)
 
-            bag_round_stop[0][from_stop] = from_label
-            self.bag_star[from_stop] = from_label
+            bag_round_stop[0][from_stop] = departure_label
+            self.bag_star[from_stop] = departure_label
 
             marked_stops.append(from_stop)
 
@@ -159,13 +158,15 @@ class RaptorAlgorithm:
                         #   t_star(p_i) = t_arr(t, pi)
 
                         current_label = bag_round_stop[k][current_stop]
-                        current_label = current_label.update(
-                            earliest_arrival_time=new_arrival_time,
-                            boarding_stop=boarding_stop
+
+                        update_data = LabelUpdate(
+                            boarding_stop=boarding_stop,
+                            arrival_stop=current_stop,
+                            old_trip=current_label.trip,
+                            new_trip=current_trip
                         )
-                        current_label = current_label.update_trip(
-                            trip=current_trip,
-                            boarding_stop=boarding_stop
+                        current_label = current_label.update(
+                            data=update_data
                         )
 
                         bag_round_stop[k][current_stop] = current_label
@@ -222,19 +223,19 @@ class RaptorAlgorithm:
             ]
 
             time_sofar = bag_round_stop[k][current_stop].earliest_arrival_time
-            for arrive_stop in other_station_stops:
+            for arrival_stop in other_station_stops:
                 arrival_time_with_transfer = time_sofar + self.get_transfer_time(
-                    current_stop, arrive_stop
+                    current_stop, arrival_stop
                 )
                 previous_earliest_arrival = self.bag_star[
-                    arrive_stop
+                    arrival_stop
                 ].earliest_arrival_time
 
                 # Domination criteria
                 if arrival_time_with_transfer < previous_earliest_arrival:
                     transfer_trip = TransferTrip(
                         from_stop=current_stop,
-                        to_stop=arrive_stop,
+                        to_stop=arrival_stop,
                         dep_time=time_sofar,
                         arr_time=arrival_time_with_transfer,
 
@@ -244,21 +245,24 @@ class RaptorAlgorithm:
                     )
 
                     # Update the label
-                    arrival_label = bag_round_stop[k][arrive_stop]
-                    arrival_label = arrival_label.update(
-                        earliest_arrival_time=arrival_time_with_transfer,
-                        boarding_stop=current_stop
+                    # TODO extract to a function that updaates both bags to avoid duplicate code
+                    arrival_label = bag_round_stop[k][arrival_stop]
+
+                    update_data = LabelUpdate(
+                        boarding_stop=current_stop,
+                        arrival_stop=arrival_stop,
+                        old_trip=arrival_label.trip,
+                        new_trip=transfer_trip
                     )
-                    arrival_label = arrival_label.update_trip(
-                        trip=transfer_trip,
-                        boarding_stop=current_stop
+                    arrival_label = arrival_label.update(
+                        data=update_data
                     )
 
                     # Assign the updated label to the bags
-                    bag_round_stop[k][arrive_stop] = arrival_label
-                    self.bag_star[arrive_stop] = arrival_label
+                    bag_round_stop[k][arrival_stop] = arrival_label
+                    self.bag_star[arrival_stop] = arrival_label
 
-                    new_stops.append(arrive_stop)
+                    new_stops.append(arrival_stop)
 
         return bag_round_stop, new_stops
 
