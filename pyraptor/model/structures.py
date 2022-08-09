@@ -291,6 +291,7 @@ class TransportType(Enum):
     Walk = 9001
     Bike = 9002
     Car = 9003
+    ElectricBike = 9004
 
     # The following values match the integer codes defined for the `route_type` field at
     # https://developers.google.com/transit/gtfs/reference#routestxt
@@ -873,7 +874,18 @@ class Criterion(ABC):
 
     @property
     def cost(self) -> float:
-        return self.weight * self.value
+        """
+        Returns the weighted cost of this criterion
+        The value is based on... TODO
+        :return:
+        """
+        if self.value > self.upper_bound:
+            # TODO is this correct way to enforce upper bound and make the algo discard a label?
+            #   another idea is to add a boolean field that allows to check this info
+            #   the check that the value is > upper_bound should be done in the constructor
+            return LARGE_NUMBER
+        else:
+            return self.weight * (self.value / self.upper_bound)  # lower bound is always 0
 
     def __add__(self, other: object) -> Criterion | float:
         """
@@ -884,18 +896,25 @@ class Criterion(ABC):
             if the two objects are of type Criterion but have different names,
             or if the other object is of type float (which is assumed to be a cost);
         - an exception if the two objects are not of type Criterion or float
-            or if they have the same name but different weights
+            or if they have the same name but differ in the other characteristics
+            (weight, upper bound)
         :param other: second addend of the sum operation
         :return: Criterion or float instance
         """
 
         if isinstance(other, Criterion):
             if other.name == self.name:
-                if other.weight != self.weight:
-                    raise Exception(f"Cannot add criteria with the same name but different weights.\n"
+                if other.weight != self.weight or other.upper_bound != self.upper_bound:
+                    raise Exception(f"Cannot add criteria with the same name but different characteristics"
+                                    f"(weight, upper bound).\n"
                                     f"First addend: {self} - Second addend: {other}")
                 else:
-                    return Criterion(name=self.name, weight=self.weight, value=(self.value + other.value))
+                    return Criterion(
+                        name=self.name,
+                        weight=self.weight,
+                        value=(self.value + other.value),
+                        upper_bound=self.upper_bound
+                    )
             else:
                 return self.cost + other.cost
         elif isinstance(other, float):
@@ -915,7 +934,14 @@ class DistanceCriteria(Criterion):
     """
 
     def update(self, data: LabelUpdate) -> DistanceCriteria:
-        raise NotImplementedError()
+        additional_distance = self.get_additional_distance()
+
+        return DistanceCriteria(
+            name=self.name,
+            weight=self.weight,
+            value=(self.value + additional_distance),
+            upper_bound=self.upper_bound
+        )
 
     def get_additional_distance(self) -> float:
         # TODO
@@ -928,9 +954,48 @@ class EmissionsCriteria(DistanceCriteria):
     """
 
     def update(self, data: LabelUpdate) -> EmissionsCriteria:
-        co2_per_km: Dict[TransportType, float] = {
+        # Sources (values expressed in co2 grams/passenger km):
+        # - https://ourworldindata.org/travel-carbon-footprint
+        # - Ferry https://www.thrustcarbon.com/insights/how-to-calculate-emissions-from-a-ferry-journey
+        # - Electric Bike https://www.bosch-ebike.com/us/service/sustainability
+        co2_grams_per_passenger_km: Dict[TransportType, float] = {
+            TransportType.Walk: 0,
+            TransportType.Bike: 0,
+            TransportType.ElectricBike: 14,
+            TransportType.Car: (192 + 172) / 2,  # Avg between petrol and diesel
 
+            # It is assumed that all rail vehicles have the same impact,
+            # since, even if different sources point to different numbers,
+            # the average emissions per passenger km between the different
+            # rail transports are approximately equal
+            TransportType.Rail: 41,
+            TransportType.LightRail: 35,
+
+            # Monorail and cable cars are all assumed to have
+            # the same impact of light rail transport, since they are
+            # all usually electrically powered (couldn't find specific data)
+            TransportType.Monorail: 35,
+            TransportType.CableTram: 35,
+            TransportType.Funicular: 35,
+            TransportType.AerialLift: 35,
+            TransportType.Metro: 31,
+
+            # Since trolleybus are very similar to trams, except they have wheels,
+            # it is assumed that their emissions are equal. I couldn't find
+            # recent data about trolleybus co2 emissions per passenger/km
+            TransportType.TrolleyBus: 35,
+            TransportType.Bus: 105,
         }
+
+        additional_distance = self.get_additional_distance()
+        co2_multiplier = co2_grams_per_passenger_km[data.new_trip.route_info.transport_type]
+
+        return EmissionsCriteria(
+            name=self.name,
+            weight=self.weight,
+            value=(self.value + additional_distance*co2_multiplier),
+            upper_bound=self.upper_bound
+        )
 
 
 class ArrivalTimeCriteria(Criterion):
@@ -938,10 +1003,6 @@ class ArrivalTimeCriteria(Criterion):
     Class that represents and handles calculations for the arrival time criterion
     """
 
-    # TODO arrival time should be a delta from the journey departure time,
-    #   reason being that the weight, this way, isn't excessively big and
-    #   it can be correctly standardized. Is this change actually needed though?
-    #   this means that LabelUpdate should contain that value too
     def update(self, data: LabelUpdate) -> ArrivalTimeCriteria:
         new_arrival_time = data.new_trip.get_stop(data.arrival_stop).dts_arr
 
@@ -951,7 +1012,8 @@ class ArrivalTimeCriteria(Criterion):
             return ArrivalTimeCriteria(
                 name=self.name,
                 weight=self.weight,
-                value=new_arrival_time
+                value=new_arrival_time,
+                upper_bound=self.upper_bound
             )
         else:
             return copy(self)
@@ -977,7 +1039,8 @@ class TransfersNumberCriteria(Criterion):
         return TransfersNumberCriteria(
             name=self.name,
             weight=self.weight,
-            value=self.value if not add_new_leg else self.value + 1
+            value=self.value if not add_new_leg else self.value + 1,
+            upper_bound=self.upper_bound
         )
 
 
