@@ -7,10 +7,11 @@ from dataclasses import dataclass
 from copy import deepcopy
 
 from loguru import logger
+from numpy import argmin
 
 from pyraptor.dao.timetable import Timetable
 from pyraptor.model.structures import Stop, Trip, Route, Leg, Journey, SharedMobilityFeed, SharedMobilityVehicleType, \
-    SharedMobilityPhysicalStation, SharedMobilityTransfer
+    SharedMobilityPhysicalStation, SharedMobilityTransfer, Transfer
 from pyraptor.util import LARGE_NUMBER
 
 
@@ -67,16 +68,34 @@ class RaptorAlgorithmSharedMobility:
             self.timetable.transfers.add(t_opp)
 
     def _append_shared_mob_stop(self, stop: SharedMobilityPhysicalStation,
-                                marked_shared: List[SharedMobilityPhysicalStation]) -> SharedMobilityPhysicalStation | None:
+                                shared_mob_stops: List[SharedMobilityPhysicalStation]) -> SharedMobilityPhysicalStation | None:
         """ If stop is not already computed, all transfers between it and all others share-mob stops are added; stop is returned as output.
             If stop was already computed, None is returned """
-        if stop not in marked_shared:  # skip stops already computed
-            for marked in marked_shared:
+        if stop not in shared_mob_stops:  # skip stops already computed
+            for marked in shared_mob_stops:
                 self._add_shared_mob_transfer(stop, marked)
-            marked_shared.append(stop)
+            shared_mob_stops.append(stop)
             return stop
         else:
             return None
+
+    def _get_immediate_transferable(self, from_stops: List[Stop]) -> Dict[Stop, Transfer]:
+
+        # immediate_transfers: transfers starting from_stop
+        immediate_transfers: List[Transfer] = [t for t in self.timetable.transfers if
+                                                t.from_stop in from_stops]
+
+        # immediate_to_stop_time: dictionary keyed by all reachable stops, values are lists of associated transfers
+        earliest_transfer: Dict[Stop, List[Transfer] | Transfer] = \
+            {s: [t for t in immediate_transfers if t.to_stop == s]
+             for s in set([t.to_stop for t in immediate_transfers])}
+
+        # selecting earliest transfer
+        for stop, transfers in earliest_transfer.items():
+            min_idx = argmin([t.transfer_time for t in transfers])  # index of minimum transfer time
+            earliest_transfer[stop] = transfers[min_idx]
+
+        return earliest_transfer
 
     def run(self, from_stops, dep_secs, rounds) -> Dict[int, Dict[Stop, Label]]:
         """
@@ -86,6 +105,12 @@ class RaptorAlgorithmSharedMobility:
         :param rounds: total number of rounds to execute
         :return:
         """
+
+        # Downloading information about shared-mob stops availability
+        self._update_stop_info()
+        logger.debug(f"Shared mobility vehicle: {self.vtype.value}")
+        logger.debug(f"No {len(self.no_source)} shared-mob stops available as source: {self.no_source} ")
+        logger.debug(f"No {len(self.no_dest)} shared-mob stops available as destination: {self.no_dest} ")
 
         # Initialize empty bag of labels, i.e. B_k(p) = Label() for every k and p
         # Dictionary is keyed by round and contains another dictionary, where, for each stop, there
@@ -107,11 +132,38 @@ class RaptorAlgorithmSharedMobility:
         # Initialize bags with starting stops taking dep_secs to reach
         # Remember that dep_secs is the departure_time expressed in seconds
         logger.debug(f"Starting from Stop IDs: {str(from_stops)}")
-        marked_stops = []
+        marked_stops: List[Stop] = []
+        shared_mob_stops_known: List[SharedMobilityPhysicalStation] = []  # contains all known shared-mob stops
         for from_stop in from_stops:
             bag_round_stop[0][from_stop].update(dep_secs, None, None)
             self.bag_star[from_stop].update(dep_secs, None, None)
             marked_stops.append(from_stop)
+            # Adding to know shared-mob if present in starting stops
+            if isinstance(from_stop, SharedMobilityPhysicalStation):
+                self._append_shared_mob_stop(from_stop, shared_mob_stops_known)
+
+        s1 = len(marked_stops) # debugging
+        sm1 = len(shared_mob_stops_known) # debugging
+        logger.debug(f"Starting from {s1} stops ({sm1} are shared-mob)")
+
+        # IMMEDIATE TRANSFERS: adding to initial stops transferable stops
+
+        # immediate_transfers: transfers starting from_stop
+
+        immediate = self._get_immediate_transferable(marked_stops)
+
+        for stop, t in immediate.items():
+            if stop not in marked_stops: # avoid re-add already existings stops
+                bag_round_stop[0][stop].update(dep_secs + t.transfer_time, None, t.from_stop)  # TODO: which trip?
+                self.bag_star[stop].update(dep_secs + t.transfer_time, None, t.from_stop)  # TODO: which trip?
+                marked_stops.append(stop)
+                # check if it is also a share-mob stop
+                if isinstance(stop, SharedMobilityPhysicalStation):
+                    self._append_shared_mob_stop(stop, shared_mob_stops_known)
+
+        s2 = len(marked_stops)  # debugging
+        sm2 = len(shared_mob_stops_known)  # debugging
+        logger.debug(f"Added {s2-s1} immediate stops, ({sm2-sm1} are shared-mob)")
 
         # Run rounds
         for k in range(1, rounds + 1):
@@ -139,7 +191,59 @@ class RaptorAlgorithmSharedMobility:
             )
             logger.debug(f"{len(marked_transfer_stops)} transferable stops added")
 
-            marked_stops = set(marked_trip_stops).union(marked_transfer_stops)
+            print('here breakpoint')
+
+            """
+            Part 4
+            In marked_transfer_stops there are possible SharedMobility Stations:
+            we know we can reach a public stop with a trip and then a close share-mob stop with a transfer
+            Those stops are filtered            
+            """
+            # filtering:
+            shared_mob_reached_with_trips: List[SharedMobilityPhysicalStation] = [s for s in marked_transfer_stops if isinstance(s, SharedMobilityPhysicalStation)]
+            logger.debug(f"{len(shared_mob_reached_with_trips)} shared-mob stops reachable ")
+
+            # if new, adding to know shared mob stops list; also new transfers are added
+            t1 = len(self.timetable.transfers)  # debugging
+            shared_mob_reached_with_trips: List[SharedMobilityPhysicalStation] = \
+                [s_ for s_ in [self._append_shared_mob_stop(s, shared_mob_stops_known)
+                               for s in shared_mob_reached_with_trips] if s_ is not None]
+            t2 = len(self.timetable.transfers)  # debugging
+            logger.debug(f"New {len(shared_mob_reached_with_trips)} shared-mob stops reachable ")
+            logger.debug(f"New {t2 - t1} shared-mob transfers created")
+
+            """
+            Know we need to update all transfers time in sub-shared mobility network:
+                - just SharedMobilityTransfers
+                - just Transfers which to_stop is in shared_mob_reached_with_trips
+                - 
+            """
+            # List of share-mob transfers arriving to reachable share-mob stops
+            transfers_sub: List[SharedMobilityTransfer] = \
+                [t for t in self.timetable.transfers
+                if isinstance(t, SharedMobilityTransfer) and t.to_stop in shared_mob_reached_with_trips]
+            # List of shared-mob stops starting from a transfer_sub
+            shared_mob_stops_known_sub: List[SharedMobilityPhysicalStation] = \
+                list(set([t.from_stop for t in transfers_sub]))
+
+            """
+            Know we add these transfers
+            """
+            bag_round_stop, shared_mob_reached_with_trips_improved = self.add_transfer_time(
+                bag_round_stop, k, shared_mob_stops_known_sub, transfers_sub
+            )
+            logger.debug(f"{len(shared_mob_reached_with_trips_improved)} transferable share-mob stops upgraded")
+
+            """
+            Part 5
+            Know we have some share-mob stop updated, so starting from these we update all transferable public stops
+            """
+            bag_round_stop, marked_shared_mob_stops = self.add_transfer_time(
+                bag_round_stop, k, shared_mob_reached_with_trips_improved
+            )
+            logger.debug(f"{len(marked_shared_mob_stops)} using shared-mobility stops upgraded")
+
+            marked_stops = set(marked_trip_stops).union(marked_transfer_stops, marked_shared_mob_stops)
             logger.debug(f"{len(marked_stops)} stops to evaluate in next round")
 
         return bag_round_stop
@@ -249,12 +353,14 @@ class RaptorAlgorithmSharedMobility:
             bag_round_stop: Dict[int, Dict[Stop, Label]],
             k: int,
             marked_stops: List[Stop],
+            transfer_sub: List[Transfer] | None = None
     ) -> Tuple:
         """
         Add transfers between platforms.
         :param bag_round_stop: Label per round per stop
         :param k: current round
         :param marked_stops: list of marked stops for evaluation
+        :param transfer_sub: used for reduce transfer sample
         """
 
         new_stops = []
@@ -263,8 +369,10 @@ class RaptorAlgorithmSharedMobility:
         for current_stop in marked_stops:
             # Note: transfers are transitive, which means that for each reachable stops (a, b) there
             # is transfer (a, b) as well as (b, a)
+
+            transfers = self.timetable.transfers if transfer_sub is None else transfer_sub
             other_station_stops = [
-                t.to_stop for t in self.timetable.transfers if t.from_stop == current_stop
+                t.to_stop for t in transfers if t.from_stop == current_stop
             ]
 
             time_sofar = bag_round_stop[k][current_stop].earliest_arrival_time
