@@ -11,7 +11,7 @@ from numpy import argmin
 
 from pyraptor.dao.timetable import Timetable
 from pyraptor.model.structures import Stop, Trip, Route, Leg, Journey, SharedMobilityFeed, SharedMobilityVehicleType, \
-    SharedMobilityPhysicalStation, SharedMobilityTransfer, Transfer
+    PhysicalRentingStation, VehicleTransfer, Transfer, Stops
 from pyraptor.util import LARGE_NUMBER
 
 
@@ -43,63 +43,64 @@ class Label:
 class RaptorAlgorithmSharedMobility:
     """RAPTOR Algorithm Shared Mobility"""
 
-    def __init__(self, timetable: Timetable, shared_mob: SharedMobilityFeed):
-        self.timetable = timetable
-        self.shared_mob = shared_mob
-        self.bag_star = None
-        self.vtype: SharedMobilityVehicleType = self.shared_mob.vtype
-        self.no_source: List[Stop] = []
-        self.no_dest: List[Stop] = []
+    def __init__(self, timetable: Timetable, shared_mobility_feed: SharedMobilityFeed):
+        self.timetable: Timetable = timetable
+        self.shared_mobility_feed: SharedMobilityFeed = shared_mobility_feed
+        self.bag_star: Dict[int, Dict[Stop, Label]] | None = None
+        self.no_source: List[PhysicalRentingStation] = []  # list of renting station not available as source
+        self.no_dest: List[PhysicalRentingStation] = []  # list of renting station not available as destination
 
     def _update_stop_info(self):
-        """Updates object fields analyzing stops availability"""
-        self.no_source: List = self.shared_mob.stops_no_source
-        self.no_dest: List = self.shared_mob.stops_no_dest
+        """ Updates stops availability based on real-time query """
+        self.no_source: List[PhysicalRentingStation] = [self.timetable.stops.set_idx[s_id] for s_id in
+                                                        self.shared_mobility_feed.renting_station_no_source]
+        self.no_dest: List[PhysicalRentingStation] = [self.timetable.stops.set_idx[s_id] for s_id in
+                                                      self.shared_mobility_feed.renting_station_no_dest]
 
-    def _add_shared_mob_transfer(self, stop_a: SharedMobilityPhysicalStation, stop_b: SharedMobilityPhysicalStation):
+    def _add_shared_mob_transfer(self, stop_a: PhysicalRentingStation, stop_b: PhysicalRentingStation):
         """ Given two stop add transfer to timetable depending on availability """
 
-        t_dir, t_opp = SharedMobilityTransfer.get_shared_mob_transfer(stop_a, stop_b, self.vtype)
+        t_out, t_in = VehicleTransfer.get_vehicle_transfer(stop_a, stop_b, self.shared_mobility_feed.vtype)
 
         if stop_a not in self.no_source and stop_b not in self.no_dest:
-            self.timetable.transfers.add(t_dir)
+            self.timetable.transfers.add(t_out)
 
         if stop_b not in self.no_source and stop_a not in self.no_dest:
-            self.timetable.transfers.add(t_opp)
+            self.timetable.transfers.add(t_in)
 
-    def _append_shared_mob_stop(self, stop: SharedMobilityPhysicalStation,
-                                shared_mob_stops: List[SharedMobilityPhysicalStation]) -> SharedMobilityPhysicalStation | None:
-        """ If stop is not already computed, all transfers between it and all others share-mob stops are added; stop is returned as output.
-            If stop was already computed, None is returned """
+    def _append_shared_mob_stop(self, stop: PhysicalRentingStation,
+                                shared_mob_stops: List[PhysicalRentingStation]) -> PhysicalRentingStation | None:
+        """ Adds a renting station to a list if it is not part of it
+            *   If added, all vehicle-transfers between it and all others renting stations are added; stop is returned as output.
+            *   Otherwise None is returned """
         if stop not in shared_mob_stops:  # skip stops already computed
             for marked in shared_mob_stops:
                 self._add_shared_mob_transfer(stop, marked)
             shared_mob_stops.append(stop)
             return stop
-        else:
-            return None
 
     def _get_immediate_transferable(self, from_stops: List[Stop]) -> Dict[Stop, Transfer]:
+        """ Given a list of stops returns all transferable stops associated with transfer.
+            If multiple transfers to a destination are available, the earliest one is chosen """
 
-        # immediate_transfers: transfers starting from_stop
-        immediate_transfers: List[Transfer] = [t for t in self.timetable.transfers if
-                                                t.from_stop in from_stops]
+        # List of immediate transfers (starting from from_stops)
+        immediate_transfers: List[Transfer] = [t for t in self.timetable.transfers if t.from_stop in from_stops]
 
-        # immediate_to_stop_time: dictionary keyed by all reachable stops, values are lists of associated transfers
+        # Dictionary {reachable stop : list of transfers to reach it}
         earliest_transfer: Dict[Stop, List[Transfer] | Transfer] = \
             {s: [t for t in immediate_transfers if t.to_stop == s]
              for s in set([t.to_stop for t in immediate_transfers])}
 
-        # selecting earliest transfer
+        # Identifying the earliest transfer from the list
         for stop, transfers in earliest_transfer.items():
-            min_idx = argmin([t.transfer_time for t in transfers])  # index of minimum transfer time
+            min_idx = argmin([t.transfer_time for t in transfers])  # index of the earliest transfer time
             earliest_transfer[stop] = transfers[min_idx]
 
         return earliest_transfer
 
     def run(self, from_stops, dep_secs, rounds) -> Dict[int, Dict[Stop, Label]]:
         """
-        Run Round-Based Algorithm
+        Run Round-Based Algorithm with 2 optimization for shared-mobility integration
         :param from_stops: collection of stops to depart from
         :param dep_secs: departure time in seconds from midnight
         :param rounds: total number of rounds to execute
@@ -108,7 +109,7 @@ class RaptorAlgorithmSharedMobility:
 
         # Downloading information about shared-mob stops availability
         self._update_stop_info()
-        logger.debug(f"Shared mobility vehicle: {self.vtype.value}")
+        logger.debug(f"Shared mobility vehicle: {self.shared_mobility_feed.vtype.value}")
         logger.debug(f"No {len(self.no_source)} shared-mob stops available as source: {self.no_source} ")
         logger.debug(f"No {len(self.no_dest)} shared-mob stops available as destination: {self.no_dest} ")
 
@@ -133,37 +134,33 @@ class RaptorAlgorithmSharedMobility:
         # Remember that dep_secs is the departure_time expressed in seconds
         logger.debug(f"Starting from Stop IDs: {str(from_stops)}")
         marked_stops: List[Stop] = []
-        shared_mob_stops_known: List[SharedMobilityPhysicalStation] = []  # contains all known shared-mob stops
+        renting_stations_known: List[PhysicalRentingStation] = []
         for from_stop in from_stops:
             bag_round_stop[0][from_stop].update(dep_secs, None, None)
             self.bag_star[from_stop].update(dep_secs, None, None)
             marked_stops.append(from_stop)
-            # Adding to know shared-mob if present in starting stops
-            if isinstance(from_stop, SharedMobilityPhysicalStation):
-                self._append_shared_mob_stop(from_stop, shared_mob_stops_known)
+            # If renting station, adding to known shared-mob
+            if isinstance(from_stop, PhysicalRentingStation):
+                self._append_shared_mob_stop(from_stop, renting_stations_known)
 
-        s1 = len(marked_stops) # debugging
-        sm1 = len(shared_mob_stops_known) # debugging
-        logger.debug(f"Starting from {s1} stops ({sm1} are shared-mob)")
+        s1, sm1 = len(marked_stops), len(renting_stations_known)  # debugging
+        logger.debug(f"Starting from {s1} stops ({sm1} are renting stations)")
 
-        # IMMEDIATE TRANSFERS: adding to initial stops transferable stops
+        # Adding to initial stops immediately transferable stops
 
-        # immediate_transfers: transfers starting from_stop
-
-        immediate = self._get_immediate_transferable(marked_stops)
+        immediate: Dict[Stop, Transfer] = self._get_immediate_transferable(marked_stops)
 
         for stop, t in immediate.items():
-            if stop not in marked_stops: # avoid re-add already existings stops
+            if stop not in marked_stops:  # skipping already marked stops
                 bag_round_stop[0][stop].update(dep_secs + t.transfer_time, None, t.from_stop)  # TODO: which trip?
                 self.bag_star[stop].update(dep_secs + t.transfer_time, None, t.from_stop)  # TODO: which trip?
                 marked_stops.append(stop)
-                # check if it is also a share-mob stop
-                if isinstance(stop, SharedMobilityPhysicalStation):
-                    self._append_shared_mob_stop(stop, shared_mob_stops_known)
+                # If renting station, adding to known shared-mob
+                if isinstance(stop, PhysicalRentingStation):
+                    self._append_shared_mob_stop(stop, renting_stations_known)
 
-        s2 = len(marked_stops)  # debugging
-        sm2 = len(shared_mob_stops_known)  # debugging
-        logger.debug(f"Added {s2-s1} immediate stops, ({sm2-sm1} are shared-mob)")
+        s2, sm2 = len(marked_stops), len(renting_stations_known)  # debugging
+        logger.debug(f"Added {s2 - s1} immediate stops, ({sm2 - sm1} are renting stations)")
 
         # Run rounds
         for k in range(1, rounds + 1):
@@ -191,43 +188,50 @@ class RaptorAlgorithmSharedMobility:
             )
             logger.debug(f"{len(marked_transfer_stops)} transferable stops added")
 
-            print('here breakpoint')
-
             """
             Part 4
-            In marked_transfer_stops there are possible SharedMobility Stations:
-            we know we can reach a public stop with a trip and then a close share-mob stop with a transfer
-            Those stops are filtered            
+            There may be some renting station in  `marked_transfer_stops`: indeed we can reach a public stop with a trip
+            and then use a foot-path (a transfer) and walk to a renting station
+            
+            We filter these renting station in `renting_station_from_trip`            
             """
-            # filtering:
-            shared_mob_reached_with_trips: List[SharedMobilityPhysicalStation] = [s for s in marked_transfer_stops if isinstance(s, SharedMobilityPhysicalStation)]
-            logger.debug(f"{len(shared_mob_reached_with_trips)} shared-mob stops reachable ")
 
-            # if new, adding to know shared mob stops list; also new transfers are added
+            renting_station_from_trip: List[PhysicalRentingStation] = Stops.filter_shared_mobility(
+                marked_transfer_stops)
+            logger.debug(f"{len(renting_station_from_trip)} renting stations reachable ")
+
+            """
+            These renting stations are added to known ones,
+            We also add all VehicleTransfer from old and new renting station (according to availability)
+            """
             t1 = len(self.timetable.transfers)  # debugging
-            shared_mob_reached_with_trips: List[SharedMobilityPhysicalStation] = \
-                [s_ for s_ in [self._append_shared_mob_stop(s, shared_mob_stops_known)
-                               for s in shared_mob_reached_with_trips] if s_ is not None]
+            # Following operation:
+            # - add all new reachable renting station to known-list
+            # - keeps only new renting stations, skipping already knows
+            renting_station_from_trip: List[PhysicalRentingStation] = \
+                [s_ for s_ in [self._append_shared_mob_stop(s, renting_stations_known)
+                               for s in renting_station_from_trip] if s_ is not None]
             t2 = len(self.timetable.transfers)  # debugging
-            logger.debug(f"New {len(shared_mob_reached_with_trips)} shared-mob stops reachable ")
+            logger.debug(f"New {len(renting_station_from_trip)} renting station reachable ")
             logger.debug(f"New {t2 - t1} shared-mob transfers created")
 
             """
-            Know we need to update all transfers time in sub-shared mobility network:
-                - just SharedMobilityTransfers
+            We can know try to improve the best arrival-time taking advantage of shared-mobility network:
+                
+            We consider only:
+                - transfers of a shared-mobility network, so VehicleTransfer
                 - just Transfers which to_stop is in shared_mob_reached_with_trips
                 - 
             """
-            # List of share-mob transfers arriving to reachable share-mob stops
-            transfers_sub: List[SharedMobilityTransfer] = \
-                [t for t in self.timetable.transfers
-                if isinstance(t, SharedMobilityTransfer) and t.to_stop in shared_mob_reached_with_trips]
-            # List of shared-mob stops starting from a transfer_sub
-            shared_mob_stops_known_sub: List[SharedMobilityPhysicalStation] = \
+            # List of vehicle transfers arriving to reachable renting stations
+            transfers_sub: List[VehicleTransfer] = \
+                [t for t in self.timetable.transfers.vehicle_transfers if t.to_stop in renting_station_from_trip]
+            # List of departing renting stations from previous filtered transfers
+            shared_mob_stops_known_sub: List[PhysicalRentingStation] = \
                 list(set([t.from_stop for t in transfers_sub]))
 
             """
-            Know we add these transfers
+            We can know compute transfer-time from these selected renting stations using only filtered transfers
             """
             bag_round_stop, shared_mob_reached_with_trips_improved = self.add_transfer_time(
                 bag_round_stop, k, shared_mob_stops_known_sub, transfers_sub
@@ -236,7 +240,9 @@ class RaptorAlgorithmSharedMobility:
 
             """
             Part 5
-            Know we have some share-mob stop updated, so starting from these we update all transferable public stops
+            `shared_mob_reached_with_trips_improved` contains all improved renting-station
+            These improvement must reflect to public-transport urban network, so we compute footh-path (Transfers)
+            between improved renting stations and associated transferable public stops
             """
             bag_round_stop, marked_shared_mob_stops = self.add_transfer_time(
                 bag_round_stop, k, shared_mob_reached_with_trips_improved

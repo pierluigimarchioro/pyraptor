@@ -3,22 +3,22 @@ from __future__ import annotations
 
 import argparse
 import calendar as cal
+import itertools
 import json
 import math
 import os
 import uuid
-import itertools
 from collections import defaultdict
 from collections.abc import Mapping
 from dataclasses import dataclass
 from datetime import datetime
-from typing import List, Iterable, Any, NamedTuple, Tuple, Callable
+from typing import List, Iterable, Any, NamedTuple, Tuple, Callable, Dict
 
 import numpy as np
 import pandas as pd
 import pathos.pools as p
-from pathos.helpers.pp_helper import ApplyResult
 from loguru import logger
+from pathos.helpers.pp_helper import ApplyResult
 
 from pyraptor.dao import write_timetable
 from pyraptor.model.structures import (
@@ -35,10 +35,11 @@ from pyraptor.model.structures import (
     Transfers,
     TimetableInfo,
     RouteInfo,
-    SharedMobilityPhysicalStation,
-    SharedMobilityFeed, Routes, VEHICLE_SPEED, SharedMobilityTransfer, SharedMobilityVehicleType
+    PhysicalRentingStation,
+    SharedMobilityFeed,
+    Routes
 )
-from pyraptor.util import mkdir_if_not_exists, str2sec, TRANSFER_COST, MEAN_FOOT_SPEED, MIN_DIST
+from pyraptor.util import mkdir_if_not_exists, str2sec, TRANSFER_COST, MIN_DIST
 
 
 @dataclass
@@ -97,7 +98,7 @@ def main(
 
     gtfs_timetable = read_gtfs_timetable(input_folder, departure_date, agencies)
     timetable = gtfs_to_pyraptor_timetable(gtfs_timetable, n_jobs)
-    if shared:  # if default empty string, no shared-mobility service is considered
+    if shared:  # if default empty string, no shared-mobility service is considered # TODO maybe study a better strategy ?
         timetable = add_shared_mobility_to_pyraptor_timetable(timetable, shared)
     timetable.counts()
 
@@ -615,6 +616,7 @@ def gtfs_to_pyraptor_timetable(
     for trip in trips:
         routes.add(trip)
 
+
     # Transfers
     logger.debug("Add transfers")
 
@@ -662,44 +664,43 @@ def gtfs_to_pyraptor_timetable(
 
 def add_shared_mobility_to_pyraptor_timetable(timetable: Timetable, shared: str):
 
-    logger.info("Adding mobility services datas")
+    logger.info("Adding shared mobility datas")
 
-    feed_info = json.load(open(shared))
-    feed = SharedMobilityFeed(feed_info['url'], feed_info['lang'])
+    feed_info: Dict = json.load(open(shared))
+    feed: SharedMobilityFeed = SharedMobilityFeed(feed_info['url'], feed_info['lang'])
 
-    logger.debug("Add stations and shared-mobility-stops")
+    logger.debug("Add stations and renting-stations")
 
-    stops_start = len(timetable.stops)  # debugging
-    station_start = len(timetable.stations)  # debugging
+    stations_1, stops_1 = len(timetable.stations), len(timetable.stops)  # debugging
 
-    for s in feed.stops:
+    for s in feed.renting_stations_info:
+
+        # Stations
         s_name = s['name']
         station = Station(s_name, s_name)
         station = timetable.stations.add(station)
 
+        # Renting Stations
         platform_code = -1
         stop_id = f"{s_name}-{platform_code}"
-        # stops for shared mobility
-        stop = SharedMobilityPhysicalStation(s['station_id'], stop_id, station, platform_code, timetable.stops.last_index + 1,
-                                            (s['lat'], s['lon']))
-        stop.capacity = s['capacity']  # TODO field on constructor
-        stop.vehicleType = feed.vtype  # TODO field on constructor
-
+        stop = PhysicalRentingStation(s['station_id'], stop_id, station, platform_code, timetable.stops.last_index + 1,
+                                      (s['lat'], s['lon']))
+        stop.capacity = s['capacity'] # TODO fields on constructor
+        stop.vehicleType = feed.vtype
         station.add_stop(stop)
         timetable.stops.add(stop)
 
-    stops_end = len(timetable.stops)  # debugging
-    station_end = len(timetable.stations)  # debugging
+    stations_2, stops_2 = len(timetable.stations), len(timetable.stops)  # debugging
 
-    logger.debug(f"Added {stops_end - stops_start} new shared mobility stops")
-    logger.debug(f"Added {station_end - station_start} new shared mobility stations")
+    logger.debug(f"Added {stations_2 - stations_1} new stations")
+    logger.debug(f"Added {stops_2 - stops_1} new renting stations")
 
-    logger.debug("Add transfers")
+    logger.debug("Add vehicle-transfers")
 
-    transfers_start = len(timetable.transfers)  # debugging
+    transfers_1 = len(timetable.transfers)  # debugging
 
     public = timetable.stops.public_transport_stop
-    shared_mob = timetable.stops.shared_mobility_stop
+    shared_mob = timetable.stops.shared_mobility_stops
 
     # TODO multiprocessor ?
     for i, mob in zip(range(len(shared_mob)), shared_mob):
@@ -707,12 +708,12 @@ def add_shared_mobility_to_pyraptor_timetable(timetable: Timetable, shared: str)
             logger.debug(f'Progress: {i * 100 / len(shared_mob):0.0f}% [stop #{i} of {len(shared_mob)}]')
         for pub in public:
             if mob.distance_from(pub) < MIN_DIST:
-                t_dir, t_opp = Transfer.get_transfer(mob, pub)
-                timetable.transfers.add(t_dir)
-                timetable.transfers.add(t_opp)
+                t_out, t_in = Transfer.get_transfer(mob, pub)
+                timetable.transfers.add(t_out)
+                timetable.transfers.add(t_in)
 
-    transfers_end = len(timetable.transfers)  # debugging
-    logger.debug(f"Added new {transfers_end-transfers_start} transfers between public and shared-mobility stops")
+    transfers_2 = len(timetable.transfers)  # debugging
+    logger.debug(f"Added new {transfers_2 - transfers_1} vehicle-transfers between public and shared-mobility stops")
 
     return timetable
 

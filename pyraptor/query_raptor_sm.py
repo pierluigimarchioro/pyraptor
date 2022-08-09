@@ -98,6 +98,7 @@ def main(
     # Reading shared mobility feed
     feed_info = json.load(open(shared))
     feed = SharedMobilityFeed(feed_info['url'], feed_info['lang'])
+    logger.debug(f"{feed.id_} feed got successfully")
 
     # Find route between two stations
     journey_to_destinations = run_raptor(

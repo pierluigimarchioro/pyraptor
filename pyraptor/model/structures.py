@@ -3,23 +3,21 @@ from __future__ import annotations
 
 import os
 import uuid
-from itertools import compress
 from collections import defaultdict
+from copy import copy
+from dataclasses import dataclass, field
+from enum import Enum
+from itertools import compress
+from json import loads
 from operator import attrgetter
 from pathlib import Path
-from typing import List, Dict, Tuple, Iterable, Mapping, overload
-from enum import Enum
-from dataclasses import dataclass, field
-from copy import copy
-from json import loads
+from typing import List, Dict, Tuple, Iterable, Mapping
 from urllib.request import urlopen
-
-from _distutils_hack import override
-from geopy.distance import geodesic
 
 import attr
 import joblib
 import numpy as np
+from geopy.distance import geodesic
 from loguru import logger
 
 from pyraptor.util import sec2str, mkdir_if_not_exists, get_transport_type_description, WALK_TRANSPORT_TYPE, \
@@ -87,11 +85,12 @@ class Stop:
         return f"Stop({self.name} [{self.id}])"
 
     @staticmethod
-    def stop_distance(a: Stop, b: Stop):
-        """Returns stop distance in km"""
+    def stop_distance(a: Stop, b: Stop) -> float:
+        """Returns stop distance as the crow flies in km"""
         return geodesic(a.geo, b.geo).km
 
-    def distance_from(self, s: Stop):
+    def distance_from(self, s: Stop) -> float:
+        """Returns stop distance as the crow flies in km"""
         return Stop.stop_distance(self, s)
 
 
@@ -139,11 +138,23 @@ class Stops:
 
     @property
     def public_transport_stop(self) -> List[Stop]:
-        return [s for s in self if not isinstance(s, SharedMobilityPhysicalStation)]
+        """ Returns its public stops  """
+        return self.filter_public_transport(self)
 
     @property
-    def shared_mobility_stop(self) -> List[SharedMobilityPhysicalStation]:
-        return [s for s in self if isinstance(s, SharedMobilityPhysicalStation)]
+    def shared_mobility_stops(self) -> List[PhysicalRentingStation]:
+        """ Returns its shared mobility stops  """
+        return self.filter_shared_mobility(self)
+
+    @staticmethod
+    def filter_public_transport(stops: Iterable[Stop]) -> List[Stop]:
+        """ Filter only Stop objects, not its subclasses  """
+        return [s for s in stops if type(s) == Stop]
+
+    @staticmethod
+    def filter_shared_mobility(stops: Iterable[Stop]) -> list[PhysicalRentingStation]:
+        """ Filter only subclasses of PhysicalRentingStation  """
+        return [s for s in stops if issubclass(type(s), PhysicalRentingStation)]
 
 
 @attr.s(repr=False, cmp=False)
@@ -538,13 +549,14 @@ class Transfer:
 
     @staticmethod
     def get_transfer(sa: Stop, sb: Stop) -> Tuple[Transfer, Transfer]:
-        dist = Stop.stop_distance(sa, sb)
-        time = int(dist * 3600 / MEAN_FOOT_SPEED)
+        """ Given two stops compute both inbound and outbound transfers
+            Transfer time is approximated dividing computed distance by a constant speed """
+        dist: float = Stop.stop_distance(sa, sb)
+        time: int = int(dist * 3600 / MEAN_FOOT_SPEED)
         return (
             Transfer(from_stop=sa, to_stop=sb, transfer_time=time),
             Transfer(from_stop=sb, to_stop=sa, transfer_time=time)
         )
-
 
 
 class Transfers:
@@ -574,22 +586,41 @@ class Transfers:
         self.stop_to_stop_idx[(transfer.from_stop, transfer.to_stop)] = transfer
         self.last_id += 1
 
-    def with_from_stop(self, from_) -> List[Transfer]:
-        """Returns all stops with given from_stop  """
-        from_list: List[Transfer] = [
+    def with_from_stop(self, from_: Stop) -> List[Transfer]:
+        """ Returns all transfers with given departing stop  """
+        return [
             self.stop_to_stop_idx[(f, t)] for f, t in self.stop_to_stop_idx.keys() if f == from_
         ]
-        return from_list
 
-    def with_to_stop(self, to) -> List[Transfer]:
-        """Returns all stops with given from_stop  """
-        from_list: List[Transfer] = [
+    def with_to_stop(self, to: Stop) -> List[Transfer]:
+        """ Returns all transfers with given arrival stop  """
+        return [
             self.stop_to_stop_idx[(f, t)] for f, t in self.stop_to_stop_idx.keys() if t == to
         ]
-        return from_list
 
     def with_stop(self, s) -> List[Transfer]:
+        """ Returns all transfers with given stop as departing or arrival  """
         return self.with_from_stop(s) + self.with_to_stop(s)
+
+    @property
+    def foot_transfers(self) -> List[Transfer]:
+        """ Returns its foot transfers  """
+        return self.filter_foot_transfer(self)
+
+    @property
+    def vehicle_transfers(self) -> List[VehicleTransfer]:
+        """ Returns its vehicle transfers """
+        return self.filter_vehicle_transfer(self)
+
+    @staticmethod
+    def filter_foot_transfer(transfers: Iterable[Transfer]) -> List[Transfer]:
+        """ Filter only Transfer objects, not its subclasses  """
+        return [t for t in transfers if type(t) == Transfer]
+
+    @staticmethod
+    def filter_vehicle_transfer(transfers: Iterable[Transfer]) -> list[VehicleTransfer]:
+        """ Filter only subclasses of VehicleTransfer  """
+        return [t for t in transfers if issubclass(type(t), VehicleTransfer)]
 
 
 @dataclass
@@ -1043,62 +1074,80 @@ class AlgorithmOutput(TimetableInfo):
         write_joblib(algo_output, _ALGO_OUTPUT_FILENAME)
 
 
-""" GBFS """
+""" Shared Mobility """
 
 
 class SharedMobilityVehicleType(Enum):
+    """
+    This class represent all type of available vehicles in shared mobility network
+    """
     Car = 'car'
     Bicycle = 'bicycle'
 
 
+# TODO it shuold be moved to utils.py, but it raises "circular import" issue
+""" This object maps each SharedMobilityVehicle to its default speed in km/h 
+    in the urban network as the crow flies """
 VEHICLE_SPEED: Mapping[SharedMobilityVehicleType, float] = {
-    SharedMobilityVehicleType.Bicycle: 100, # TODO 10,  # Default speed as the crow flies in km/h
-    SharedMobilityVehicleType.Car: 50  # Default speed as the crow flies in km/h
+    SharedMobilityVehicleType.Bicycle: 100,
+    SharedMobilityVehicleType.Car: 50
 }
 
-
-class SharedMobilityPhysicalStation(Stop):
+class PhysicalRentingStation(Stop):
+    """
+    This class represents a Physical Renting Station used for shared-mobility in the urban network
+    """
     capacity: int = attr.ib(default=0)
-    vehicleType: SharedMobilityVehicleType = attr.ib(default=None)  # type of vehicle rentable in the Station
+    vehicleType: SharedMobilityVehicleType = attr.ib(default=None)  # Type of vehicle rentable in the Station
 
 
 @attr.s
-class SharedMobilityTransfer(Transfer):
+class VehicleTransfer(Transfer):
+    """
+    This class represents a generic Transfer between two
+    """
+
     vehicle: SharedMobilityVehicleType = attr.ib(default=None)
 
+    # TODO can we override Transfer.get_vehicle? Even if it has just two parameters?
     @staticmethod
-    def get_shared_mob_transfer(sa: SharedMobilityPhysicalStation, sb: SharedMobilityPhysicalStation,
-                                vtype: SharedMobilityVehicleType, speed: float | None = None) \
-            -> Tuple[SharedMobilityTransfer, SharedMobilityTransfer]:
-        dist = Stop.stop_distance(sa, sb)
+    def get_vehicle_transfer(sa: PhysicalRentingStation, sb: PhysicalRentingStation,
+                            vtype: SharedMobilityVehicleType, speed: float | None = None) \
+            -> Tuple[VehicleTransfer, VehicleTransfer]:
+        """ Given two renting stations compute both inbound and outbound vehicle transfers
+            Transfer time is approximated dividing computed distance by vehicle constant speed """
+        dist: float = Stop.stop_distance(sa, sb)
         if speed is None:
-            speed = VEHICLE_SPEED[vtype]
-        time = int(dist * 3600 / speed)
+            speed: float = VEHICLE_SPEED[vtype]
+        time: int = int(dist * 3600 / speed)
         return (
-            SharedMobilityTransfer(from_stop=sa, to_stop=sb, transfer_time=time, vehicle=vtype),
-            SharedMobilityTransfer(from_stop=sb, to_stop=sa, transfer_time=time, vehicle=vtype)
+            VehicleTransfer(from_stop=sa, to_stop=sb, transfer_time=time, vehicle=vtype),
+            VehicleTransfer(from_stop=sb, to_stop=sa, transfer_time=time, vehicle=vtype)
         )
 
 
 class SharedMobilityFeed:
-    """GBFSFeed"""
+    """ This class represent a GBFS feed
+        All datas comes from gbfs.json (see https://github.com/NABSA/gbfs/blob/v2.3/gbfs.md#gbfsjson)"""
 
     def __init__(self, url: str,
                  lang: str = 'it'):
-        self.url: str = url
-        self.lang: str = lang
-        self.feeds_url: Mapping[str, str] = self._get_feeds_url()
-        self.id_: str = self._get_item_list(feed_name='system_information')['name']
-        self.vtype: SharedMobilityVehicleType = SharedMobilityVehicleType(next(iter(
-            self._get_item_list(feed_name='vehicle_types'))
+        self.url: str = url  # gbfs.json url
+        self.lang: str = lang  # lang of feed
+        self.feeds_url: Mapping[str, str] = self._get_feeds_url()  # mapping between feed_name and url
+        self.id_: str = self._get_items_list(feed_name='system_information')['name']  # feed id
+        self.vtype: SharedMobilityVehicleType = SharedMobilityVehicleType(next(iter( # stations vehicle type
+            self._get_items_list(feed_name='vehicle_types'))
         )['form_factor'])  # TODO type of first item; we consider all stations having only this vehicle type
 
     @property
     def feeds(self):
+        """ Name of feeds """
         return list(self.feeds_url.keys())
 
     @property
-    def stops(self) -> Iterable[Dict]:
+    def renting_stations_info(self) -> Iterable[Dict]:
+        """ Returns renting-stations informations """
         # return self._get_item_list(feed_name='station_information') TODO uncomment after debugging
         return [
             {
@@ -1106,13 +1155,13 @@ class SharedMobilityFeed:
                 "name": "vicino a bisceglie",  # 0.22228137745786689 km
                 "address": "vicino a bisceglie",
                 "rental_uris": {"android": "bikemi://stations/2318", "ios": "bikemi://stations/2318"},
-                "lat": 45.45699253002271, # bisceglie: 45.45499253002271
-                "lon": 9.112666222940224, # bisceglie: 9.112677333940224
+                "lat": 45.45699253002271,  # bisceglie: 45.45499253002271
+                "lon": 9.112666222940224,  # bisceglie: 9.112677333940224
                 "capacity": 20
             },
             {
                 "station_id": "0002",
-                "name": "vicino a qt8", # 0.1444836699865555 km
+                "name": "vicino a qt8",  # 0.1444836699865555 km
                 "address": "vicino a qt8",
                 "rental_uris": {"android": "bikemi://stations/2318", "ios": "bikemi://stations/2318"},
                 "lat": 45.48713420653411,  # qt8: 45.48583420653411
@@ -1149,8 +1198,9 @@ class SharedMobilityFeed:
         ]
 
     @property
-    def stops_info(self) -> Iterable[Dict]:
-        #return self._get_item_list(feed_name='station_status') TODO uncomment after debugging
+    def renting_stations_status(self) -> Iterable[Dict]:
+        """ Returns renting-stations status """
+        # return self._get_item_list(feed_name='station_status') TODO uncomment after debugging
         return [
             {
                 "station_id": "0001",
@@ -1159,16 +1209,16 @@ class SharedMobilityFeed:
                 "is_returning": 1,
                 "last_reported": 1659882170,
                 "num_bikes_available": 10,
-                "num_docks_available": 20
+                "num_docks_available": 10
             },
             {
-               "station_id": "0002",
-               "is_installed": 1,
-               "is_renting": 1,
-               "is_returning": 1,
-               "last_reported": 1659882170,
-               "num_bikes_available": 10,
-               "num_docks_available": 20
+                "station_id": "0002",
+                "is_installed": 1,
+                "is_renting": 1,
+                "is_returning": 1,
+                "last_reported": 1659882170,
+                "num_bikes_available": 10,
+                "num_docks_available": 0
             },
             {
                 "station_id": "0003",
@@ -1177,7 +1227,7 @@ class SharedMobilityFeed:
                 "is_returning": 1,
                 "last_reported": 1659882170,
                 "num_bikes_available": 10,
-                "num_docks_available": 20
+                "num_docks_available": 10
             },
             {
                 "station_id": "0004",
@@ -1186,7 +1236,7 @@ class SharedMobilityFeed:
                 "is_returning": 1,
                 "last_reported": 1659882170,
                 "num_bikes_available": 10,
-                "num_docks_available": 20
+                "num_docks_available": 10
             },
             {
                 "station_id": "0005",
@@ -1195,38 +1245,44 @@ class SharedMobilityFeed:
                 "is_returning": 1,
                 "last_reported": 1659882170,
                 "num_bikes_available": 10,
-                "num_docks_available": 20
+                "num_docks_available": 10
             }
         ]
+
     @property
-    def stops_no_source(self) -> List:
-        vname = 'bikes' if self.vtype == SharedMobilityVehicleType.Bicycle else 'cars'
-        not_source = [s['station_id'] for s in self.stops_info if not (
+    def renting_station_no_source(self) -> List[PhysicalRentingStation]:
+        """ Returns list of renting-stations not available as source """
+        # TODO probably this operation won't work for all GBFS
+        # TODO study num_{vechicle_name}_available standard
+        vname: str = 'bikes' if self.vtype == SharedMobilityVehicleType.Bicycle else 'cars'
+        return [s['station_id'] for s in self.renting_stations_status if not (
                 s['is_installed'] == 1 and
                 s['is_renting'] == 1 and
                 s[f'num_{vname}_available'] > 0
         )]
-        return not_source
 
     @property
-    def stops_no_dest(self) -> List:
-        not_source = [s['station_id'] for s in self.stops_info if not (
+    def renting_station_no_dest(self) -> List[PhysicalRentingStation]:
+        """ Returns list of renting-stations not available as destination """
+        return [s['station_id'] for s in self.renting_stations_status if not (
                 s['is_renting'] == 1 and
                 s[f'num_docks_available'] > 0
         )]
-        return not_source
 
     @staticmethod
-    def open_json(url: str) -> Mapping[str, Dict]:
+    def open_json(url: str) -> Dict:
+        """ Reads json from url """
         return loads(urlopen(url=url).read())
 
-    def _get_feeds_url(self):
-        info = SharedMobilityFeed.open_json(url=self.url)
-        feeds = info['data'][self.lang]['feeds']  # list of feed items
-        feed_url = {feed['name']: feed['url'] for feed in feeds}
+    def _get_feeds_url(self) -> Mapping[str, str]:
+        """ Returns dictionary keyed by feed name and mapped to associated feed url"""
+        info: Dict = SharedMobilityFeed.open_json(url=self.url)
+        feeds: List[Dict] = info['data'][self.lang]['feeds']  # list of feed items
+        feed_url: Dict[str, str] = {feed['name']: feed['url'] for feed in feeds}
         return feed_url
 
-    def _get_item_list(self, feed_name: str):
+    def _get_items_list(self, feed_name: str):
+        """ Returns items list of given feed """
         if feed_name not in self.feeds:
             raise Exception(f"{feed_name} not in {self.feeds}")
         feed = SharedMobilityFeed.open_json(url=self.feeds_url[feed_name])
@@ -1235,4 +1291,4 @@ class SharedMobilityFeed:
             items_name = next(iter(datas.keys()))  # name of items is only key in datas (e.g. 'stations', 'vehicles', ...)
             return datas[items_name]
         else:
-            return datas
+            return datas # in system_information datas is an items list
