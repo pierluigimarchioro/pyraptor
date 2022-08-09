@@ -22,6 +22,11 @@ from loguru import logger
 from pyraptor.util import sec2str, mkdir_if_not_exists, LARGE_NUMBER
 
 
+# TODO split module in different smalleer modules:
+#   - timetable.py with Stop, Trip, Route and Transfer related classes + same_type_and_id() func
+#   - criteria.py with Label and Criteria related classes + pareto_set() func
+#   - output.py with Leg, Journey and AlgorithmOutput
+
 def same_type_and_id(first, second):
     """
     Returns true if `first` and `second` have the same type and `id` attribute
@@ -435,6 +440,7 @@ class TransferTrip(Trip):
         :param arr_time: arrival time in seconds past midnight
         :param transport_type: type of the transport that the transfer is carried out with
         """
+
         transfer_route = TransferRouteInfo(transport_type=transport_type)
         super(TransferTrip, self).__init__(id_=f"Transfer Trip - {uuid.uuid4()}",
                                            long_name=f"Transfer from {from_stop.name} to {to_stop.name}",
@@ -768,7 +774,7 @@ class BaseLabel(ABC):
     labels.
 
     Generally speaking, each label contains the trip with which one arrives at the label's associated stop
-    with k legs by boarding the trip at `from_stop`. It also contains the criteria with which each
+    with k legs by boarding the trip at the boarding stop. It also contains the criteria with which each
     stop is evaluated by the algorithm.
 
     Reference (RAPTOR paper):
@@ -779,10 +785,12 @@ class BaseLabel(ABC):
     """Earliest time at which the trip is boarded"""
 
     trip: Trip | None = None
-    """Trip to take to obtain earliest_arrival_time"""
+    """Trip to take to arrive at the destination stop at `earliest_arrival_time`"""
 
     boarding_stop: Stop = None
-    """Stop at which we hop-on trip with trip"""
+    """Stop at which the trip is boarded"""
+
+    # TODO add field `to_stop`?
 
     @abstractmethod
     def update(self, earliest_arrival_time: int = None, boarding_stop: Stop = None) -> BaseLabel:
@@ -857,6 +865,138 @@ class Label(BaseLabel):
     def __repr__(self) -> str:
         return f"{Label.__name__}(earliest_arrival_time={self.earliest_arrival_time}, " \
                f"trip={self.trip}, boarding_stop={self.boarding_stop})"
+
+
+@dataclass(frozen=True)
+class Criterion(ABC):
+    name: str
+    weight: float
+    value: float
+
+    def __add__(self, other: object) -> Criterion:
+        if isinstance(other, Criterion):
+            if other.name != self.name or other.weight != self.weight:
+                raise Exception(f"Cannot add criteria with different characteristics (name, weight).\n"
+                                f"First addend: {self} - Second addend: {other}")
+            return Criterion(name=self.name, weight=self.weight, value=(self.value + other.value))
+        else:
+            raise TypeError(f"Cannot add type {Criterion.__name__} with type {other.__class__.__name__}.\n"
+                            f"Second addend: {other}")
+
+    @abstractmethod
+    def update(self, data: CriteriaUpdate) -> Criterion:
+        pass
+
+
+class DistanceCriteria(Criterion):
+    """
+    Class that represents and handles calculations for the distance criteria
+    """
+
+    def update(self, data: CriteriaUpdate) -> DistanceCriteria:
+        raise NotImplementedError()
+
+
+class ArrivalTimeCriteria(Criterion):
+    """
+    Class that represents and handles calculations for the arrival time criteria
+    """
+
+    def update(self, data: CriteriaUpdate) -> ArrivalTimeCriteria:
+        raise NotImplementedError()
+
+
+class EmissionsCriteria(Criterion):
+    """
+    Class that represents and handles calculations for the co2 emissions criteria
+    """
+
+    def update(self, data: CriteriaUpdate) -> EmissionsCriteria:
+        raise NotImplementedError()
+
+
+class TransfersNumberCriteria(Criterion):
+    """
+    Class that represents and handles calculations for the number of transfers criteria
+    """
+
+    def update(self, data: CriteriaUpdate) -> TransfersNumberCriteria:
+        raise NotImplementedError()
+
+
+class CriteriaProvider:
+    """
+    Class that provides parsing functionality for the criteria configuration file.
+
+    Such file is a JSON format where keys represent criteria names and
+    values represent criteria weights.
+    """
+
+    def __init__(self, criteria_config_path: str | bytes | os.PathLike):
+        """
+        :param criteria_config_path: path to the criteria configuration file,
+            containing the weights of each supported criteria
+        """
+
+        self._criteria_config_path: str | bytes | os.PathLike = criteria_config_path
+        self._criteria_weights: Dict[str, float] = {}
+
+    def get_criteria(self) -> Iterable[Criterion]:
+        """
+        Returns a collection of criteria objects that are based on the name and weights provided
+        in the configuration file.
+        :return: iterable of criteria objects
+        """
+
+        # Load criteria only if necessary
+        if len(self._criteria_weights) == 0:
+            self._load_config()
+
+        # Pair criteria names with their constructor
+        criteria_factory = {
+            "distance": DistanceCriteria,
+            "arrival_time": ArrivalTimeCriteria,
+            "co2": EmissionsCriteria,
+            "transfers": TransfersNumberCriteria,
+        }
+
+        criteria = []
+        for name, weight in self._criteria_weights.items():
+            c = criteria_factory[name](name=name, weight=weight, value=0)
+            criteria.append(c)
+
+        return criteria
+
+    def _load_config(self):
+        # TODO read json
+        raise NotImplementedError()
+
+
+@dataclass(frozen=True)
+class CriteriaUpdate:
+    """
+    Class that represents all the necessary data to update a collection of criteria
+    """
+
+    # TODO this might not be necessary, since I think all the data about the stops/trip
+    #  can be obtained with the trip instance, because it provides access to route information and stop times
+    timetable: Timetable
+    """
+    Reference to the timetable used by the RAPTOR algorithm, 
+    which contains all the data about each stop, route, trip, etc.
+    """
+
+    boarding_stop: Stop
+    """Stop at which the trip is boarded"""
+
+    arrival_stop: Stop
+    """Stop at which the trip is hopped off"""
+
+    current_trip: Trip
+    """Trip currently used to get from `boarding_stop` to `arrival_stop`"""
+
+    new_trip: Trip
+    """New trip to board to get from `boarding_stop` to `arrival_stop`"""
 
 
 @dataclass(frozen=True)
@@ -1179,9 +1319,6 @@ def pareto_set(labels: List[MultiCriteriaLabel], keep_equal=False):
     return list(compress(labels, is_efficient))
 
 
-_ALGO_OUTPUT_FILENAME = "algo-output"
-
-
 @dataclass
 class AlgorithmOutput(TimetableInfo):
     """
@@ -1190,6 +1327,8 @@ class AlgorithmOutput(TimetableInfo):
     and the path to the directory of the GTFS feed originally used to build the timetable
     provided to the algorithm.
     """
+
+    _DEFAULT_FILENAME = "algo-output"
 
     # Best journey found by the algorithm
     journey: Journey = None
@@ -1236,4 +1375,4 @@ class AlgorithmOutput(TimetableInfo):
         logger.info(f"Writing PyRaptor output to {output_dir}")
 
         mkdir_if_not_exists(output_dir)
-        write_joblib(algo_output, _ALGO_OUTPUT_FILENAME)
+        write_joblib(algo_output, AlgorithmOutput._DEFAULT_FILENAME)
