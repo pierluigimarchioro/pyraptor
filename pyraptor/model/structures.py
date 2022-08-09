@@ -574,17 +574,6 @@ class Transfers:
         self.stop_to_stop_idx[(transfer.from_stop, transfer.to_stop)] = transfer
         self.last_id += 1
 
-    def remove(self, transfer: Transfer):
-        """Remove transfer"""
-        del (self.set_idx[transfer.id])
-
-        to_del = []
-        for from_, to in self.stop_to_stop_idx.keys():
-            if from_ == transfer.from_stop or to == transfer.to_stop:
-                to_del.append((from_, to))
-        for d in to_del:
-            del(self.stop_to_stop_idx[d])
-
     def with_from_stop(self, from_) -> List[Transfer]:
         """Returns all stops with given from_stop  """
         from_list: List[Transfer] = [
@@ -1063,7 +1052,7 @@ class SharedMobilityVehicleType(Enum):
 
 
 VEHICLE_SPEED: Mapping[SharedMobilityVehicleType, float] = {
-    SharedMobilityVehicleType.Bicycle: 10,  # Default speed as the crow flies in km/h
+    SharedMobilityVehicleType.Bicycle: 100, # TODO 10,  # Default speed as the crow flies in km/h
     SharedMobilityVehicleType.Car: 50  # Default speed as the crow flies in km/h
 }
 
@@ -1086,8 +1075,8 @@ class SharedMobilityTransfer(Transfer):
             speed = VEHICLE_SPEED[vtype]
         time = int(dist * 3600 / speed)
         return (
-            SharedMobilityTransfer(from_stop=sa.id, to_stop=sb.id, transfer_time=time, vehicle=vtype),
-            SharedMobilityTransfer(from_stop=sb.id, to_stop=sa.id, transfer_time=time, vehicle=vtype)
+            SharedMobilityTransfer(from_stop=sa, to_stop=sb, transfer_time=time, vehicle=vtype),
+            SharedMobilityTransfer(from_stop=sb, to_stop=sa, transfer_time=time, vehicle=vtype)
         )
 
 
