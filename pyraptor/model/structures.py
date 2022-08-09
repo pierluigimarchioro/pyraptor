@@ -869,6 +869,7 @@ class Criterion(ABC):
     name: str
     weight: float
     value: float
+    upper_bound: float
 
     @property
     def cost(self) -> float:
@@ -995,7 +996,7 @@ class CriteriaProvider:
         """
 
         self._criteria_config_path: str | bytes | os.PathLike = criteria_config_path
-        self._criteria_weights: Dict[str, float] = {}
+        self._criteria_config: Dict[str, Dict[str, float]] = {}
 
     def get_criteria(self) -> Sequence[Criterion]:
         """
@@ -1005,7 +1006,7 @@ class CriteriaProvider:
         """
 
         # Load criteria only if necessary
-        if len(self._criteria_weights) == 0:
+        if len(self._criteria_config) == 0:
             self._load_config()
 
         # Pair criteria names with their constructor
@@ -1017,15 +1018,18 @@ class CriteriaProvider:
         }
 
         criteria = []
-        for name, weight in self._criteria_weights.items():
-            c = criteria_factory[name](name=name, weight=weight, value=0)
+        for name, criteria_info in self._criteria_config.items():
+            weight = criteria_info["weight"]
+            upper_bound = criteria_info["max"]
+            c = criteria_factory[name](name=name, weight=weight, value=0, upper_bound=upper_bound)
+
             criteria.append(c)
 
         return criteria
 
     def _load_config(self):
         with open(self._criteria_config_path) as f:
-            self._criteria_weights = json.load(f)
+            self._criteria_config = json.load(f)
 
 
 @dataclass(frozen=True)
