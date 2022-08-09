@@ -520,9 +520,9 @@ class Routes:
 class Transfer:
     """Transfer"""
 
-    id = attr.ib(default=None)
-    from_stop = attr.ib(default=None)
-    to_stop = attr.ib(default=None)
+    id: str | None = attr.ib(default=None)
+    from_stop: Stop | None = attr.ib(default=None)
+    to_stop: Stop | None = attr.ib(default=None)
 
     # Time in seconds that the transfer takes to complete
     transfer_time = attr.ib(default=300)
@@ -541,8 +541,8 @@ class Transfer:
         dist = Stop.stop_distance(sa, sb)
         time = int(dist * 3600 / MEAN_FOOT_SPEED)
         return (
-            Transfer(from_stop=sa.id, to_stop=sb.id, transfer_time=time),
-            Transfer(from_stop=sb.id, to_stop=sa.id, transfer_time=time)
+            Transfer(from_stop=sa, to_stop=sb, transfer_time=time),
+            Transfer(from_stop=sb, to_stop=sa, transfer_time=time)
         )
 
 
