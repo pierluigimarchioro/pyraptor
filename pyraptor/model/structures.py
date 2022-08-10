@@ -331,7 +331,6 @@ class Trip:
     @staticmethod
     def get_transfer_trip(from_stop: Stop, to_stop: Stop, dep_time: int,
                           arr_time: int, vtype: TransferType = None) -> Trip:
-
         transfer_route = RouteInfo.get_transfer_route(vtype)
 
         transfer_trip = Trip(
@@ -1080,6 +1079,7 @@ class AlgorithmOutput(TimetableInfo):
 
 """ Shared Mobility """
 
+
 class PhysicalRentingStation(Stop):
     """
     This class represents a Physical Renting Station used for shared-mobility in the urban network
@@ -1096,7 +1096,7 @@ class VehicleTransfer(Transfer):
 
     vtype: TransferType = attr.ib(default=None)
 
-    # TODO can we override Transfer.get_vehicle? Even if it has just two parameters?
+    # TODO can we override Transfer.get_vehicle?
     @staticmethod
     def get_vehicle_transfer(sa: PhysicalRentingStation, sb: PhysicalRentingStation,
                              vtype: TransferType, speed: float | None = None) \
@@ -1123,7 +1123,7 @@ class SharedMobilityFeed:
         self.lang: str = lang  # lang of feed
         self.feeds_url: Mapping[str, str] = self._get_feeds_url()  # mapping between feed_name and url
         self.id_: str = self._get_items_list(feed_name='system_information')['name']  # feed id
-        self.vtype: TransferType = TransferType(next(iter( # stations vtype type
+        self.vtype: TransferType = TransferType(next(iter(  # stations vtype type
             self._get_items_list(feed_name='vehicle_types'))
         )['form_factor'])  # TODO type of first item; we consider all stations having only this vtype type
 
@@ -1135,106 +1135,12 @@ class SharedMobilityFeed:
     @property
     def renting_stations_info(self) -> Iterable[Dict]:
         """ Returns renting-stations informations """
-        # return self._get_item_list(feed_name='station_information') TODO uncomment after debugging
-        return [
-            {
-                "station_id": "0001",
-                "name": "vicino a bisceglie",  # 0.22228137745786689 km
-                "address": "vicino a bisceglie",
-                "rental_uris": {"android": "bikemi://stations/2318", "ios": "bikemi://stations/2318"},
-                "lat": 45.45699253002271,  # bisceglie: 45.45499253002271
-                "lon": 9.112666222940224,  # bisceglie: 9.112677333940224
-                "capacity": 20
-            },
-            {
-                "station_id": "0002",
-                "name": "vicino a qt8",  # 0.1444836699865555 km
-                "address": "vicino a qt8",
-                "rental_uris": {"android": "bikemi://stations/2318", "ios": "bikemi://stations/2318"},
-                "lat": 45.48713420653411,  # qt8: 45.48583420653411
-                "lon": 9.137517698940868,  # qt8: 9.137497698940868
-                "capacity": 20
-            },
-            {
-                "station_id": "0003",
-                "name": "vicino a via zurigo carrozzi",  # 0.22228137745786689 km
-                "address": "vicino a via zurigo carrozzi",
-                "rental_uris": {"android": "bikemi://stations/2318", "ios": "bikemi://stations/2318"},
-                "lat": 45.45318415116365,  # via zurigo carrozzi: 0.3334219894796084
-                "lon": 9.112666222940224,  # via zurigo carrozzi: 9.117162820088408
-                "capacity": 20
-            },
-            {
-                "station_id": "0004",
-                "name": "vicino a BANDE NERE",  # 0.13336894165144514 km
-                "address": "vicino a BANDE NERE",
-                "rental_uris": {"android": "bikemi://stations/2318", "ios": "bikemi://stations/2318"},
-                "lat": 45.460304001042485,  # BANDE NERE: 45.461504001042485
-                "lon": 9.13648450790302,  # BANDE NERE: 9.13648450790302
-                "capacity": 20
-            },
-            {
-                "station_id": "0005",
-                "name": "vicino a WAGNER",  # 0.22228137745786689 km
-                "address": "vicino a WAGNER",
-                "rental_uris": {"android": "bikemi://stations/2318", "ios": "bikemi://stations/2318"},
-                "lat": 45.46495010104053,  # WAGNER: 45.46795010104053
-                "lon": 9.155914407896027,  # WAGNER: 9.155914407896027
-                "capacity": 20
-            }
-        ]
+        return self._get_items_list(feed_name='station_information')
 
     @property
     def renting_stations_status(self) -> Iterable[Dict]:
         """ Returns renting-stations status """
-        # return self._get_item_list(feed_name='station_status') TODO uncomment after debugging
-        return [
-            {
-                "station_id": "0001",
-                "is_installed": 1,
-                "is_renting": 1,
-                "is_returning": 1,
-                "last_reported": 1659882170,
-                "num_bikes_available": 10,
-                "num_docks_available": 10
-            },
-            {
-                "station_id": "0002",
-                "is_installed": 1,
-                "is_renting": 1,
-                "is_returning": 1,
-                "last_reported": 1659882170,
-                "num_bikes_available": 10,
-                "num_docks_available": 0
-            },
-            {
-                "station_id": "0003",
-                "is_installed": 1,
-                "is_renting": 1,
-                "is_returning": 1,
-                "last_reported": 1659882170,
-                "num_bikes_available": 10,
-                "num_docks_available": 10
-            },
-            {
-                "station_id": "0004",
-                "is_installed": 1,
-                "is_renting": 1,
-                "is_returning": 1,
-                "last_reported": 1659882170,
-                "num_bikes_available": 10,
-                "num_docks_available": 10
-            },
-            {
-                "station_id": "0005",
-                "is_installed": 1,
-                "is_renting": 1,
-                "is_returning": 1,
-                "last_reported": 1659882170,
-                "num_bikes_available": 10,
-                "num_docks_available": 10
-            }
-        ]
+        return self._get_items_list(feed_name='station_status')
 
     @property
     def renting_station_no_source(self) -> List[PhysicalRentingStation]:
@@ -1278,4 +1184,4 @@ class SharedMobilityFeed:
             items_name = next(iter(datas.keys()))  # name of items is only key in datas (e.g. 'stations', 'vehicles', ...)
             return datas[items_name]
         else:
-            return datas # in system_information datas is an items list
+            return datas  # in system_information datas is an items list
