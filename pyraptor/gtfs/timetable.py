@@ -695,7 +695,7 @@ def add_shared_mobility_to_pyraptor_timetable(timetable: Timetable, shared: str)
     logger.debug(f"Added {stations_2 - stations_1} new stations")
     logger.debug(f"Added {stops_2 - stops_1} new renting stations")
 
-    logger.debug("Add vehicle-transfers")
+    logger.debug("Add vtype-transfers")
 
     transfers_1 = len(timetable.transfers)  # debugging
 
@@ -713,7 +713,7 @@ def add_shared_mobility_to_pyraptor_timetable(timetable: Timetable, shared: str)
                 timetable.transfers.add(t_in)
 
     transfers_2 = len(timetable.transfers)  # debugging
-    logger.debug(f"Added new {transfers_2 - transfers_1} vehicle-transfers between public and shared-mobility stops")
+    logger.debug(f"Added new {transfers_2 - transfers_1} vtype-transfers between public and shared-mobility stops")
 
     return timetable
 

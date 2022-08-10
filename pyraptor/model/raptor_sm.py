@@ -10,9 +10,8 @@ from loguru import logger
 from numpy import argmin
 
 from pyraptor.dao.timetable import Timetable
-from pyraptor.model.structures import Stop, Trip, Route, Leg, Journey, SharedMobilityFeed, SharedMobilityVehicleType, \
-    PhysicalRentingStation, VehicleTransfer, Transfer, Stops
-from pyraptor.util import LARGE_NUMBER
+from pyraptor.model.structures import Stop, Trip, Route, Leg, Journey, SharedMobilityFeed, PhysicalRentingStation, VehicleTransfer, Transfer, Stops
+from pyraptor.util import LARGE_NUMBER, TransferType
 
 
 @dataclass
@@ -71,7 +70,7 @@ class RaptorAlgorithmSharedMobility:
     def _append_shared_mob_stop(self, stop: PhysicalRentingStation,
                                 shared_mob_stops: List[PhysicalRentingStation]) -> PhysicalRentingStation | None:
         """ Adds a renting station to a list if it is not part of it
-            *   If added, all vehicle-transfers between it and all others renting stations are added; stop is returned as output.
+            *   If added, all vtype-transfers between it and all others renting stations are added; stop is returned as output.
             *   Otherwise None is returned """
         if stop not in shared_mob_stops:  # skip stops already computed
             for marked in shared_mob_stops:
@@ -109,7 +108,7 @@ class RaptorAlgorithmSharedMobility:
 
         # Downloading information about shared-mob stops availability
         self._update_stop_info()
-        logger.debug(f"Shared mobility vehicle: {self.shared_mobility_feed.vtype.value}")
+        logger.debug(f"Shared mobility vtype: {self.shared_mobility_feed.vtype.value}")
         logger.debug(f"No {len(self.no_source)} shared-mob stops available as source: {self.no_source} ")
         logger.debug(f"No {len(self.no_dest)} shared-mob stops available as destination: {self.no_dest} ")
 
@@ -152,8 +151,13 @@ class RaptorAlgorithmSharedMobility:
 
         for stop, t in immediate.items():
             if stop not in marked_stops:  # skipping already marked stops
-                bag_round_stop[0][stop].update(dep_secs + t.transfer_time, None, t.from_stop)  # TODO: which trip?
-                self.bag_star[stop].update(dep_secs + t.transfer_time, None, t.from_stop)  # TODO: which trip?
+                arr_time = dep_secs + t.transfer_time
+                from_stop = t.from_stop
+                to_stop = t.to_stop
+                transfer_trip: Trip = Trip.get_transfer_trip(from_stop=from_stop, to_stop=to_stop,
+                                                             dep_time=dep_secs, arr_time=arr_time)
+                bag_round_stop[0][stop].update(arr_time, transfer_trip, from_stop)
+                self.bag_star[stop].update(arr_time, transfer_trip, from_stop)
                 marked_stops.append(stop)
                 # If renting station, adding to known shared-mob
                 if isinstance(stop, PhysicalRentingStation):
@@ -223,7 +227,7 @@ class RaptorAlgorithmSharedMobility:
                 - just Transfers which to_stop is in shared_mob_reached_with_trips
                 - 
             """
-            # List of vehicle transfers arriving to reachable renting stations
+            # List of vtype transfers arriving to reachable renting stations
             transfers_sub: List[VehicleTransfer] = \
                 [t for t in self.timetable.transfers.vehicle_transfers if t.to_stop in renting_station_from_trip]
             # List of departing renting stations from previous filtered transfers
@@ -377,12 +381,12 @@ class RaptorAlgorithmSharedMobility:
             # is transfer (a, b) as well as (b, a)
 
             transfers = self.timetable.transfers if transfer_sub is None else transfer_sub
-            other_station_stops = [
-                t.to_stop for t in transfers if t.from_stop == current_stop
+            other_station_stops_trip = [
+                (t.to_stop, t) for t in transfers if t.from_stop == current_stop
             ]
 
             time_sofar = bag_round_stop[k][current_stop].earliest_arrival_time
-            for arrive_stop in other_station_stops:
+            for arrive_stop, transfer in other_station_stops_trip:
                 arrival_time_with_transfer = time_sofar + self.get_transfer_time(
                     current_stop, arrive_stop
                 )
@@ -392,10 +396,12 @@ class RaptorAlgorithmSharedMobility:
 
                 # Domination criteria
                 if arrival_time_with_transfer < previous_earliest_arrival:
+                    vtype = transfer.vtype if isinstance(transfer, VehicleTransfer) else None
                     transfer_trip = Trip.get_transfer_trip(from_stop=current_stop,
                                                            to_stop=arrive_stop,
                                                            dep_time=time_sofar,
-                                                           arr_time=arrival_time_with_transfer)
+                                                           arr_time=arrival_time_with_transfer,
+                                                           vtype=vtype)
 
                     bag_round_stop[k][arrive_stop].update(
                         arrival_time_with_transfer,

@@ -6,7 +6,6 @@ import uuid
 from collections import defaultdict
 from copy import copy
 from dataclasses import dataclass, field
-from enum import Enum
 from itertools import compress
 from json import loads
 from operator import attrgetter
@@ -20,8 +19,8 @@ import numpy as np
 from geopy.distance import geodesic
 from loguru import logger
 
-from pyraptor.util import sec2str, mkdir_if_not_exists, get_transport_type_description, WALK_TRANSPORT_TYPE, \
-    MEAN_FOOT_SPEED
+from pyraptor.util import sec2str, mkdir_if_not_exists, get_transport_type_description, TRANSFER_TYPE, \
+    MEAN_FOOT_SPEED, TransferType, VEHICLE_SPEED
 
 
 def same_type_and_id(first, second):
@@ -302,8 +301,11 @@ class RouteInfo:
     name: str = None
 
     @staticmethod
-    def get_transfer_route() -> RouteInfo:
-        return RouteInfo(transport_type=WALK_TRANSPORT_TYPE, name="Transfer")
+    def get_transfer_route(vtype: TransferType = None) -> RouteInfo:
+        if vtype is None:
+            return RouteInfo(transport_type=TRANSFER_TYPE, name="walk path")
+        else:
+            return RouteInfo(transport_type=TRANSFER_TYPE, name=f"{vtype.value}-sharing")
 
     def __str__(self):
         return f"Transport: {get_transport_type_description(self.transport_type)} | Route Name: {self.name}"
@@ -327,8 +329,10 @@ class Trip:
     route_info: RouteInfo = attr.ib(default=None)
 
     @staticmethod
-    def get_transfer_trip(from_stop: Stop, to_stop: Stop, dep_time: int, arr_time: int) -> Trip:
-        transfer_route = RouteInfo.get_transfer_route()
+    def get_transfer_trip(from_stop: Stop, to_stop: Stop, dep_time: int,
+                          arr_time: int, vtype: TransferType = None) -> Trip:
+
+        transfer_route = RouteInfo.get_transfer_route(vtype)
 
         transfer_trip = Trip(
             id=f"Transfer Trip - {uuid.uuid4()}",
@@ -609,7 +613,7 @@ class Transfers:
 
     @property
     def vehicle_transfers(self) -> List[VehicleTransfer]:
-        """ Returns its vehicle transfers """
+        """ Returns its vtype transfers """
         return self.filter_vehicle_transfer(self)
 
     @staticmethod
@@ -1076,29 +1080,12 @@ class AlgorithmOutput(TimetableInfo):
 
 """ Shared Mobility """
 
-
-class SharedMobilityVehicleType(Enum):
-    """
-    This class represent all type of available vehicles in shared mobility network
-    """
-    Car = 'car'
-    Bicycle = 'bicycle'
-
-
-# TODO it shuold be moved to utils.py, but it raises "circular import" issue
-""" This object maps each SharedMobilityVehicle to its default speed in km/h 
-    in the urban network as the crow flies """
-VEHICLE_SPEED: Mapping[SharedMobilityVehicleType, float] = {
-    SharedMobilityVehicleType.Bicycle: 100,
-    SharedMobilityVehicleType.Car: 50
-}
-
 class PhysicalRentingStation(Stop):
     """
     This class represents a Physical Renting Station used for shared-mobility in the urban network
     """
     capacity: int = attr.ib(default=0)
-    vehicleType: SharedMobilityVehicleType = attr.ib(default=None)  # Type of vehicle rentable in the Station
+    vehicleType: TransferType = attr.ib(default=None)  # Type of vtype rentable in the Station
 
 
 @attr.s
@@ -1107,22 +1094,22 @@ class VehicleTransfer(Transfer):
     This class represents a generic Transfer between two
     """
 
-    vehicle: SharedMobilityVehicleType = attr.ib(default=None)
+    vtype: TransferType = attr.ib(default=None)
 
     # TODO can we override Transfer.get_vehicle? Even if it has just two parameters?
     @staticmethod
     def get_vehicle_transfer(sa: PhysicalRentingStation, sb: PhysicalRentingStation,
-                            vtype: SharedMobilityVehicleType, speed: float | None = None) \
+                             vtype: TransferType, speed: float | None = None) \
             -> Tuple[VehicleTransfer, VehicleTransfer]:
-        """ Given two renting stations compute both inbound and outbound vehicle transfers
-            Transfer time is approximated dividing computed distance by vehicle constant speed """
+        """ Given two renting stations compute both inbound and outbound vtype transfers
+            Transfer time is approximated dividing computed distance by vtype constant speed """
         dist: float = Stop.stop_distance(sa, sb)
         if speed is None:
             speed: float = VEHICLE_SPEED[vtype]
         time: int = int(dist * 3600 / speed)
         return (
-            VehicleTransfer(from_stop=sa, to_stop=sb, transfer_time=time, vehicle=vtype),
-            VehicleTransfer(from_stop=sb, to_stop=sa, transfer_time=time, vehicle=vtype)
+            VehicleTransfer(from_stop=sa, to_stop=sb, transfer_time=time, vtype=vtype),
+            VehicleTransfer(from_stop=sb, to_stop=sa, transfer_time=time, vtype=vtype)
         )
 
 
@@ -1136,9 +1123,9 @@ class SharedMobilityFeed:
         self.lang: str = lang  # lang of feed
         self.feeds_url: Mapping[str, str] = self._get_feeds_url()  # mapping between feed_name and url
         self.id_: str = self._get_items_list(feed_name='system_information')['name']  # feed id
-        self.vtype: SharedMobilityVehicleType = SharedMobilityVehicleType(next(iter( # stations vehicle type
+        self.vtype: TransferType = TransferType(next(iter( # stations vtype type
             self._get_items_list(feed_name='vehicle_types'))
-        )['form_factor'])  # TODO type of first item; we consider all stations having only this vehicle type
+        )['form_factor'])  # TODO type of first item; we consider all stations having only this vtype type
 
     @property
     def feeds(self):
@@ -1254,7 +1241,7 @@ class SharedMobilityFeed:
         """ Returns list of renting-stations not available as source """
         # TODO probably this operation won't work for all GBFS
         # TODO study num_{vechicle_name}_available standard
-        vname: str = 'bikes' if self.vtype == SharedMobilityVehicleType.Bicycle else 'cars'
+        vname: str = 'bikes' if self.vtype == TransferType.Bicycle else 'cars'
         return [s['station_id'] for s in self.renting_stations_status if not (
                 s['is_installed'] == 1 and
                 s['is_renting'] == 1 and
