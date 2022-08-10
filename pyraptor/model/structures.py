@@ -23,7 +23,7 @@ from loguru import logger
 from pyraptor.util import sec2str, mkdir_if_not_exists, LARGE_NUMBER
 
 
-# TODO split module in different smalleer modules:
+# TODO split module in different smaller modules (do it after merging into the pyraptor-flexymob branch):
 #   - timetable.py with Stop, Trip, Route and Transfer related classes + same_type_and_id() func
 #   - criteria.py with Label and Criteria related classes + pareto_set() func
 #   - output.py with Leg, Journey and AlgorithmOutput
@@ -223,7 +223,12 @@ class TripStopTime:
     dts_dep: int = attr.ib(default=attr.NOTHING)
     """Time of departure in seconds past midnight"""
 
+    # TODO remove since it is never set; also remove from Leg and Trip.get_fare()
+    #   Substitute with co2 and distance related attributes/getters
     fare: float = attr.ib(default=0.0)
+
+    travelled_distance: float = attr.ib(default=0.0)
+    """Distance in km covered by the trip from its beginning"""
 
     def __hash__(self):
         return hash((self.trip, self.stop_idx))
@@ -414,13 +419,13 @@ class Trip:
         self.stop_times.append(stop_time)
         self.stop_times_index[stop_time.stop] = len(self.stop_times) - 1
 
-    def get_stop(self, stop: Stop) -> TripStopTime:
+    def get_stop_time(self, stop: Stop) -> TripStopTime:
         """Get stop"""
         return self.stop_times[self.stop_times_index[stop]]
 
     def get_fare(self, depart_stop: Stop) -> float:
         """Get fare from depart_stop"""
-        stop_time = self.get_stop(depart_stop)
+        stop_time = self.get_stop_time(depart_stop)
         return 0 if stop_time is None else stop_time.fare
 
 
@@ -771,11 +776,12 @@ class Leg:
 @dataclass(frozen=True)
 class LabelUpdate:
     """
-    Class that represents all the necessary data to update a stop label
+    Class that represents all the necessary data to update a label
     """
 
     boarding_stop: Stop
     """Stop at which the trip is boarded"""
+    # TODO """If None, the old boarding stop is kept"""
 
     arrival_stop: Stop
     """Stop at which the trip is hopped off"""
@@ -784,7 +790,16 @@ class LabelUpdate:
     """Trip currently used to get from `boarding_stop` to `arrival_stop`"""
 
     new_trip: Trip
-    """New trip to board to get from `boarding_stop` to `arrival_stop`"""
+    """New trip to board to get from `boarding_stop` to `arrival_stop`."""
+    # TODO """If None, old_trip is used as default value"""
+
+    # TODO make sure, in the algorithm code, that the reference to the best labels does not change
+    best_labels: Dict[Stop, BaseLabel]
+    """
+    Reference to the best labels for each stop, independent from the number of rounds.
+    This data is needed by criteria that have a dependency on other labels to calculate their cost.
+    (e.g. the distance cost of label x+1 depends on the distance cost of label x)
+    """
 
 
 @dataclass(frozen=True)
@@ -849,7 +864,7 @@ class Label(BaseLabel):
         boarding_stop = data.boarding_stop if data.boarding_stop is not None else self.boarding_stop
 
         # Earliest arrival time to the arrival stop on the updated trip
-        earliest_arrival_time = trip.get_stop(data.arrival_stop).dts_arr
+        earliest_arrival_time = trip.get_stop_time(data.arrival_stop).dts_arr
 
         return Label(
             earliest_arrival_time=earliest_arrival_time,
@@ -934,7 +949,7 @@ class DistanceCriteria(Criterion):
     """
 
     def update(self, data: LabelUpdate) -> DistanceCriteria:
-        additional_distance = self.get_additional_distance()
+        additional_distance = self._get_updated_distance(data=data)
 
         return DistanceCriteria(
             name=self.name,
@@ -943,9 +958,23 @@ class DistanceCriteria(Criterion):
             upper_bound=self.upper_bound
         )
 
-    def get_additional_distance(self) -> float:
+    def _get_updated_distance(self, data: LabelUpdate) -> float:
+        # TODO Questa deve ritornare la distanza aggiuntiva
+
+        boarding_stop_time = data.new_trip.get_stop_time(data.boarding_stop)
+        arrival_stop_time = data.new_trip.get_stop_time(data.arrival_stop)
+        same_trip_distance = arrival_stop_time.travelled_distance - boarding_stop_time.travelled_distance
+
+        boarding_stop_lbl = data.best_labels[data.boarding_stop]
+        if isinstance(boarding_stop_lbl, MultiCriteriaLabel):
+            # TODO get the value of the distance criteria and return an exception
+            #  if no distance criteria is defined
+            boarding_stop_cumulative_dist = None
+        else:
+            raise TypeError("The provided best labels are not multi-criteria labels")
+
         # TODO
-        return None
+        raise NotImplementedError()
 
 
 class EmissionsCriteria(DistanceCriteria):
@@ -987,7 +1016,11 @@ class EmissionsCriteria(DistanceCriteria):
             TransportType.Bus: 105,
         }
 
-        additional_distance = self.get_additional_distance()
+        # TODO the calculation here is wrong. The total emission for this label
+        #   depends on the stop before this + the emission of the trip used
+        #   to get to this stop. It is only on the current trip that emission
+        #   data has to be calculated based on transport type
+        additional_distance = self._get_updated_distance(data=data)
         co2_multiplier = co2_grams_per_passenger_km[data.new_trip.route_info.transport_type]
 
         return EmissionsCriteria(
@@ -1004,7 +1037,7 @@ class ArrivalTimeCriteria(Criterion):
     """
 
     def update(self, data: LabelUpdate) -> ArrivalTimeCriteria:
-        new_arrival_time = data.new_trip.get_stop(data.arrival_stop).dts_arr
+        new_arrival_time = data.new_trip.get_stop_time(data.arrival_stop).dts_arr
 
         # The value is the previously set arrival time
         # Update only if new arrival time is better (less)
