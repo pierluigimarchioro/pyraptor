@@ -6,12 +6,12 @@ from typing import Dict
 from loguru import logger
 
 from pyraptor.dao.timetable import read_timetable
-from pyraptor.model.structures import Journey, Station, Timetable, AlgorithmOutput, SharedMobilityFeed
 from pyraptor.model.raptor_sm import (
     RaptorAlgorithmSharedMobility,
     reconstruct_journey,
     best_stop_at_target_station,
 )
+from pyraptor.model.structures import Journey, Station, Timetable, AlgorithmOutput, SharedMobilityFeed
 from pyraptor.util import str2sec
 
 

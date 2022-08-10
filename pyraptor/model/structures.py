@@ -16,7 +16,6 @@ from urllib.request import urlopen
 import attr
 import joblib
 import numpy as np
-from _distutils_hack import override
 from geopy.distance import geodesic
 from loguru import logger
 
