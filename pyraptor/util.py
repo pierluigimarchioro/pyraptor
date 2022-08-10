@@ -94,6 +94,6 @@ class TransferType(Enum):
 
 VEHICLE_SPEED: Mapping[TransferType, float] = {
     TransferType.Walk: MEAN_FOOT_SPEED,
-    TransferType.Bicycle: 100,
+    TransferType.Bicycle: 20,
     TransferType.Car: 50,
 }
