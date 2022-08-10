@@ -16,11 +16,12 @@ from urllib.request import urlopen
 import attr
 import joblib
 import numpy as np
+from _distutils_hack import override
 from geopy.distance import geodesic
 from loguru import logger
 
 from pyraptor.util import sec2str, mkdir_if_not_exists, get_transport_type_description, TRANSFER_TYPE, \
-    MEAN_FOOT_SPEED, TransferType, VEHICLE_SPEED
+    MEAN_FOOT_SPEED, TransferType, VEHICLE_SPEED, TRANSFER_COST
 
 
 def same_type_and_id(first, second):
@@ -539,7 +540,7 @@ class Transfer:
     to_stop: Stop | None = attr.ib(default=None)
 
     # Time in seconds that the transfer takes to complete
-    transfer_time = attr.ib(default=300)
+    transfer_time = attr.ib(default=TRANSFER_COST)
 
     def __hash__(self):
         return hash(self.id)
@@ -605,25 +606,28 @@ class Transfers:
         """ Returns all transfers with given stop as departing or arrival  """
         return self.with_from_stop(s) + self.with_to_stop(s)
 
+    """
+    TODO remove if all VehicleTransfers in separated class
     @property
     def foot_transfers(self) -> List[Transfer]:
-        """ Returns its foot transfers  """
+        \""" Returns its foot transfers  \"""
         return self.filter_foot_transfer(self)
 
     @property
     def vehicle_transfers(self) -> List[VehicleTransfer]:
-        """ Returns its vtype transfers """
+        \""" Returns its vtype transfers \"""
         return self.filter_vehicle_transfer(self)
 
     @staticmethod
     def filter_foot_transfer(transfers: Iterable[Transfer]) -> List[Transfer]:
-        """ Filter only Transfer objects, not its subclasses  """
+        \""" Filter only Transfer objects, not its subclasses  \"""
         return [t for t in transfers if type(t) == Transfer]
 
     @staticmethod
     def filter_vehicle_transfer(transfers: Iterable[Transfer]) -> list[VehicleTransfer]:
-        """ Filter only subclasses of VehicleTransfer  """
+        \""" Filter only subclasses of VehicleTransfer \"""
         return [t for t in transfers if issubclass(type(t), VehicleTransfer)]
+    """
 
 
 @dataclass
@@ -1093,7 +1097,6 @@ class VehicleTransfer(Transfer):
     """
     This class represents a generic Transfer between two
     """
-
     vtype: TransferType = attr.ib(default=None)
 
     # TODO can we override Transfer.get_vehicle?
@@ -1111,6 +1114,21 @@ class VehicleTransfer(Transfer):
             VehicleTransfer(from_stop=sa, to_stop=sb, transfer_time=time, vtype=vtype),
             VehicleTransfer(from_stop=sb, to_stop=sa, transfer_time=time, vtype=vtype)
         )
+
+class VehicleTransfers(Transfers):
+    """ This class represent a set of VehicleTransfers
+        Class re-use all super-class methods verifying SharedMobility types """
+
+    def add(self, transfer: VehicleTransfer):
+        super(VehicleTransfers, self).add(transfer)
+
+    def with_from_stop(self, from_: PhysicalRentingStation) -> List[VehicleTransfer]:
+        """ Returns all transfers with given departing stop  """
+        return super(VehicleTransfers, self).with_from_stop(from_)
+
+    def with_to_stop(self, to: Stop) -> List[VehicleTransfer]:
+        """ Returns all transfers with given arrival stop  """
+        return super(VehicleTransfers, self).with_to_stop(to)
 
 
 class SharedMobilityFeed:
