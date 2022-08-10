@@ -149,7 +149,7 @@ class McRaptorAlgorithm:
                 updated_labels = []
                 for label in route_bag.labels:
                     # Get the arrival time of the trip at the current stop
-                    trip_stop_time = label.trip.get_stop(current_stop)
+                    trip_stop_time = label.trip.get_stop_time(current_stop)
 
                     # Take fare of previous stop in trip as fare is defined on start
                     # TODO this is another part relevant for the multi-criteria approach:
@@ -202,11 +202,12 @@ class McRaptorAlgorithm:
                 updated_labels = []
                 for label in route_bag.labels:
                     earliest_trip = marked_route.earliest_trip(
-                        label.earliest_arrival_time, current_stop
+                        label.earliest_arrival_time, current_stop  # TODO earliest_arrival_time is a needed attr
                     )
                     if earliest_trip is not None:
                         # Update label with the earliest trip in route leaving from this station
                         # If trip is different, we board the trip at current_stop
+                        # TODO how to update distance here? should I pass an `old_boarding_stop` attr to update data?
                         label = label.update_trip(earliest_trip, current_stop)
                         updated_labels.append(label)
                 route_bag = Bag(labels=updated_labels)

@@ -147,7 +147,7 @@ class RaptorAlgorithm:
                 # t != _|_
                 if current_trip is not None:
                     # Arrival time at stop, i.e. arr(current_trip, next_stop)
-                    new_arrival_time = current_trip.get_stop(current_stop).dts_arr
+                    new_arrival_time = current_trip.get_stop_time(current_stop).dts_arr
                     best_arrival_time = self.bag_star[
                         current_stop
                     ].earliest_arrival_time
