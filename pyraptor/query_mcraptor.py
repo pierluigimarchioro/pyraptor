@@ -125,17 +125,11 @@ def run_mcraptor(
     }
     destination_stops.pop(origin_station, None)
 
+    # TODO here journeys are constructed just with the first and last stop
+    #   of a leg (i.e. just beginning and end stop of each different trip)
+    #   maybe include intermediate stop to help with debug and visualization
     journeys_to_destinations = dict()
     for destination_station_name, to_stops in destination_stops.items():
-        # TODO apparentemente le legs sono meno: se eseguo la stessa query
-        #  "bisceglie m1" - "qt8 m1" alle 12:00, mi mostra solo due leg,
-        #  seppur quelle principali. Le "sotto-leg" non vengono create.
-        #  questo è scomodo sia per la visualizzazione,
-        #  perché è importante sapere anche le fermate intermedie,
-        #  sia per il debugging in generale
-        # TODO debug
-        if "qt8 m1--1" in [s.name for s in to_stops]:
-            print("here")
         destination_legs = best_legs_to_destination_station(to_stops, last_round_bag)
 
         if len(destination_legs) == 0:

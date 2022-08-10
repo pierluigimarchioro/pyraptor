@@ -3,6 +3,8 @@ from __future__ import annotations
 
 import os
 import uuid
+from collections.abc import Iterable
+from itertools import compress
 from collections import defaultdict
 from copy import copy
 from dataclasses import dataclass, field
@@ -425,8 +427,8 @@ class Route:
     """Route"""
 
     id = attr.ib(default=None)
-    trips = attr.ib(default=attr.Factory(list))
-    stops = attr.ib(default=attr.Factory(list))
+    trips: List[Trip] = attr.ib(default=attr.Factory(list))
+    stops: List[Stop] = attr.ib(default=attr.Factory(list))
     stop_order = attr.ib(default=attr.Factory(dict))
 
     def __hash__(self):
@@ -462,19 +464,37 @@ class Route:
         return self.stop_order[stop]
 
     def earliest_trip(self, dts_arr: int, stop: Stop) -> Trip:
-        """Returns earliest trip after time dts (sec)"""
+        """
+        Returns the earliest trip that can be boarded at the provided stop in the
+        current route after `dts_arr` time (in seconds after midnight)
+
+        :param dts_arr: time in seconds after midnight that a trip can be boarded after
+        :param stop: stop to board the trip at
+        :return: earliest trip that can be boarded, or None if no trip
+        """
+
         stop_idx = self.stop_index(stop)
         trip_stop_times = [trip.stop_times[stop_idx] for trip in self.trips]
         trip_stop_times = [tst for tst in trip_stop_times if tst.dts_dep >= dts_arr]
         trip_stop_times = sorted(trip_stop_times, key=attrgetter("dts_dep"))
+
         return trip_stop_times[0].trip if len(trip_stop_times) > 0 else None
 
     def earliest_trip_stop_time(self, dts_arr: int, stop: Stop) -> TripStopTime:
-        """Returns earliest trip stop time after time dts (sec)"""
+        """
+        Returns the stop time for the provided stop in the current route
+        from the earliest trip that can be boarded after `dts_arr` time.
+
+        :param dts_arr: time in seconds after midnight that a trip can be boarded after
+        :param stop: stop to board the trip at
+        :return: stop time for the provided stop in the earliest boardable trip, or None if any
+        """
+
         stop_idx = self.stop_index(stop)
         trip_stop_times = [trip.stop_times[stop_idx] for trip in self.trips]
         trip_stop_times = [tst for tst in trip_stop_times if tst.dts_dep >= dts_arr]
         trip_stop_times = sorted(trip_stop_times, key=attrgetter("dts_dep"))
+
         return trip_stop_times[0] if len(trip_stop_times) > 0 else None
 
 
@@ -641,7 +661,7 @@ class Leg:
     n_trips: int = 0
 
     @property
-    def criteria(self):
+    def criteria(self) -> Iterable:
         """Criteria"""
         return [self.earliest_arrival_time, self.fare, self.n_trips]
 
@@ -669,13 +689,19 @@ class Leg:
             raise Exception(f"No arrival time for to_stop: {self.to_stop}.\n"
                             f"Current Leg: {self}. \n Original Error: {ex}")
 
-    def is_transfer(self):
-        """Is transfer leg"""
+    def is_same_station_transfer(self) -> bool:
+        """
+        Returns true if the current instance is a transfer leg between stops
+        belonging to the same station (i.e. platforms)
+        :return:
+        """
+
         return self.from_stop.station == self.to_stop.station
 
-    def is_compatible_before(self, other_leg: Leg):
+    def is_compatible_before(self, other_leg: Leg) -> bool:
         """
-        Check if Leg is allowed before another leg. That is,
+        Check if Leg is allowed before another leg. That is if:
+
         - It is possible to go from current leg to other leg concerning arrival time
         - Number of trips of current leg differs by > 1, i.e. a different trip,
           or >= 0 when the other_leg is a transfer_leg
@@ -686,16 +712,12 @@ class Leg:
                 other_leg.earliest_arrival_time >= self.earliest_arrival_time
         )
 
-        # TODO this might cause problems because transfers now are added also between stops of different trips#
         n_trips_compatible = (
-            # TODO original
-            # other_leg.n_trips >= self.n_trips
-            # if other_leg.is_transfer()
-            # else other_leg.n_trips > self.n_trips
-
-            # TODO new one that does not differentiate transfer legs with other legs
-                other_leg.n_trips >= self.n_trips
+            other_leg.n_trips >= self.n_trips
+            if other_leg.is_same_station_transfer()
+            else other_leg.n_trips > self.n_trips
         )
+
         criteria_compatible = np.all(
             np.array([c for c in other_leg.criteria])
             >= np.array([c for c in self.criteria])
@@ -727,7 +749,7 @@ class Label:
 
     earliest_arrival_time: int
     fare: int  # total fare
-    trip: Trip  # trip to take to obtain travel_time and fare
+    trip: Trip | None  # trip to take to obtain travel_time and fare
     from_stop: Stop  # stop to hop-on the trip
     n_trips: int = 0
     infinite: bool = False
@@ -998,7 +1020,7 @@ def pareto_set(labels: List[Label], keep_equal=False):
     for i, label in enumerate(labels_criteria):
         if is_efficient[i]:
             # Keep any point with a lower cost
-            # TODO qui vengono effettuati i confronti multicriterio:
+            # TODO qui vengono effettuati i confronti multi-criterio:
             #   i criteri sono hardcoded dentro la proprietà criteria di structures.Label
             #   bisogna trovare un modo di definirli dinamicamente
             if keep_equal:

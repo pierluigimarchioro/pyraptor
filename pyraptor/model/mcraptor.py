@@ -1,5 +1,4 @@
 """McRAPTOR algorithm"""
-import itertools
 from typing import List, Tuple, Dict
 from copy import copy
 from time import perf_counter
@@ -13,7 +12,7 @@ from pyraptor.model.structures import (
     Label,
     Leg,
     Journey,
-    pareto_set,
+    pareto_set, Trip,
 )
 
 
@@ -24,7 +23,7 @@ class McRaptorAlgorithm:
         self.timetable = timetable
 
     def run(
-        self, from_stops: List[Stop], dep_secs: int, rounds: int, previous_run: Dict[int, Bag] = None
+        self, from_stops: List[Stop], dep_secs: int, rounds: int, previous_run: Dict[Stop, Bag] = None
     ) -> Tuple[Dict[int, Dict[Stop, Bag]], int]:
         """Run Round-Based Algorithm"""
 
@@ -42,7 +41,7 @@ class McRaptorAlgorithm:
         # Initialize bag for round 0, i.e. add Labels with criterion 0 for all from stops
         if previous_run is not None:  # TODO previous_run never used? whats the purpose of this arg?
             # For the range query
-            bag_round_stop[0] = copy(previous_run)  # TODO type of previous_run should be Dict[Stop, Bag]?
+            bag_round_stop[0] = copy(previous_run)
 
         # Add origin stops to bag
         for from_stop in from_stops:
@@ -63,14 +62,19 @@ class McRaptorAlgorithm:
                 actual_rounds = k
 
                 # Accumulate routes serving marked stops from previous round
+                # i.e. get the best (r,p) pairs where p is the first stop reachable in route r
                 route_marked_stops = self.accumulate_routes(marked_stops)
 
                 # Traverse each route
+                # i.e. update the labels of each marked stop, assigning to each stop
+                #   the earliest trip that can be caught and the earliest arrival
+                #   time of that trip at that stop
                 bag_round_stop, marked_stops_trips = self.traverse_route(
                     bag_round_stop, k, route_marked_stops
                 )
 
-                # Now add footpath transfers and update
+                # Now add (footpath) transfers between stops and update
+                # i.e. update the arrival time to each stop by considering (foot) transfers
                 bag_round_stop, marked_stops_transfers = self.add_transfer_time(
                     bag_round_stop, k, marked_stops_trips
                 )
@@ -106,10 +110,10 @@ class McRaptorAlgorithm:
 
     def traverse_route(
         self,
-        bag_round_stop: Dict[int, Dict[int, Bag]],
+        bag_round_stop: Dict[int, Dict[Stop, Bag]],
         k: int,
         route_marked_stops: List[Tuple[Route, Stop]],
-    ) -> Tuple[Dict[int, Dict[int, Bag]], List[Stop]]:
+    ) -> Tuple[Dict[int, Dict[Stop, Bag]], List[Stop]]:
         """
         Traverse through all marked route-stops and update labels accordingly.
 
@@ -120,7 +124,7 @@ class McRaptorAlgorithm:
 
         new_marked_stops = set()
 
-        for (marked_route, marked_stop) in route_marked_stops:
+        for marked_route, marked_stop in route_marked_stops:
             # Traversing through route from marked stop
             route_bag = Bag()
 
@@ -135,6 +139,7 @@ class McRaptorAlgorithm:
                 # Step 1: update the earliest arrival times and criteria for each label L in route-bag
                 updated_labels = []
                 for label in route_bag.labels:
+                    # Get the arrival time of the trip at the current stop
                     trip_stop_time = label.trip.get_stop(current_stop)
 
                     # Take fare of previous stop in trip as fare is defined on start
@@ -149,12 +154,18 @@ class McRaptorAlgorithm:
                     )
 
                     updated_labels.append(label)
+
+                # Route bag B_{r} basically represents all the updated labels of
+                #   the stops in the current marked route. Notably, each updated label means
+                #   that you can board a trip with better characteristics
+                #   (i.e. earlier arrival time, better fares, lesser number of trips)
                 route_bag = Bag(labels=updated_labels)
 
                 # Step 2: merge bag_route into bag_round_stop and remove dominated labels
-                # The label contains the trip with which one arrives at current stop with k legs
-                #   and we boarded the trip at from_stop.
-                # NOTE: merging two bags returns a bag containing the most efficient labels of the two
+                # NOTE: Each label contains the trip with which one arrives at the current stop with k legs
+                #   by boarding the trip at from_stop.
+                # NOTE2: merging the current stop bag with route bag basically means to keep
+                #   the labels that allow to get to the current stop in the most efficient way
                 bag_round_stop[k][current_stop] = bag_round_stop[k][current_stop].merge(
                     route_bag
                 )
@@ -166,21 +177,21 @@ class McRaptorAlgorithm:
                     new_marked_stops.add(current_stop)
 
                 # Step 3: merge B_{k-1}(p) into B_r
-                # TODO why merging with the bag of the previous round?
-                #   what does route_bag represent?
+                # Merging here creates a bag where the best labels from the previous round,
+                #   for the current stop, and the best from the current route are kept
                 route_bag = route_bag.merge(bag_round_stop[k - 1][current_stop])
 
                 # Assign trips to all newly added labels in route_bag
                 # This is the trip on which we board
-                # TODO this is tbe last part of step 3.
-                #  Need to understand what this does and why it is needed.
+                # This step is needed because the labels from the previous round need
+                #   to be updated with the new earliest trip to board
                 updated_labels = []
                 for label in route_bag.labels:
                     earliest_trip = marked_route.earliest_trip(
                         label.earliest_arrival_time, current_stop
                     )
                     if earliest_trip is not None:
-                        # Update label with earliest trip in route leaving from this station
+                        # Update label with the earliest trip in route leaving from this station
                         # If trip is different we board the trip at current_stop
                         label = label.update_trip(earliest_trip, current_stop)
                         updated_labels.append(label)
@@ -195,8 +206,15 @@ class McRaptorAlgorithm:
         bag_round_stop: Dict[int, Dict[Stop, Bag]],
         k: int,
         marked_stops: List[Stop],
-    ) -> Tuple:
-        """Add transfers between platforms."""
+    ) -> Tuple[Dict[int, Dict[Stop, Bag]], List[Stop]]:
+        """
+        Updates each stop (label) earliest arrival time by also considering (footpath) transfers between stops.
+
+        :param bag_round_stop: dictionary of stop bags keyed by round
+        :param k: current round
+        :param marked_stops: list of the currently marked stops
+        :return:
+        """
 
         marked_stops_transfers = set()
 
@@ -204,11 +222,6 @@ class McRaptorAlgorithm:
         for current_stop in marked_stops:
             # Note: transfers are transitive, which means that for each reachable stops (a, b) there
             # is transfer (a, b) as well as (b, a)
-
-            # TODO original line
-            # other_station_stops = [st for st in current_stop.station.stops if st != current_stop]
-
-            # TODO uncommenting breaks McRaptor: some journeys are not found
             other_station_stops = [t.to_stop for t in self.timetable.transfers if t.from_stop == current_stop]
 
             for other_stop in other_station_stops:
@@ -221,16 +234,25 @@ class McRaptorAlgorithm:
                         + self.get_transfer_time(current_stop, other_stop)
                     )
                     # Update label with new earliest arrival time at other_stop
+                    # NOTE: Each label contains the trip with which one arrives at the current stop
+                    #   with k legs by boarding the trip at from_stop, along with the criteria
+                    #   (i.e. boarding time, fares, number of legs)
                     label = label.update(
-                        # TODO what does a label actually represent? is earliest_arrival_time referring
-                        #  to current_stop or other_stop? It seems to be referring to other_stop, but then
-                        #  why isn't that information stored in the label? why is there only a "from_stop" field?
                         earliest_arrival_time=transfer_arrival_time,
                         fare_addition=0,
                         from_stop=current_stop,
-                        # TODO the fact that now transfers also relate to stops belonging to different trips
-                        #  causes problems, because here the transfer is assumed to happen on the same trip.
-                        #  A way to update the trip with a transfer trip needs to be found
+                    )
+
+                    # Update the trip with which to arrive at other_stop with a transfer trip
+                    transfer_trip = Trip.get_transfer_trip(
+                        from_stop=current_stop,
+                        to_stop=other_stop,
+                        dep_time=label.earliest_arrival_time,
+                        arr_time=transfer_arrival_time
+                    )
+                    label = label.update_trip(
+                        trip=transfer_trip,
+                        new_boarding_stop=current_stop
                     )
                     temp_bag.add(label)
 
@@ -246,7 +268,7 @@ class McRaptorAlgorithm:
 
         logger.debug(f"{len(marked_stops_transfers)} transferable stops added")
 
-        return bag_round_stop, marked_stops_transfers
+        return bag_round_stop, list(marked_stops_transfers)
 
     def get_transfer_time(self, stop_from: Stop, stop_to: Stop) -> int:
         """
@@ -319,7 +341,6 @@ def reconstruct_journeys(
             if current_leg.trip is None or current_leg.from_stop in from_stops:
                 jrny = jrny.remove_empty_legs()
 
-                # TODO is_valid() breaks if transfers are added from the transfers table
                 # Journey is valid if leg k ends before the start of leg k+1
                 if jrny.is_valid() is True:
                     yield jrny
@@ -331,7 +352,7 @@ def reconstruct_journeys(
                 new_leg = Leg(
                     new_label.from_stop,
                     current_leg.from_stop,
-                    new_label.trip,  # TODO when adding transfer time, the transfer trip is never added/set
+                    new_label.trip,
                     new_label.earliest_arrival_time,
                     new_label.fare,
                     new_label.n_trips,
