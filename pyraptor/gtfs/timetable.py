@@ -37,7 +37,7 @@ from pyraptor.model.structures import (
     RouteInfo,
     RentingStation,
     SharedMobilityFeed,
-    Routes
+    Routes, Coordinates
 )
 from pyraptor.util import mkdir_if_not_exists, str2sec, TRANSFER_COST, MIN_DIST
 
@@ -539,7 +539,7 @@ def gtfs_to_pyraptor_timetable(
 
         platform_code = getattr(s, "platform_code", -1)
         stop_id = f"{s.stop_name}-{platform_code}"
-        stop = Stop(s.stop_id, stop_id, station, platform_code, stops.last_index + 1, (s.stop_lat, s.stop_lon))
+        stop = Stop(s.stop_id, stop_id, station, platform_code, stops.last_index + 1, Coordinates(s.stop_lat, s.stop_lon))
 
         station.add_stop(stop)
         stops.add(stop)

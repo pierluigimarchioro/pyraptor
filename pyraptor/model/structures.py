@@ -65,15 +65,34 @@ class Timetable(TimetableInfo):
 
 
 @attr.s(repr=False, cmp=False)
+class Coordinates:
+    lat: float = attr.ib(default=None)
+    lon: float = attr.ib(default=None)
+
+    @property
+    def to_tuple(self) -> Tuple[float, float]:
+        return self.lat, self.lon
+
+    @property
+    def to_list(self) -> List[float]:
+        return [self.lat, self.lon]
+
+    def __eq__(self, coord: Coordinates):
+        return self.lat == coord.lat and self.lon == coord.lon
+
+    def __repr__(self):
+        return f"({self.lat}, {self.lon})"
+
+
+@attr.s(repr=False, cmp=False)
 class Stop:
     """Stop"""
-
     id = attr.ib(default=None)
     name = attr.ib(default=None)
     station: Station = attr.ib(default=None)
     platform_code = attr.ib(default=None)
     index = attr.ib(default=None)
-    geo: Tuple[float, float] = attr.ib(default=None)  # latitude and longitude
+    geo: Coordinates = attr.ib(default=None)
 
     def __hash__(self):
         return hash(self.id)
@@ -89,7 +108,7 @@ class Stop:
     @staticmethod
     def stop_distance(a: Stop, b: Stop) -> float:
         """Returns stop distance as the crow flies in km"""
-        return geodesic(a.geo, b.geo).km
+        return geodesic((a.geo.lat, a.geo.lon), (b.geo.lat, b.geo.lon)).km
 
     def distance_from(self, s: Stop) -> float:
         """Returns stop distance as the crow flies in km"""
@@ -1194,7 +1213,7 @@ class PhysicalRentingStations(RentingStations):
             new_station: Station = Station(id=station['name'], name=station['name'])
             new_: PhysicalRentingStation = PhysicalRentingStation(
                 id=station['station_id'], name=station['name'], station=new_station,
-                platform_code=-1, index=None, geo=(station['lat'], station['lon']),
+                platform_code=-1, index=None, geo=Coordinates(station['lat'], station['lon']),
                 system_id=self.system_id, vtype=self.system_vtype, capacity=station['capacity']
             )
             new_station.add_stop(new_)
