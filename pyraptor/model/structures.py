@@ -11,7 +11,7 @@ from itertools import compress
 from collections import defaultdict
 from operator import attrgetter
 from pathlib import Path
-from typing import List, Dict, Tuple, Any
+from typing import List, Dict, Tuple, Any, TypeVar, Type
 from dataclasses import dataclass, field
 from copy import copy
 
@@ -683,6 +683,7 @@ class Transfers:
 class Leg:
     """Leg"""
 
+    # TODO adapt Leg to new MultiCriteria label
     from_stop: Stop
     to_stop: Stop
     trip: Trip
@@ -882,25 +883,47 @@ class Label(BaseLabel):
 
 @dataclass(frozen=True)
 class Criterion(ABC):
+    """
+    Base class for a RAPTOR label criterion
+    """
+
     name: str
+    """Name of the criterion"""
+
     weight: float
-    value: float
+    """Weight used to determine the cost of this criterion"""
+
+    raw_value: float
+    """
+    Raw value of the criterion, that is before any weight is applied.
+    This value maintains is expressed in the original unit of measurement.
+    """
+
     upper_bound: float
+    """
+    Maximum value allowed for this criterion.
+    Such threshold is also used to scale the raw value into the [0,1] range.
+    """
+    # TODO If the raw value surpasses this threshold, the associated label should be discarded
+    #   How to enforce maximum values? set a high cost? add a `upper_bound_surpassed` flag to discard the label?
+    #   Or just filter the itineraries in post processing (this I don't like)
 
     @property
     def cost(self) -> float:
         """
-        Returns the weighted cost of this criterion
-        The value is based on... TODO
-        :return:
+        Returns the weighted cost of this criterion.
+        The raw cost is scaled on the range [0, `upper_bound`] and is then
+        multiplied by the provided weight.
+
+        :return: weighted scaled cost
         """
-        if self.value > self.upper_bound:
-            # TODO is this correct way to enforce upper bound and make the algo discard a label?
-            #   another idea is to add a boolean field that allows to check this info
-            #   the check that the value is > upper_bound should be done in the constructor
+
+        if self.raw_value > self.upper_bound:
+            # TODO is this correct way to enforce upper bound?
+            #   see above
             return LARGE_NUMBER
         else:
-            return self.weight * (self.value / self.upper_bound)  # lower bound is always 0
+            return self.weight * (self.raw_value / self.upper_bound)  # lower bound is always 0
 
     def __add__(self, other: object) -> Criterion | float:
         """
@@ -927,7 +950,7 @@ class Criterion(ABC):
                     return Criterion(
                         name=self.name,
                         weight=self.weight,
-                        value=(self.value + other.value),
+                        raw_value=(self.raw_value + other.raw_value),
                         upper_bound=self.upper_bound
                     )
             else:
@@ -938,51 +961,161 @@ class Criterion(ABC):
             raise TypeError(f"Cannot add type {Criterion.__name__} with type {other.__class__.__name__}.\n"
                             f"Second addend: {other}")
 
+    def __repr__(self):
+        return f"{self.__class__.__name__}(name={self.name};weight={self.weight};" \
+               f"raw_value={self.raw_value};upper_bound={self.upper_bound})"
+
     @abstractmethod
     def update(self, data: LabelUpdate) -> Criterion:
         pass
 
 
-class DistanceCriteria(Criterion):
+# Generic var for Criterion subclasses
+_C = TypeVar('_C', bound=Criterion)
+
+
+def _get_stop_criterion(criterion_class: Type[_C], stop: Stop, best_labels: Dict[Stop, BaseLabel]) -> _C:
+
+    # Criteria can be retrieved only from MultiCriteriaLabel instances
+    stop_lbl = best_labels[stop]
+    if isinstance(stop_lbl, MultiCriteriaLabel):
+        criterion = next(
+            filter(lambda c: isinstance(c, criterion_class), stop_lbl.criteria),
+            None
+        )
+        if criterion is None:
+            raise ValueError(f"The provided best labels do not include "
+                             f"a criterion of type {criterion_class.__name__}")
+
+        return criterion
+    else:
+        raise TypeError("The provided best labels are not multi-criteria labels")
+
+
+class DistanceCriterion(Criterion):
     """
-    Class that represents and handles calculations for the distance criterion
+    Class that represents and handles calculations for the distance criterion.
+    The value represents the total number of km travelled.
     """
 
-    def update(self, data: LabelUpdate) -> DistanceCriteria:
-        additional_distance = self._get_updated_distance(data=data)
+    def __str__(self):
+        return f"Travelled Distance: {self.raw_value} [Km]"
 
-        return DistanceCriteria(
+    def update(self, data: LabelUpdate) -> DistanceCriterion:
+        arrival_distance = self._get_total_arrival_distance(data=data)
+
+        return DistanceCriterion(
             name=self.name,
             weight=self.weight,
-            value=(self.value + additional_distance),
+            raw_value=arrival_distance,
             upper_bound=self.upper_bound
         )
 
-    def _get_updated_distance(self, data: LabelUpdate) -> float:
-        # TODO Questa deve ritornare la distanza aggiuntiva
+    @staticmethod
+    def _get_total_arrival_distance(data: LabelUpdate) -> float:
+        """
+        Returns the updated distance (in km) for the criterion instance based on the
+        new provided boarding and arrival stop. Such value represents the total travelled
+        distance between the origin stop and the provided arrival stop.
 
-        boarding_stop_time = data.new_trip.get_stop_time(data.boarding_stop)
-        arrival_stop_time = data.new_trip.get_stop_time(data.arrival_stop)
-        same_trip_distance = arrival_stop_time.travelled_distance - boarding_stop_time.travelled_distance
+        :param data: update data
+        :return: distance in km
+        """
 
-        boarding_stop_lbl = data.best_labels[data.boarding_stop]
-        if isinstance(boarding_stop_lbl, MultiCriteriaLabel):
-            # TODO get the value of the distance criteria and return an exception
-            #  if no distance criteria is defined
-            boarding_stop_cumulative_dist = None
-        else:
-            raise TypeError("The provided best labels are not multi-criteria labels")
+        # The formula is the following:
+        # total_distance(arrival) = total_distance(boarding) + [trip_distance(arrival) - trip_distance(boarding)]
+        # where trip_distance(x) is the cumulative distance of the trip T that leads to x, starting from
+        # the beginning of T
+        same_trip_distance = _get_same_trip_distance(
+            trip=data.new_trip,
+            from_stop=data.boarding_stop,
+            to_stop=data.arrival_stop
+        )
 
-        # TODO
-        raise NotImplementedError()
+        # Extract the total distance of the previous stop (boarding stop) in the journey
+        # from its distance criterion instance
+        prev_stop_dist_criterion = _get_stop_criterion(
+            criterion_class=DistanceCriterion,
+            stop=data.boarding_stop,
+            best_labels=data.best_labels
+        )
+
+        return prev_stop_dist_criterion.raw_value + same_trip_distance
 
 
-class EmissionsCriteria(DistanceCriteria):
+def _get_same_trip_distance(trip: Trip, from_stop: Stop, to_stop: Stop) -> float:
+    """
+    Returns the distance between the two provided stops in the specified trip.
+
+    :param trip: trip covering the two stops
+    :param from_stop: first stop
+    :param to_stop: second stop
+    :return: distance between the first and second stop, in km
+    """
+
+    from_stop_time = trip.get_stop_time(from_stop)
+    to_stop_time = trip.get_stop_time(to_stop)
+
+    return to_stop_time.travelled_distance - from_stop_time.travelled_distance
+
+
+class EmissionsCriterion(Criterion):
     """
     Class that represents and handles calculations for the co2 emissions criterion
     """
 
-    def update(self, data: LabelUpdate) -> EmissionsCriteria:
+    def __str__(self):
+        return f"Total Emissions: {self.raw_value} [CO2 grams / passenger Km]"
+
+    def update(self, data: LabelUpdate) -> EmissionsCriterion:
+        arrival_emissions = self._get_total_arrival_emissions(data=data)
+
+        return EmissionsCriterion(
+            name=self.name,
+            weight=self.weight,
+            raw_value=arrival_emissions,
+            upper_bound=self.upper_bound
+        )
+
+    @staticmethod
+    def _get_total_arrival_emissions(data: LabelUpdate) -> float:
+        """
+        Returns the updated total emissions (in co2 grams / passenger km) for
+        this criterion instance, based on the new provided boarding and arrival stop.
+        Such value represents the total emissions between the origin stop
+        and the provided arrival stop.
+
+        :param data: update data
+        :return: emissions in co2 grams / passenger km
+        """
+
+        same_trip_distance = _get_same_trip_distance(
+            trip=data.new_trip,
+            from_stop=data.boarding_stop,
+            to_stop=data.arrival_stop
+        )
+
+        co2_multiplier = EmissionsCriterion.get_emission_multiplier(
+            transport_type=data.new_trip.route_info.transport_type
+        )
+        same_trip_emissions = same_trip_distance * co2_multiplier
+
+        prev_stop_emissions_crit = _get_stop_criterion(
+            criterion_class=EmissionsCriterion,
+            stop=data.boarding_stop,
+            best_labels=data.best_labels
+        )
+
+        return prev_stop_emissions_crit.raw_value + same_trip_emissions
+
+    @staticmethod
+    def get_emission_multiplier(transport_type: TransportType) -> float:
+        """
+        Returns the emission multiplier for the provided transport type,
+        expressed in `co2 grams / passenger km`
+        :return:
+        """
+
         # Sources (values expressed in co2 grams/passenger km):
         # - https://ourworldindata.org/travel-carbon-footprint
         # - Ferry https://www.thrustcarbon.com/insights/how-to-calculate-emissions-from-a-ferry-journey
@@ -1016,48 +1149,42 @@ class EmissionsCriteria(DistanceCriteria):
             TransportType.Bus: 105,
         }
 
-        # TODO the calculation here is wrong. The total emission for this label
-        #   depends on the stop before this + the emission of the trip used
-        #   to get to this stop. It is only on the current trip that emission
-        #   data has to be calculated based on transport type
-        additional_distance = self._get_updated_distance(data=data)
-        co2_multiplier = co2_grams_per_passenger_km[data.new_trip.route_info.transport_type]
-
-        return EmissionsCriteria(
-            name=self.name,
-            weight=self.weight,
-            value=(self.value + additional_distance*co2_multiplier),
-            upper_bound=self.upper_bound
-        )
+        return co2_grams_per_passenger_km[transport_type]
 
 
-class ArrivalTimeCriteria(Criterion):
+class ArrivalTimeCriterion(Criterion):
     """
     Class that represents and handles calculations for the arrival time criterion
     """
 
-    def update(self, data: LabelUpdate) -> ArrivalTimeCriteria:
+    def __str__(self):
+        return f"Arrival Time: {sec2str(scnds=int(self.raw_value))}"
+
+    def update(self, data: LabelUpdate) -> ArrivalTimeCriterion:
         new_arrival_time = data.new_trip.get_stop_time(data.arrival_stop).dts_arr
 
         # The value is the previously set arrival time
         # Update only if new arrival time is better (less)
-        if new_arrival_time < self.value:
-            return ArrivalTimeCriteria(
+        if new_arrival_time < self.raw_value:
+            return ArrivalTimeCriterion(
                 name=self.name,
                 weight=self.weight,
-                value=new_arrival_time,
+                raw_value=new_arrival_time,
                 upper_bound=self.upper_bound
             )
         else:
             return copy(self)
 
 
-class TransfersNumberCriteria(Criterion):
+class TransfersNumberCriterion(Criterion):
     """
     Class that represents and handles calculations for the number of transfers criterion
     """
 
-    def update(self, data: LabelUpdate) -> TransfersNumberCriteria:
+    def __str__(self):
+        return f"Total Transfers: {self.raw_value}"
+
+    def update(self, data: LabelUpdate) -> TransfersNumberCriterion:
         # The leg counter is updated only if the new trip isn't a transfer
         # between stops of the same station
         add_new_leg = data.new_trip != data.old_trip
@@ -1069,10 +1196,10 @@ class TransfersNumberCriteria(Criterion):
             if from_stop.station == to_stop.station:
                 add_new_leg = False
 
-        return TransfersNumberCriteria(
+        return TransfersNumberCriterion(
             name=self.name,
             weight=self.weight,
-            value=self.value if not add_new_leg else self.value + 1,
+            raw_value=self.raw_value if not add_new_leg else self.raw_value + 1,
             upper_bound=self.upper_bound
         )
 
@@ -1094,30 +1221,45 @@ class CriteriaProvider:
         self._criteria_config_path: str | bytes | os.PathLike = criteria_config_path
         self._criteria_config: Dict[str, Dict[str, float]] = {}
 
-    def get_criteria(self) -> Sequence[Criterion]:
+    def get_criteria(self, defaults: Dict[Type[Criterion], float] = None) -> Sequence[Criterion]:
         """
         Returns a collection of criteria objects that are based on the name and weights provided
         in the configuration file.
-        :return: iterable of criteria objects
+
+        :param: dictionary containing the default values for each criterion type.
+            The default value for an unspecified criterion is `0`.
+        :return: criteria objects
         """
 
         # Load criteria only if necessary
         if len(self._criteria_config) == 0:
             self._load_config()
 
-        # Pair criteria names with their constructor
-        criteria_factory = {
-            "distance": DistanceCriteria,
-            "arrival_time": ArrivalTimeCriteria,
-            "co2": EmissionsCriteria,
-            "transfers": TransfersNumberCriteria,
+        if defaults is None:
+            defaults = {}
+
+        # Pair criteria names with their class (and constructor)
+        criterion_classes = {
+            "distance": DistanceCriterion,
+            "arrival_time": ArrivalTimeCriterion,
+            "co2": EmissionsCriterion,
+            "transfers": TransfersNumberCriterion,
         }
 
         criteria = []
         for name, criteria_info in self._criteria_config.items():
             weight = criteria_info["weight"]
             upper_bound = criteria_info["max"]
-            c = criteria_factory[name](name=name, weight=weight, value=0, upper_bound=upper_bound)
+
+            c_class = criterion_classes[name]
+            default_val = defaults.get(c_class, 0)
+
+            c = c_class(
+                name=name,
+                weight=weight,
+                raw_value=default_val,
+                upper_bound=upper_bound
+            )
 
             criteria.append(c)
 
@@ -1138,13 +1280,9 @@ class MultiCriteriaLabel(BaseLabel):
     (https://www.microsoft.com/en-us/research/wp-content/uploads/2012/01/raptor_alenex.pdf)
     """
 
-    criteria: Sequence[Criterion] = field(default_factory=list)
+    criteria: Sequence[Criterion] = attr.ib(default=list)
     """Collection of criteria used to compare labels"""
 
-    # TODO make it function that accepts argument `standardized: bool`
-    #   this way all the weights are on the same scale
-    #   and maybe just implement a standardized_cost abstract func in the Criterion class
-    #   should cost be standardized or scaled in the min-max range?
     @property
     def total_cost(self) -> float:
         """
@@ -1158,7 +1296,28 @@ class MultiCriteriaLabel(BaseLabel):
 
         return sum(self.criteria, start=0.0)
 
+    @property
+    def earliest_arrival_time(self) -> int:
+        """
+        Returns the earliest arrival time associated to this label
+
+        :return: arrival time in seconds past the midnight of the departure day
+        """
+
+        arrival_time_crit = next(
+            filter(lambda c: isinstance(c, ArrivalTimeCriterion), self.criteria),
+            None
+        )
+
+        if arrival_time_crit is None:
+            raise ValueError(f"No {ArrivalTimeCriterion.__name__} is defined for this label")
+        else:
+            return int(arrival_time_crit.raw_value)
+
     def update(self, data: LabelUpdate) -> MultiCriteriaLabel:
+        if len(self.criteria) == 0:
+            raise Exception("Trying to update an instance with no criteria set")
+
         updated_criteria = []
         for c in self.criteria:
             updated_c = c.update(data=data)
@@ -1363,6 +1522,7 @@ class Journey:
             )
             logger.info(msg)
 
+        # TODO make it print all the final criteria values
         logger.info(f"Fare: €{self.fare()}")
 
         msg = f"Duration: {sec2str(self.travel_time())}"
