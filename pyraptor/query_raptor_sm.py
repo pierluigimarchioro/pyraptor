@@ -1,7 +1,7 @@
 """Run query with RAPTOR algorithm"""
 import argparse
 import json
-from typing import Dict
+from typing import Dict, List
 
 from loguru import logger
 
@@ -96,14 +96,14 @@ def main(
     logger.debug("Departure time (s.)  : " + str(dep_secs))
 
     # Reading shared mobility feed
-    feed_info = json.load(open(shared))
-    feed = SharedMobilityFeed(feed_info['url'], feed_info['lang'])
-    logger.debug(f"{feed.id_} feed got successfully")
+    feed_infos: List[Dict] = json.load(open(shared))['feeds']
+    feeds: List[SharedMobilityFeed] = [SharedMobilityFeed(feed_info['url'], feed_info['lang']) for feed_info in feed_infos]
+    logger.debug(f"{[feed.system_id for feed in feeds]} feeds got successfully")
 
     # Find route between two stations
     journey_to_destinations = run_raptor(
         timetable,
-        feed,
+        feeds,
         origin_station,
         dep_secs,
         rounds,
@@ -126,7 +126,7 @@ def main(
 
 def run_raptor(
     timetable: Timetable,
-    feed: SharedMobilityFeed,
+    feeds: List[SharedMobilityFeed],
     origin_station: str,
     dep_secs: int,
     rounds: int,
@@ -149,7 +149,7 @@ def run_raptor(
     destination_stops.pop(origin_station, None)
 
     # Run Round-Based Algorithm
-    raptor = RaptorAlgorithmSharedMobility(timetable, feed)
+    raptor = RaptorAlgorithmSharedMobility(timetable, feeds)
     bag_round_stop = raptor.run(from_stops, dep_secs, rounds)
     best_labels = bag_round_stop[rounds]
 
