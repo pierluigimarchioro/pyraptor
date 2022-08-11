@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import os
 import uuid
+from abc import abstractmethod, ABC
 from collections.abc import Iterable
 from itertools import compress
 from collections import defaultdict
@@ -115,18 +116,18 @@ class Stops:
     def __iter__(self):
         return iter(self.set_idx.values())
 
-    def get(self, stop_id):
+    def get(self, stop_id) -> Stop:
         """Get stop"""
         if stop_id not in self.set_idx:
             raise ValueError(f"Stop ID {stop_id} not present in Stops")
-        stop = self.set_idx[stop_id]
+        stop: Stop = self.set_idx[stop_id]
         return stop
 
     def get_by_index(self, stop_index) -> Stop:
         """Get stop by index"""
         return self.set_index[stop_index]
 
-    def add(self, stop):
+    def add(self, stop: Stop) -> Stop:
         """Add stop"""
         if stop.id in self.set_idx:
             stop = self.set_idx[stop.id]
@@ -143,7 +144,7 @@ class Stops:
         return self.filter_public_transport(self)
 
     @property
-    def shared_mobility_stops(self) -> List[PhysicalRentingStation]:
+    def shared_mobility_stops(self) -> List[RentingStation]:
         """ Returns its shared mobility stops  """
         return self.filter_shared_mobility(self)
 
@@ -153,9 +154,9 @@ class Stops:
         return [s for s in stops if type(s) == Stop]
 
     @staticmethod
-    def filter_shared_mobility(stops: Iterable[Stop]) -> list[PhysicalRentingStation]:
-        """ Filter only subclasses of PhysicalRentingStation  """
-        return [s for s in stops if issubclass(type(s), PhysicalRentingStation)]
+    def filter_shared_mobility(stops: Iterable[Stop]) -> list[RentingStation]:
+        """ Filter only subclasses of RentingStation  """
+        return [s for s in stops if isinstance(s, RentingStation)]
 
 
 @attr.s(repr=False, cmp=False)
@@ -625,29 +626,6 @@ class Transfers:
         """ Returns all transfers with given stop as departing or arrival  """
         return self.with_from_stop(s) + self.with_to_stop(s)
 
-    """
-    TODO remove if all VehicleTransfers in separated class
-    @property
-    def foot_transfers(self) -> List[Transfer]:
-        \""" Returns its foot transfers  \"""
-        return self.filter_foot_transfer(self)
-
-    @property
-    def vehicle_transfers(self) -> List[VehicleTransfer]:
-        \""" Returns its vtype transfers \"""
-        return self.filter_vehicle_transfer(self)
-
-    @staticmethod
-    def filter_foot_transfer(transfers: Iterable[Transfer]) -> List[Transfer]:
-        \""" Filter only Transfer objects, not its subclasses  \"""
-        return [t for t in transfers if type(t) == Transfer]
-
-    @staticmethod
-    def filter_vehicle_transfer(transfers: Iterable[Transfer]) -> list[VehicleTransfer]:
-        \""" Filter only subclasses of VehicleTransfer \"""
-        return [t for t in transfers if issubclass(type(t), VehicleTransfer)]
-    """
-
 
 @dataclass
 class Leg:
@@ -1102,15 +1080,185 @@ class AlgorithmOutput(TimetableInfo):
         write_joblib(algo_output, _ALGO_OUTPUT_FILENAME)
 
 
-""" Shared Mobility """
+""" Shared Mobility: Renting Stations """
 
 
-class PhysicalRentingStation(Stop):
+@attr.s(cmp=False, repr=False)
+class RentingStation(Stop):
     """
-    This class represents a Physical Renting Station used for shared-mobility in the urban network
+    Interface representing a Renting Station used
+    This class represents a Physical Renting Station used in urban network for shared mobility
     """
+    system_id: str = attr.ib(default=None)  # Shared mobility system identifier
+    vtype: TransferType = attr.ib(default=None)  # Type of vehicle rentable in the station
+
+    @property
+    # @abstractmethod TODO check AttributeError
+    def valid_source(self) -> bool:
+        """ Returns true if the renting station is able to rent a vehicle, false otherwise """
+        return False
+
+    @property
+    # @abstractmethod
+    def valid_destination(self) -> bool:
+        """ Returns true if the renting station is able to accept a returning vehicle, false otherwise """
+        return False
+
+
+@attr.s(cmp=False, repr=False)
+class RentingStations(Stops, ABC):
+    """
+    Interface representing a set of renting stations
+    """
+
+    system_id: str = attr.ib(default=None)
+    system_vtype: TransferType = attr.ib(default=None)
+
+    @property
+    def no_source(self) -> List[RentingStation]:
+        """ Returns all renting stations with no available vehicles for departure """
+        return [s for s in self if not s.valid_source]
+
+    @property
+    def no_destination(self) -> List[RentingStation]:
+        """ Returns all renting stations with no available docks for arrival """
+        return [s for s in self if not s.valid_destination]
+
+    @abstractmethod
+    def init_download(self):
+        """ Downloads static datas """
+        pass
+
+    @abstractmethod
+    def update(self):
+        """ Update datas using real-time feeds  """
+        pass
+
+
+@attr.s(cmp=False, repr=False)
+class PhysicalRentingStation(RentingStation):
     capacity: int = attr.ib(default=0)
-    vehicleType: TransferType = attr.ib(default=None)  # Type of vtype rentable in the Station
+    vehicles_available: int = attr.ib(default=0)  # Available vehicles number (real-time)
+    docks_available: int = attr.ib(default=0)  # Available docks number (real-time)
+    is_installed: bool = attr.ib(default=False)  # Station currently on the street (real-time)
+    is_renting: bool = attr.ib(default=False)  # Station renting vehicles (real-time)
+    is_returning: bool = attr.ib(default=False)  # Station accepting vehicles returns (real-time)
+
+    @property
+    def valid_source(self) -> bool:
+        """ Returns true if the renting station is able to rent a vehicle, false otherwise """
+        valid = self.vehicles_available > 0 and \
+                self.is_installed and \
+                self.is_renting
+        return valid
+
+    @property
+    def valid_destination(self) -> bool:
+        """ Returns true if the renting station is able to accept a returning vehicle, false otherwise """
+        valid = self.vehicles_available < self.capacity and \
+                self.docks_available > 0 and \
+                self.is_returning
+        return valid
+
+
+@attr.s(cmp=False, repr=False)
+class PhysicalRentingStations(RentingStations):
+
+    # New dictionaries types
+    set_idx: Dict[str, RentingStation] = dict()
+    set_index: Dict[int, RentingStation] = dict()
+    last_index: int = 1
+
+    station_info_url: str = attr.ib(default=None)
+    station_status_url: str = attr.ib(default=None)
+
+    """ Override superclass methods with stub, subsuming to RentingStations """
+
+    def get(self, stop_id) -> PhysicalRentingStation:
+        return super(PhysicalRentingStations, self).get(stop_id)
+
+    def get_by_index(self, stop_index) -> PhysicalRentingStation:
+        """Get stop by index"""
+        return self.set_index[stop_index]
+
+    def add(self, stop: PhysicalRentingStation) -> PhysicalRentingStation:
+        return super(PhysicalRentingStations, self).add(stop)
+
+    """ Override abstract methods """
+
+    def init_download(self):
+        """ Downloads static datas """
+
+        stations: List[Dict] = SharedMobilityFeed.open_json(self.station_info_url)['data']['stations']
+        for station in stations:
+            new_station: Station = Station(id=station['name'], name=station['name'])
+            new_: PhysicalRentingStation = PhysicalRentingStation(
+                id=station['station_id'], name=station['name'], station=new_station,
+                platform_code=-1, index=None, geo=(station['lat'], station['lon']),
+                system_id=self.system_id, vtype=self.system_vtype, capacity=station['capacity']
+            )
+            new_station.add_stop(new_)
+            self.add(new_)
+
+    def update(self):
+        """ Update datas using real-time feeds  """
+        status: List[Dict] = SharedMobilityFeed.open_json(self.station_status_url)['data']['stations']
+        for state in status:
+            station: PhysicalRentingStation = self.get(state['station_id'])
+            station.is_installed = state['is_installed']
+            station.is_renting = state['is_renting']
+            station.is_returning = state['is_returning']
+            station.docks_available = state['num_docks_available']
+            vname = 'bike' if self.system_vtype == TransferType.Bicycle else 'other'  # TODO check for possible vehicles names
+            station.vehicles_available = state[f'num_{vname}s_available']
+
+
+@attr.s(cmp=False, repr=False)
+class GeofenceArea(RentingStation):
+
+    @property
+    def valid_source(self) -> bool:
+        """ Returns true if the renting station is able to rent a vehicle, false otherwise """
+        return False
+
+    @property
+    def valid_destination(self) -> bool:
+        """ Returns true if the renting station is able to accept a returning vehicle, false otherwise """
+        return False
+
+
+@attr.s(cmp=False, repr=False)
+class GeofenceAreas(RentingStations):
+
+    # New dictionaries types
+    set_idx: Dict[str, GeofenceArea] = dict()
+    set_index: Dict[int, GeofenceArea] = dict()
+    last_index: int = 1
+
+    geofencing_zones_url: str = attr.ib(default=None)
+    free_bike_status_url: str = attr.ib(default=None)
+
+    """ Override superclass methods with stub, subsuming to RentingStations """
+
+    def get(self, stop_id) -> GeofenceArea:
+        return super(GeofenceAreas, self).get(stop_id)
+
+    def get_by_index(self, stop_index) -> GeofenceArea:
+        """Get stop by index"""
+        return self.set_index[stop_index]
+
+    def add(self, stop: GeofenceArea) -> GeofenceArea:
+        return super(GeofenceAreas, self).add(stop)
+
+    """ Override abstract methods """
+
+    def init_download(self):
+        """ Downloads static datas """
+        pass
+
+    def update(self):
+        """ Update datas using real-time feeds  """
+        pass
 
 
 @attr.s
@@ -1122,7 +1270,7 @@ class VehicleTransfer(Transfer):
 
     # TODO can we override Transfer.get_vehicle?
     @staticmethod
-    def get_vehicle_transfer(sa: PhysicalRentingStation, sb: PhysicalRentingStation,
+    def get_vehicle_transfer(sa: RentingStation, sb: RentingStation,
                              vtype: TransferType, speed: float | None = None) \
             -> Tuple[VehicleTransfer, VehicleTransfer]:
         """ Given two renting stations compute both inbound and outbound vtype transfers
@@ -1136,14 +1284,16 @@ class VehicleTransfer(Transfer):
             VehicleTransfer(from_stop=sb, to_stop=sa, transfer_time=time, vtype=vtype)
         )
 
+
 class VehicleTransfers(Transfers):
-    """ This class represent a set of VehicleTransfers
-        Class re-use all super-class methods verifying SharedMobility types """
+    """ This class represent a set of VehicleTransfers  """
+
+    """ Override superclass methods with stub, subsuming to VehicleTransfer """
 
     def add(self, transfer: VehicleTransfer):
         super(VehicleTransfers, self).add(transfer)
 
-    def with_from_stop(self, from_: PhysicalRentingStation) -> List[VehicleTransfer]:
+    def with_from_stop(self, from_: RentingStation) -> List[VehicleTransfer]:
         """ Returns all transfers with given departing stop  """
         return super(VehicleTransfers, self).with_from_stop(from_)
 
@@ -1156,50 +1306,18 @@ class SharedMobilityFeed:
     """ This class represent a GBFS feed
         All datas comes from gbfs.json (see https://github.com/NABSA/gbfs/blob/v2.3/gbfs.md#gbfsjson)"""
 
-    def __init__(self, url: str,
-                 lang: str = 'it'):
+    def __init__(self, url: str, lang: str = 'it'):
         self.url: str = url  # gbfs.json url
         self.lang: str = lang  # lang of feed
         self.feeds_url: Mapping[str, str] = self._get_feeds_url()  # mapping between feed_name and url
-        self.id_: str = self._get_items_list(feed_name='system_information')['name']  # feed id
-        self.vtype: TransferType = TransferType(next(iter(  # stations vtype type
-            self._get_items_list(feed_name='vehicle_types'))
-        )['form_factor'])  # TODO type of first item; we consider all stations having only this vtype type
+        self.system_id: str = self._get_items_list(feed_name='system_information')['system_id']  # feed sysyem_id
+        self.vtype: TransferType = self._get_vtype()
+        self.renting_stations: RentingStations = self._get_station()
 
     @property
     def feeds(self):
         """ Name of feeds """
         return list(self.feeds_url.keys())
-
-    @property
-    def renting_stations_info(self) -> Iterable[Dict]:
-        """ Returns renting-stations informations """
-        return self._get_items_list(feed_name='station_information')
-
-    @property
-    def renting_stations_status(self) -> Iterable[Dict]:
-        """ Returns renting-stations status """
-        return self._get_items_list(feed_name='station_status')
-
-    @property
-    def renting_station_no_source(self) -> List[PhysicalRentingStation]:
-        """ Returns list of renting-stations not available as source """
-        # TODO probably this operation won't work for all GBFS
-        # TODO study num_{vechicle_name}_available standard
-        vname: str = 'bikes' if self.vtype == TransferType.Bicycle else 'cars'
-        return [s['station_id'] for s in self.renting_stations_status if not (
-                s['is_installed'] == 1 and
-                s['is_renting'] == 1 and
-                s[f'num_{vname}_available'] > 0
-        )]
-
-    @property
-    def renting_station_no_dest(self) -> List[PhysicalRentingStation]:
-        """ Returns list of renting-stations not available as destination """
-        return [s['station_id'] for s in self.renting_stations_status if not (
-                s['is_renting'] == 1 and
-                s[f'num_docks_available'] > 0
-        )]
 
     @staticmethod
     def open_json(url: str) -> Dict:
@@ -1220,7 +1338,41 @@ class SharedMobilityFeed:
         feed = SharedMobilityFeed.open_json(url=self.feeds_url[feed_name])
         datas = feed['data']
         if feed_name != 'system_information':
-            items_name = next(iter(datas.keys()))  # name of items is only key in datas (e.g. 'stations', 'vehicles', ...)
+            items_name = next(
+                iter(datas.keys()))  # name of items is only key in datas (e.g. 'stations', 'vehicles', ...)
             return datas[items_name]
         else:
             return datas  # in system_information datas is an items list
+
+    def _get_vtype(self) -> TransferType:
+        """ Retrieves vehicle type from associated feeds
+            if more than one, raise an exception """
+        vtypes = set([vtype['form_factor'] for vtype in self._get_items_list(feed_name='vehicle_types')])
+        if len(vtypes) > 1:
+            raise Exception(f"Multiple vehicles: {vtypes}")
+        else:
+            value = next(iter(list(vtypes)))
+            return TransferType(value)
+
+    def _get_station(self) -> RentingStations:
+        """ Basing on available feeds distinguish from PhysicalRentingStation or GeofanceArea"""
+        if 'station_information' not in self.feeds or \
+                'station_status' not in self.feeds or \
+                len(self._get_items_list(feed_name='station_information')) == 0 or \
+                len(self._get_items_list(feed_name='station_status')) == 0:
+            if 'geofencing_zones' in self.feeds and 'free_bike_status_url' in self.feeds:
+                stations: GeofenceAreas = GeofenceAreas(system_id=self.system_id, system_vtype=self.vtype,
+                                                        geofencing_zones_url=self.feeds_url['geofencing_zones'],
+                                                        free_bike_status_url=self.feeds_url['free_bike_status_url']
+                                                        )
+            else:
+                raise Exception(f"No compatible stations with feeds {self.feeds}")
+        else:
+            stations: PhysicalRentingStations = PhysicalRentingStations(system_id=self.system_id,
+                                                                        system_vtype=self.vtype,
+                                                                        station_info_url=self.feeds_url['station_information'],
+                                                                        station_status_url=self.feeds_url['station_status']
+                                                                        )
+        stations.init_download()
+        stations.update()
+        return stations
