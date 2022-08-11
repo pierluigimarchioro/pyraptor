@@ -35,7 +35,7 @@ from pyraptor.model.structures import (
     Transfers,
     TimetableInfo,
     RouteInfo,
-    PhysicalRentingStation,
+    RentingStation,
     SharedMobilityFeed,
     Routes
 )
@@ -76,7 +76,7 @@ def parse_arguments():
     )
     parser.add_argument("-a", "--agencies", nargs="+", default=["NS"])
     parser.add_argument("-s", "--shared", type=str, default="",
-                        help="path to .json file specifying url and lang")
+                        help="path to .json file containing a single 'feeds' key specifying a list of dictionaries with url and lang")
     parser.add_argument("-j", "--jobs", type=int, default=1, help="Number of jobs to run")
 
     arguments = parser.parse_args()
@@ -98,7 +98,8 @@ def main(
 
     gtfs_timetable = read_gtfs_timetable(input_folder, departure_date, agencies)
     timetable = gtfs_to_pyraptor_timetable(gtfs_timetable, n_jobs)
-    if shared:  # if default empty string, no shared-mobility service is considered # TODO maybe study a better strategy ?
+    # TODO maybe study a better strategy for shared mobility inclusion ?
+    if shared:  # if default empty string, no shared-mobility service is considered
         timetable = add_shared_mobility_to_pyraptor_timetable(timetable, shared)
     timetable.counts()
 
@@ -608,14 +609,13 @@ def gtfs_to_pyraptor_timetable(
 
     # Make sure all the jobs are finished
     pool.join()
-    
+
     # Routes
     logger.debug("Add routes")
 
     routes = Routes()
     for trip in trips:
         routes.add(trip)
-
 
     # Transfers
     logger.debug("Add transfers")
@@ -663,37 +663,25 @@ def gtfs_to_pyraptor_timetable(
 
 
 def add_shared_mobility_to_pyraptor_timetable(timetable: Timetable, shared: str):
-
     logger.info("Adding shared mobility datas")
 
-    feed_info: Dict = json.load(open(shared))
-    feed: SharedMobilityFeed = SharedMobilityFeed(feed_info['url'], feed_info['lang'])
+    feed_infos: List[Dict] = json.load(open(shared))['feeds']
+    feeds: List[SharedMobilityFeed] = [SharedMobilityFeed(feed_info['url'], feed_info['lang']) for feed_info in feed_infos]
 
     logger.debug("Add stations and renting-stations")
 
     stations_1, stops_1 = len(timetable.stations), len(timetable.stops)  # debugging
 
-    for s in feed.renting_stations_info:
+    for feed in feeds:
+        for renting_station in feed.renting_stations:
 
-        # Stations
-        s_name = s['name']
-        station = Station(s_name, s_name)
-        station = timetable.stations.add(station)
+            timetable.stops.add(renting_station)
+            timetable.stations.add(renting_station.station)
 
-        # Renting Stations
-        platform_code = -1
-        stop_id = f"{s_name}-{platform_code}"
-        stop = PhysicalRentingStation(s['station_id'], stop_id, station, platform_code, timetable.stops.last_index + 1,
-                                      (s['lat'], s['lon']))
-        stop.capacity = s['capacity'] # TODO fields on constructor
-        stop.vehicleType = feed.vtype
-        station.add_stop(stop)
-        timetable.stops.add(stop)
-
-    stations_2, stops_2 = len(timetable.stations), len(timetable.stops)  # debugging
-
-    logger.debug(f"Added {stations_2 - stations_1} new stations")
-    logger.debug(f"Added {stops_2 - stops_1} new renting stations")
+        stations_2, stops_2 = len(timetable.stations), len(timetable.stops)  # debugging
+        logger.debug(f"Added {stations_2 - stations_1} new stations from {feed.system_id}")
+        logger.debug(f"Added {stops_2 - stops_1} new renting stations from {feed.system_id}")
+        stations_1, stops_1 = stations_2, stops_2
 
     logger.debug("Add vehicle-transfers")
 
@@ -703,8 +691,9 @@ def add_shared_mobility_to_pyraptor_timetable(timetable: Timetable, shared: str)
     shared_mob = timetable.stops.shared_mobility_stops
 
     # TODO multiprocessor ?
-    for i, mob in zip(range(len(shared_mob)), shared_mob):
-        if i % 25 == 0:
+    for mob in shared_mob:
+        i = shared_mob.index(mob)
+        if i % 20 == 0:
             logger.debug(f'Progress: {i * 100 / len(shared_mob):0.0f}% [stop #{i} of {len(shared_mob)}]')
         for pub in public:
             if mob.distance_from(pub) < MIN_DIST:
