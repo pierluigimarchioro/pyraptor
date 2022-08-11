@@ -84,11 +84,6 @@ class OTPVisualizer:
             journey_stops.append(leg.to_stop)
         journey_stop_ids: List[str] = list(set([str(s.id) for s in journey_stops]))
 
-        #TODO for debug purpose only, need to be deleted, depart time is now correct, how to show only the right journey?
-        self._algo_output.journey.print()
-        # leg.from_stop.station.name
-        # check trips by from_Stop id and remove all not to_stop id
-
         gtfs_tables = io.read_gtfs_tables(self._algo_output.original_gtfs_dir)
 
         # Keep only the GTFS data related to the stops included in the journey
