@@ -136,9 +136,6 @@ class Label:
     @property
     def criteria(self):
         """Criteria"""
-        # TODO this is the multi-criteria part of the label:
-        #   most important is arrival time, then fare (where is fare info retrieved from?),
-        #   then, at last, number of trips necessary
         return [self.earliest_arrival_time, self.fare, self.n_trips]
 
     def update(self, earliest_arrival_time=None, fare_addition=None, from_stop=None) -> Label:
@@ -244,9 +241,6 @@ def pareto_set(labels: List[Label], keep_equal=False):
     for i, label in enumerate(labels_criteria):
         if is_efficient[i]:
             # Keep any point with a lower cost
-            # TODO qui vengono effettuati i confronti multi-criterio:
-            #   i criteri sono hardcoded dentro la proprietà criteria di structures.Label
-            #   bisogna trovare un modo di definirli dinamicamente
             if keep_equal:
                 # keep point with all labels equal or one lower
                 # Note: list1 < list2 determines if list1 is smaller than list2
@@ -400,8 +394,6 @@ class McRaptorAlgorithm:
                     trip_stop_time = label.trip.get_stop_time(current_stop)
 
                     # Take fare of previous stop in trip as fare is defined on start
-                    # TODO this is another part relevant for the multi-criteria approach:
-                    #   here fares for each label are updated based on the traversed trips
                     previous_stop = remaining_stops_in_route[current_stop_idx - 1]
                     from_fare = label.trip.get_fare(previous_stop)
 
@@ -549,7 +541,6 @@ def best_legs_to_destination_station(
         (stop, label) for stop in to_stops for label in last_round_bag[stop].labels
     ]
 
-    # TODO Use merge function on Bag
     # Pareto optimal labels
     pareto_optimal_labels: List[Label] = pareto_set([label for (_, label) in best_labels])
     pareto_optimal_labels: List[Tuple[Stop, Label]] = [
