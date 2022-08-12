@@ -8,7 +8,8 @@ from copy import deepcopy
 from loguru import logger
 
 from pyraptor.dao.timetable import Timetable
-from pyraptor.model.structures import Stop, Route, Leg, Journey, TransferTrip, TransportType, Label, LabelUpdate
+from pyraptor.model.structures import Stop, Route, Leg, Journey, TransferTrip, TransportType, Label, LabelUpdate, \
+    ArrivalTimeCriterion
 from pyraptor.util import LARGE_NUMBER
 
 
@@ -163,7 +164,8 @@ class RaptorAlgorithm:
                             boarding_stop=boarding_stop,
                             arrival_stop=current_stop,
                             old_trip=current_label.trip,
-                            new_trip=current_trip
+                            new_trip=current_trip,
+                            best_labels=self.bag_star
                         )
                         current_label = current_label.update(
                             data=update_data
@@ -252,7 +254,8 @@ class RaptorAlgorithm:
                         boarding_stop=current_stop,
                         arrival_stop=arrival_stop,
                         old_trip=arrival_label.trip,
-                        new_trip=transfer_trip
+                        new_trip=transfer_trip,
+                        best_labels=self.bag_star
                     )
                     arrival_label = arrival_label.update(
                         data=update_data
@@ -298,8 +301,21 @@ def reconstruct_journey(destination: Stop, bag: Dict[Stop, Label]) -> Journey:
         from_stop = bag[to_stop].boarding_stop
         to_stop_label = bag[to_stop]
 
+        # The following are all default values except the raw value.
+        # The important is giving the leg object information
+        #   about arrival time, which allows it to check if legs are
+        #   compatible and to store correct information about the journey
+        arrival_time_crit = ArrivalTimeCriterion(
+            name="arrival_time",
+            weight=1,
+            raw_value=to_stop_label.earliest_arrival_time,
+            upper_bound=LARGE_NUMBER
+        )
         leg = Leg(
-            from_stop, to_stop, to_stop_label.trip, to_stop_label.earliest_arrival_time
+            from_stop=from_stop,
+            to_stop=to_stop,
+            trip=to_stop_label.trip,
+            criteria=[arrival_time_crit]
         )
         jrny = jrny.prepend_leg(leg)
         to_stop = from_stop

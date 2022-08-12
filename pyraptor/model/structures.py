@@ -687,14 +687,7 @@ class Leg:
     from_stop: Stop
     to_stop: Stop
     trip: Trip
-    earliest_arrival_time: int
-    fare: float = 0.0
-    n_trips: int = 0
-
-    @property
-    def criteria(self) -> Iterable:
-        """Criteria"""
-        return [self.earliest_arrival_time, self.fare, self.n_trips]
+    criteria: Iterable[Criterion]
 
     @property
     def dep(self) -> int:
@@ -739,22 +732,27 @@ class Leg:
         - The accumulated value of a criteria of current leg is larger or equal to the accumulated value of
           the other leg (current leg is instance of this class)
         """
-        arrival_time_compatible = (
-                other_leg.earliest_arrival_time >= self.earliest_arrival_time
-        )
 
-        n_trips_compatible = (
-            other_leg.n_trips >= self.n_trips
-            if other_leg.is_same_station_transfer()
-            else other_leg.n_trips > self.n_trips
-        )
+        # TODO remove?
+        # arrival_time_compatible = (
+        #         other_leg.earliest_arrival_time >= self.earliest_arrival_time
+        # )
+#
+        # n_trips_compatible = (
+        #     other_leg.n_trips >= self.n_trips
+        #     if other_leg.is_same_station_transfer()
+        #     else other_leg.n_trips > self.n_trips
+        # )
 
+        # TODO rationale here is that other_leg (which comes after the current)
+        #  can't have smaller values in each criteria.
+        #  I.e. the X criteria of leg_{y} must be smaller or equal to the X criteria of leg_{y+1}
         criteria_compatible = np.all(
             np.array([c for c in other_leg.criteria])
             >= np.array([c for c in self.criteria])
         )
 
-        return all([arrival_time_compatible, n_trips_compatible, criteria_compatible])
+        return all([criteria_compatible])
 
     def to_dict(self, leg_index: int = None) -> Dict:
         """Leg to readable dictionary"""
@@ -770,7 +768,7 @@ class Leg:
             trip_long_name=self.trip.long_name,
             from_platform_code=self.from_stop.platform_code,
             to_platform_code=self.to_stop.platform_code,
-            fare=self.fare,
+            criteria=self.criteria
         )
 
 
@@ -779,6 +777,10 @@ class LabelUpdate:
     """
     Class that represents all the necessary data to update a label
     """
+    # TODO it would be cool to parameterize this class with a generic _L that indicates
+    #   the Label type. This would make best_labels of type Dict[Stop, _L], and would hence
+    #   improve type checking and remove the isinstance() check in get_best_stop_criterion().
+    #   it would also be easy to alias: e.g. McLabelUpdate = LabelUpdate[MultiCriteriaLabel]
 
     boarding_stop: Stop
     """Stop at which the trip is boarded"""
@@ -857,6 +859,8 @@ class Label(BaseLabel):
     (https://www.microsoft.com/en-us/research/wp-content/uploads/2012/01/raptor_alenex.pdf).
     """
 
+    # TODO generalize this class to have just an ArrivalTimeCriterion? at that point
+    #   might as well use a MultiCriteriaLabel with just one criterion
     earliest_arrival_time: int = LARGE_NUMBER
     """Earliest time to get to the destination stop by boarding the current trip"""
 
@@ -974,7 +978,17 @@ class Criterion(ABC):
 _C = TypeVar('_C', bound=Criterion)
 
 
-def _get_stop_criterion(criterion_class: Type[_C], stop: Stop, best_labels: Dict[Stop, BaseLabel]) -> _C:
+def _get_best_stop_criterion(criterion_class: Type[_C], stop: Stop, best_labels: Dict[Stop, BaseLabel]) -> _C:
+    """
+    Returns the instance of the specified type of criterion, which is retrieved from the
+    best label associated with the provided stop.
+    An exception is raised if the criterion instance couldn't be found.
+
+    :param criterion_class: type of the criterion to retrieve
+    :param stop: stop to retrieve the best criterion for
+    :param best_labels: collection that pairs the best labels with their associated stop
+    :return: instance of the specified criterion type
+    """
 
     # Criteria can be retrieved only from MultiCriteriaLabel instances
     stop_lbl = best_labels[stop]
@@ -1034,7 +1048,7 @@ class DistanceCriterion(Criterion):
 
         # Extract the total distance of the previous stop (boarding stop) in the journey
         # from its distance criterion instance
-        prev_stop_dist_criterion = _get_stop_criterion(
+        prev_stop_dist_criterion = _get_best_stop_criterion(
             criterion_class=DistanceCriterion,
             stop=data.boarding_stop,
             best_labels=data.best_labels
@@ -1100,7 +1114,7 @@ class EmissionsCriterion(Criterion):
         )
         same_trip_emissions = same_trip_distance * co2_multiplier
 
-        prev_stop_emissions_crit = _get_stop_criterion(
+        prev_stop_emissions_crit = _get_best_stop_criterion(
             criterion_class=EmissionsCriterion,
             stop=data.boarding_stop,
             best_labels=data.best_labels
@@ -1271,7 +1285,7 @@ class CriteriaProvider:
 
 
 @dataclass(frozen=True)
-class MultiCriteriaLabel(BaseLabel):
+class MultiCriteriaLabel(BaseLabel):  # TODO is it MultiCriteria or MultiCriterion?
     """
     Class that represents a multi-criteria label.
 
@@ -1451,10 +1465,6 @@ class Journey:
         """Destination stop of Journey"""
         return self.legs[-1].to_stop
 
-    def fare(self) -> float:
-        """Total fare of Journey"""
-        return self.legs[-1].fare
-
     def dep(self) -> int:
         """Departure time"""
         return self.legs[0].dep
@@ -1467,15 +1477,23 @@ class Journey:
         """Travel time in seconds"""
         return self.arr() - self.dep()
 
+    def total_cost(self) -> float:
+        """
+        Returns the total cost of the journey
+        :return:
+        """
+
+        # journey cost is the total cost at its last leg
+        last_leg = self.legs[-1]
+
+        return sum(last_leg.criteria, start=0.0)
+
     def dominates(self, jrny: Journey):
         """Dominates other Journey"""
         return (
             True
             if (
-                       (self.dep() >= jrny.dep())
-                       and (self.arr() <= jrny.arr())
-                       and (self.fare() <= jrny.fare())
-                       and (self.number_of_trips() <= jrny.number_of_trips())
+                       self.total_cost() <= jrny.total_cost()
                )
                and (self != jrny)
             else False
@@ -1523,7 +1541,7 @@ class Journey:
             logger.info(msg)
 
         # TODO make it print all the final criteria values
-        logger.info(f"Fare: €{self.fare()}")
+        # logger.info(f"Fare: €{self.fare()}")
 
         msg = f"Duration: {sec2str(self.travel_time())}"
         if dep_secs:
