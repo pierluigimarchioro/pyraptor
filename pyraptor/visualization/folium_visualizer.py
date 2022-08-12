@@ -39,7 +39,7 @@ class MarkerSetting:
 
 
 COLOR_DEPARTURE = 'blue'
-COLOR_ARRIVAL = 'pink'
+COLOR_ARRIVAL = 'darkblue'
 
 
 class LineTypeSetting:
@@ -112,9 +112,9 @@ class StopVisualizer(object):
         mtype: MarkerType = MarkerType.PublicStop if type(self.stop) == Stop else MarkerType.RentingStation
         msetting: MarkerSetting = MARKER_SETTINGS[mtype]()
         if self.is_start:
-            msetting.icon.color = COLOR_DEPARTURE
+            msetting.icon.options['markerColor'] = COLOR_DEPARTURE
         if self.is_end:
-            msetting.icon.color = COLOR_ARRIVAL
+            msetting.icon.options['markerColor'] = COLOR_ARRIVAL
         return msetting
 
     @property
