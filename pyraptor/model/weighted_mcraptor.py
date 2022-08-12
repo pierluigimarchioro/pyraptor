@@ -35,6 +35,7 @@ from pyraptor.model.structures import (
 
 # TODO setting transfers weight to 0 breaks the query script
 #   because it says "max recursion depth exceeded". Maybe too many journeys?
+#   UPDATE: this error doesn't come up anymore, but it would be better to investigate further
 
 
 class WeightedMcRaptorAlgorithm:
