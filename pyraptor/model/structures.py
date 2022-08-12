@@ -1345,10 +1345,10 @@ class MultiCriteriaLabel(BaseLabel):  # TODO is it MultiCriteria or MultiCriteri
 
         return MultiCriteriaLabel(
             boarding_stop=data.boarding_stop if data.boarding_stop is not None else self.boarding_stop,
-
             # TODO is this the correct way of updating stop?
             # boarding_stop=boarding_stop if self.trip != trip else self.boarding_stop,
 
+            trip=data.new_trip if data.new_trip is not None else data.old_trip,
             criteria=updated_criteria
         )
 
