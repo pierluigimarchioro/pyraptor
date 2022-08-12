@@ -1,8 +1,8 @@
 """Test Query McRaptor"""
 from bdb import set_trace
 from pyraptor import query_mcraptor
-from pyraptor.model.mcraptor import pareto_set
-from pyraptor.model.structures import Stop, MultiCriteriaLabel, Trip
+from pyraptor.model.mcraptor import pareto_set, Label
+from pyraptor.model.structures import Stop, Trip
 
 
 def test_run_mcraptor_with_transfers_and_fares(timetable_with_transfers_and_fares):
@@ -26,6 +26,8 @@ def test_run_mcraptor_with_transfers_and_fares(timetable_with_transfers_and_fare
         origin_station,
         departure_time,
         rounds,
+        is_weighted_mc=False,
+        criteria_file_path=""
     )
 
     journeys = journeys_to_destinations[destination_station]
@@ -49,6 +51,8 @@ def test_run_mcraptor_many_transfers(timetable_with_many_transfers):
         origin_station,
         departure_time,
         rounds,
+        is_weighted_mc=False,
+        criteria_file_path=""
     )
     journeys = journeys_to_destinations[destination_station]
     for jrny in journeys:
@@ -64,13 +68,13 @@ def test_pareto_set():
     stop = Stop(1, 1, "UT", "13")
     stop2 = Stop(1, 1, "UT", "14")
 
-    label_0 = MultiCriteriaLabel(earliest_arrival_time=1, n_trips=6, trip=Trip(id_=6), fare=0, boarding_stop=stop)
-    label_1 = MultiCriteriaLabel(earliest_arrival_time=1, n_trips=6, trip=Trip(id_=6), fare=0, boarding_stop=stop2)
-    label_2 = MultiCriteriaLabel(earliest_arrival_time=3, n_trips=4, trip=Trip(id_=4), fare=0, boarding_stop=stop)
-    label_3 = MultiCriteriaLabel(earliest_arrival_time=5, n_trips=1, trip=Trip(id_=1), fare=0, boarding_stop=stop)
-    label_4 = MultiCriteriaLabel(earliest_arrival_time=3, n_trips=5, trip=Trip(id_=5), fare=0, boarding_stop=stop)
-    label_5 = MultiCriteriaLabel(earliest_arrival_time=5, n_trips=3, trip=Trip(id_=3), fare=0, boarding_stop=stop)
-    label_6 = MultiCriteriaLabel(earliest_arrival_time=6, n_trips=1, trip=Trip(id_=1), fare=0, boarding_stop=stop)
+    label_0 = Label(earliest_arrival_time=1, n_trips=6, trip=Trip(id_=6), fare=0, from_stop=stop)
+    label_1 = Label(earliest_arrival_time=1, n_trips=6, trip=Trip(id_=6), fare=0, from_stop=stop2)
+    label_2 = Label(earliest_arrival_time=3, n_trips=4, trip=Trip(id_=4), fare=0, from_stop=stop)
+    label_3 = Label(earliest_arrival_time=5, n_trips=1, trip=Trip(id_=1), fare=0, from_stop=stop)
+    label_4 = Label(earliest_arrival_time=3, n_trips=5, trip=Trip(id_=5), fare=0, from_stop=stop)
+    label_5 = Label(earliest_arrival_time=5, n_trips=3, trip=Trip(id_=3), fare=0, from_stop=stop)
+    label_6 = Label(earliest_arrival_time=6, n_trips=1, trip=Trip(id_=1), fare=0, from_stop=stop)
     labels1 = pareto_set(
         [
             label_0,
