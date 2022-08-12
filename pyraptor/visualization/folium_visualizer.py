@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import webbrowser
+from datetime import timedelta
 from enum import Enum
 from statistics import mean
 from typing import List, Tuple, Mapping, Callable, Any
@@ -37,17 +38,22 @@ class MarkerSetting:
             self.icon = folium.Icon()
 
 
+COLOR_DEPARTURE = 'blue'
+COLOR_ARRIVAL = 'pink'
+
+
 class LineTypeSetting:
 
-    def __init__(self, color: str='black', weight: float=1,
-                 opacity: float=1, dash_array: str='1'):
-
+    def __init__(self, color: str = 'black', weight: float = 1,
+                 opacity: float = 1, dash_array: str = '1'):
         self.color = color
         self.weight = weight
         self.opacity = opacity
         self.dash_array = dash_array
 
 
+# Value is a lambda producing a new MarkerSetting,
+# this is why each icon must be referenced just one time
 MARKER_SETTINGS: Mapping[MarkerType, Callable[[], MarkerSetting]] = {
     MarkerType.PublicStop:
         lambda: MarkerSetting(icon=folium.Icon(color='red', icon_color='white', icon='bus', prefix='fa')),
@@ -55,12 +61,82 @@ MARKER_SETTINGS: Mapping[MarkerType, Callable[[], MarkerSetting]] = {
         lambda: MarkerSetting(icon=folium.Icon(color='green', icon_color='white', icon='bicycle', prefix='fa'))
 }
 
-
-LINE_TYPE_SETTINGS = {
+LINE_TYPE_SETTINGS: Mapping[LineType, LineTypeSetting] = {
     LineType.Public: LineTypeSetting(color='red', weight=2.5, opacity=1, dash_array='1'),
     LineType.ShareMob: LineTypeSetting(color='green', weight=2, opacity=1, dash_array='8'),
     LineType.Walk: LineTypeSetting(color='blue', weight=2, opacity=0.8, dash_array='15')
 }
+
+class StopVisualizer(object):
+
+    def __init__(self, stop: Stop):
+        self.stop: Stop = stop
+        self.arr: str | None = None
+        self.dep: str | None = None
+
+    @property
+    def geo(self) -> Coordinates:
+        return self.stop.geo
+
+    @property
+    def name(self) -> str:
+        return f"{self.stop.name} "
+
+    @property
+    def is_start(self) -> bool:
+        return self.arr is None and \
+               self.dep is not None
+
+    @property
+    def is_end(self) -> bool:
+        return self.arr is not None and \
+               self.dep is None
+
+    @property
+    def arrival_departure_info(self) -> str:
+        if self.is_start:
+            return f"DEP: {self.dep} "
+        elif self.is_end:
+            return f"ARR: {self.arr} "
+        elif self.arr == self.dep:
+            return f"AT {self.dep} "
+        else:
+            return f"ARR: {self.arr}, DEP: {self.dep} "
+
+    @property
+    def info(self) -> str:
+        return f'''{self.name}<br>{self.arrival_departure_info}'''
+
+    @property
+    def setting(self) -> MarkerSetting:
+        mtype: MarkerType = MarkerType.PublicStop if type(self.stop) == Stop else MarkerType.RentingStation
+        msetting: MarkerSetting = MARKER_SETTINGS[mtype]()
+        if self.is_start:
+            msetting.icon.color = COLOR_DEPARTURE
+        if self.is_end:
+            msetting.icon.color = COLOR_ARRIVAL
+        return msetting
+
+    @property
+    def dep(self):
+        return self._dep
+
+    @property
+    def arr(self):
+        return self._arr
+
+    @arr.setter
+    def arr(self, seconds: int):
+        self._arr = seconds_to_hour(seconds)
+
+    @dep.setter
+    def dep(self, seconds: int):
+        self._dep = seconds_to_hour(seconds)
+
+
+def seconds_to_hour(seconds: int) -> str:
+    if seconds is not None:
+        return str(timedelta(seconds=seconds))
 
 
 class MapVisualizer:
@@ -80,15 +156,27 @@ class MapVisualizer:
         lons = [stop.geo.lon for stop in self.stops]
         return mean(lats), mean(lons)
 
+    def add_stops(self):
+        visualizers: Mapping[Stop, StopVisualizer] = {stop: StopVisualizer(stop) for stop in self.stops}
+        for leg in self.legs:
+            visualizers[leg.from_stop].dep = leg.dep
+            visualizers[leg.to_stop].arr = leg.arr
+        for vis in visualizers.values():
+            self.put_marker(
+                coord=vis.geo,
+                text=vis.info,
+                marker_setting=vis.setting
+            )
+
     def put_marker(self, coord: Coordinates,
                    text: str | None = None, marker_setting: MarkerSetting = None):
         if marker_setting is None:
             marker_setting = MarkerSetting()
         marker = Marker(
             location=coord.to_list,
-            popup=text,
+            tooltip=text,
             icon=marker_setting.icon
-            #icon=folium.Icon(color="red", icon="info-sign")
+            # icon=folium.Icon(color="red", icon="info-sign")
         )
         marker.add_to(self.map_)
 
@@ -139,18 +227,7 @@ if __name__ == "__main__":
     output: AlgorithmOutput = AlgorithmOutput.read_from_file(filepath=args.algo_output)
 
     visualizer = MapVisualizer(legs=output.journey.legs)
-
-    c1 = Coordinates(45.455409820801286, 9.112903140348216)
-    c2 = Coordinates(45.45941360104322, 9.129259707905655)
-    c3 = Coordinates(45.451189635387, 9.12167044518899)
-
-    visualizer.put_marker(c1, 'prima', MARKER_SETTINGS[MarkerType.PublicStop]())
-    visualizer.put_marker(c2, 'seconda', MARKER_SETTINGS[MarkerType.PublicStop]())
-    visualizer.put_marker(c3, 'terza')
-
-    visualizer.draw_line(c1, c2, 'aaa', LINE_TYPE_SETTINGS[LineType.Public])
-    visualizer.draw_line(c1, c3, 'bbb', LINE_TYPE_SETTINGS[LineType.ShareMob])
-    visualizer.draw_line(c2, c3, 'ccc', LINE_TYPE_SETTINGS[LineType.Walk])
+    visualizer.add_stops()
 
     out_file_path = path.join(args.output_dir, 'algo_output.html')
     visualizer.save(path_=out_file_path, open_=True)

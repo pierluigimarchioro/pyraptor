@@ -538,7 +538,8 @@ def gtfs_to_pyraptor_timetable(
         #   existing station with that station_id is returned
 
         platform_code = getattr(s, "platform_code", -1)
-        stop_id = f"{s.stop_name}-{platform_code}"
+        #stop_id = f"{s.stop_name}-{platform_code}" TODO can we keep just name ?
+        stop_id = f"{s.stop_name}"
         stop = Stop(s.stop_id, stop_id, station, platform_code, stops.last_index + 1, Coordinates(s.stop_lat, s.stop_lon))
 
         station.add_stop(stop)
