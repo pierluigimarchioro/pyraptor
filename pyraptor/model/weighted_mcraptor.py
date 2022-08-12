@@ -36,10 +36,6 @@ from pyraptor.model.structures import (
 # TODO setting transfers weight to 0 breaks the query script
 #   because it says "max recursion depth exceeded". Maybe too many journeys?
 
-# TODO it seems there are problems with the way labels are updated:
-#  qt8 m1 had 2 transfers and arrival time 12:00. Transfer number is correct, but arrival time is not.
-#  this probably also causes problem with journey reconstruction, since the algo says that there is no
-#  journey to qt8 m1
 
 class WeightedMcRaptorAlgorithm:
     """McRAPTOR Algorithm"""
@@ -90,8 +86,7 @@ class WeightedMcRaptorAlgorithm:
             # For the range query
             bag_round_stop[0] = copy(previous_run)
 
-        # TODO pass as
-        criteria_provider = CriteriaProvider(criteria_config_path="data/input/mc.json")
+        criteria_provider = CriteriaProvider(criteria_config_path=self.criteria_file_path)
 
         # Add to bag multi-criterion label for origin stops
         for from_stop in from_stops:
@@ -236,11 +231,7 @@ class WeightedMcRaptorAlgorithm:
                 # Mark the stop if bag is updated and update the best label(s) for that stop
                 # Updated bag means that the current stop brought some improvements
                 if bag_update:
-                    # TODO need to understand what is inside each bag and how this influences
-                    #   what is assigned for each label
-                    #   I'm now assigning just the first label in the bag to see what happens,
-                    #       but I don't actually know if it's the best
-                    self.bag_star[current_stop] = bag_round_stop[k][current_stop].labels[0]
+                    self.bag_star[current_stop] = bag_round_stop[k][current_stop].get_best_label()
                     new_marked_stops.add(current_stop)
 
                 # Step 3: merge B_{k-1}(p) into B_r
@@ -349,8 +340,7 @@ class WeightedMcRaptorAlgorithm:
                 # Mark the stop and update the best label collection
                 # if there were improvements (bag is updated)
                 if bag_update:
-                    # TODO see above. is labels[0] actually the best label?
-                    self.bag_star[other_stop] = bag_round_stop[k][other_stop].labels[0]
+                    self.bag_star[other_stop] = bag_round_stop[k][other_stop].get_best_label()
                     marked_stops_transfers.add(other_stop)
 
         logger.debug(f"{len(marked_stops_transfers)} transferable stops added")
@@ -407,10 +397,6 @@ def reconstruct_journeys(
     Construct Journeys for destinations from bags by recursively
     looping from destination to origin.
     """
-
-    # TODO debug
-    if "qt8 m1--1" in [leg.to_stop.name for leg in destination_legs]:
-        print("here")
 
     def loop(
             bag_round_stop: Dict[int, Dict[Stop, Bag]], k: int, journeys: List[Journey]

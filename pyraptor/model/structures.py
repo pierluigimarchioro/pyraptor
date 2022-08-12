@@ -1206,17 +1206,12 @@ class ArrivalTimeCriterion(Criterion):
     def update(self, data: LabelUpdate) -> ArrivalTimeCriterion:
         new_arrival_time = data.new_trip.get_stop_time(data.arrival_stop).dts_arr
 
-        # The value is the previously set arrival time
-        # Update only if new arrival time is better (less)
-        if new_arrival_time < self.raw_value:
-            return ArrivalTimeCriterion(
-                name=self.name,
-                weight=self.weight,
-                raw_value=new_arrival_time,
-                upper_bound=self.upper_bound
-            )
-        else:
-            return copy(self)
+        return ArrivalTimeCriterion(
+            name=self.name,
+            weight=self.weight,
+            raw_value=new_arrival_time,
+            upper_bound=self.upper_bound
+        )
 
 
 class TransfersNumberCriterion(Criterion):
@@ -1366,10 +1361,13 @@ class MultiCriteriaLabel(BaseLabel):  # TODO is it MultiCriteria or MultiCriteri
             updated_c = c.update(data=data)
             updated_criteria.append(updated_c)
 
+        updated_trip = data.new_trip if data.new_trip is not None else data.old_trip
+
         return MultiCriteriaLabel(
-            boarding_stop=data.boarding_stop if data.boarding_stop is not None else self.boarding_stop,
-            # TODO is this the correct way of updating stop?
-            # boarding_stop=boarding_stop if self.trip != trip else self.boarding_stop,
+            # TODO is this the correct way of updating stop? original way
+            boarding_stop=data.boarding_stop if self.trip != updated_trip else self.boarding_stop,
+            # TODO way 2
+            # boarding_stop=data.boarding_stop if data.boarding_stop is not None else self.boarding_stop,
 
             trip=data.new_trip if data.new_trip is not None else data.old_trip,
             criteria=updated_criteria
@@ -1398,6 +1396,9 @@ class Bag:
         """Add"""
         self.labels.append(label)
 
+        if len(self.labels) > 1:
+            logger.debug(f"Adding label to Bag with {len(self.labels)} labels")
+
     def merge(self, other_bag: Bag) -> Bag:
         """Merge other bag in current bag and return updated Bag"""
 
@@ -1409,7 +1410,22 @@ class Bag:
         pareto_labels = pareto_set(pareto_labels)
         bag_update = True if pareto_labels != self.labels else False
 
+        if len(pareto_labels) > 1:
+            logger.debug(f"Creating Bag with {len(pareto_labels)} labels")
+
         return Bag(labels=pareto_labels, updated=bag_update)
+
+    def get_best_label(self) -> MultiCriteriaLabel:
+        """
+        Returns the label with the best (lowest) cost in the bag
+        :return:
+        """
+
+        if len(self.labels) == 0:
+            raise Exception("There are no labels to retrieve the best from")
+
+        by_cost_asc = list(sorted(self.labels, key=lambda l: l.total_cost))
+        return by_cost_asc[0]
 
     def labels_with_trip(self):
         """All labels with trips, i.e. all labels that are reachable with a trip with given criterion"""

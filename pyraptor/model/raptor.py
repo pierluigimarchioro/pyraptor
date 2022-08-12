@@ -305,6 +305,7 @@ def reconstruct_journey(destination: Stop, bag: Dict[Stop, Label]) -> Journey:
         # The important is giving the leg object information
         #   about arrival time, which allows it to check if legs are
         #   compatible and to store correct information about the journey
+        # TODO using Criterion classes here feels out of place. what to do?
         arrival_time_crit = ArrivalTimeCriterion(
             name="arrival_time",
             weight=1,
