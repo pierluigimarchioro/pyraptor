@@ -123,8 +123,6 @@ class RaptorAlgorithm:
         """
         logger.debug(f"Traverse routes for round {k}")
 
-        # TODO not needed?
-        # bag_round_stop = deepcopy(bag_round_stop)
         new_stops = []
         n_evaluations = 0
         n_improvements = 0

@@ -683,7 +683,6 @@ class Transfers:
 class Leg:
     """Leg"""
 
-    # TODO adapt Leg to new MultiCriteria label
     from_stop: Stop
     to_stop: Stop
     trip: Trip
@@ -1498,16 +1497,22 @@ class Journey:
         """Travel time in seconds"""
         return self.arr() - self.dep()
 
+    def criteria(self) -> Iterable[Criterion]:
+        """
+        Returns the final criteria for the journey, which correspond to
+        the criteria values of the final leg.
+        :return:
+        """
+
+        return self.legs[-1].criteria
+
     def total_cost(self) -> float:
         """
         Returns the total cost of the journey
         :return:
         """
 
-        # journey cost is the total cost at its last leg
-        last_leg = self.legs[-1]
-
-        return sum(last_leg.criteria, start=0.0)
+        return sum(self.criteria(), start=0.0)
 
     def dominates(self, jrny: Journey):
         """Dominates other Journey"""
@@ -1561,14 +1566,14 @@ class Journey:
             )
             logger.info(msg)
 
-        # TODO make it print all the final criteria values
-        # logger.info(f"Fare: €{self.fare()}")
+        logger.info("")
+        for c in self.criteria():
+            logger.info(str(c))
 
         msg = f"Duration: {sec2str(self.travel_time())}"
         if dep_secs:
-            msg += " ({} from request time {})".format(
-                sec2str(self.arr() - dep_secs), sec2str(dep_secs),
-            )
+            msg += f" ({sec2str(self.arr() - dep_secs)} from request time {sec2str(dep_secs)})"
+
         logger.info(msg)
         logger.info("")
 
