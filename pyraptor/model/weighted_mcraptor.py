@@ -1,276 +1,66 @@
 """
-This is the original implementation of the McRAPTOR algorithm,
-which closely follows what is described in the Microsoft paper.
-TODO The old model classes have been locally copied to this file,
-    since structures.py now contains the new multi-criterion classes.
-    Consider moving them to their own file (old_mc_structures.py?)
+Weighted implementation of the McRAPTOR algorithm described in the Microsoft paper.
+In this implementation, each label has a cost, which is defined as the weighted sum
+of all the criteria (i.e. distance, emissions, arrival time, etc.).
+This means that the `dominates` changes as follows:
+X1 dominates X2 if X1 hasn't got a worse cost than X2,
+where both X1 and X2 are either Labels or Journeys.
+This differs from the original implementation of McRAPTOR described in the paper,
+which instead says that a label L1 dominates a label L2 if L1 is not worse
+than L2 in any criterion.
 """
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
-from typing import List, Tuple, Dict, Iterable
+import os.path
+from typing import List, Tuple, Dict
 from copy import copy
 from time import perf_counter
 
-import numpy as np
 from loguru import logger
-from itertools import compress
-
 from pyraptor.model.structures import (
     Timetable,
     Stop,
     Route,
+    Bag,
+    MultiCriteriaLabel,
+    Leg,
     Journey,
+    pareto_set,
     TransferTrip,
     TransportType,
-    Trip,
+    CriteriaProvider,
+    ArrivalTimeCriterion, LabelUpdate
 )
 
 
-@dataclass
-class Leg:
-    """Leg"""
-
-    from_stop: Stop
-    to_stop: Stop
-    trip: Trip
-    earliest_arrival_time: int
-    fare: int = 0
-    n_trips: int = 0
-
-    @property
-    def criteria(self) -> Iterable:
-        """Criteria"""
-        return [self.earliest_arrival_time, self.fare, self.n_trips]
-
-    @property
-    def dep(self) -> int:
-        """Departure time in seconds past midnight"""
-
-        try:
-            return [
-                tst.dts_dep for tst in self.trip.stop_times if self.from_stop == tst.stop
-            ][0]
-        except IndexError as ex:
-            raise Exception(f"No departure time for to_stop: {self.to_stop}.\n"
-                            f"Current Leg: {self}. \n Original Error: {ex}")
-
-    @property
-    def arr(self) -> int:
-        """Arrival time in seconds past midnight"""
-
-        try:
-            return [
-                tst.dts_arr for tst in self.trip.stop_times if self.to_stop == tst.stop
-            ][0]
-        except IndexError as ex:
-            raise Exception(f"No arrival time for to_stop: {self.to_stop}.\n"
-                            f"Current Leg: {self}. \n Original Error: {ex}")
-
-    def is_same_station_transfer(self) -> bool:
-        """
-        Returns true if the current instance is a transfer leg between stops
-        belonging to the same station (i.e. platforms)
-        :return:
-        """
-
-        return self.from_stop.station == self.to_stop.station
-
-    def is_compatible_before(self, other_leg: Leg) -> bool:
-        """
-        Check if Leg is allowed before another leg. That is if:
-
-        - It is possible to go from current leg to other leg concerning arrival time
-        - Number of trips of current leg differs by > 1, i.e. a different trip,
-          or >= 0 when the other_leg is a transfer_leg
-        - The accumulated value of a criteria of current leg is larger or equal to the accumulated value of
-          the other leg (current leg is instance of this class)
-        """
-        arrival_time_compatible = (
-                other_leg.earliest_arrival_time >= self.earliest_arrival_time
-        )
-
-        n_trips_compatible = (
-            other_leg.n_trips >= self.n_trips
-            if other_leg.is_same_station_transfer()
-            else other_leg.n_trips > self.n_trips
-        )
-
-        criteria_compatible = np.all(
-            np.array([c for c in other_leg.criteria])
-            >= np.array([c for c in self.criteria])
-        )
-
-        return all([arrival_time_compatible, n_trips_compatible, criteria_compatible])
-
-    def to_dict(self, leg_index: int = None) -> Dict:
-        """Leg to readable dictionary"""
-        return dict(
-            trip_leg_idx=leg_index,
-            departure_time=self.dep,
-            arrival_time=self.arr,
-            from_stop=self.from_stop.name,
-            from_station=self.from_stop.station.name,
-            to_stop=self.to_stop.name,
-            to_station=self.to_stop.station.name,
-            trip_hint=self.trip.hint,
-            trip_long_name=self.trip.long_name,
-            from_platform_code=self.from_stop.platform_code,
-            to_platform_code=self.to_stop.platform_code,
-            fare=self.fare,
-        )
-
-
-@dataclass(frozen=True)
-class Label:
-    """Label"""
-
-    earliest_arrival_time: int
-    fare: int  # total fare
-    trip: Trip | None  # trip to take to obtain travel_time and fare
-    from_stop: Stop  # stop to hop-on the trip
-    n_trips: int = 0
-    infinite: bool = False
-
-    @property
-    def criteria(self):
-        """Criteria"""
-        # TODO this is the multi-criteria part of the label:
-        #   most important is arrival time, then fare (where is fare info retrieved from?),
-        #   then, at last, number of trips necessary
-        return [self.earliest_arrival_time, self.fare, self.n_trips]
-
-    def update(self, earliest_arrival_time=None, fare_addition=None, from_stop=None) -> Label:
-        """
-        Updates the current label with the provided earliest arrival time and fare_addition.
-        Returns the updated label
-
-        :param earliest_arrival_time: new earliest arrival time
-        :param fare_addition: fare to add to the current
-        :param from_stop: new stop that the label refers to
-        :return: updated label
-        """
-        return copy(
-            Label(
-                earliest_arrival_time=earliest_arrival_time
-                if earliest_arrival_time is not None
-                else self.earliest_arrival_time,
-                fare=self.fare + fare_addition
-                if fare_addition is not None
-                else self.fare,
-                trip=self.trip,
-                from_stop=from_stop if from_stop is not None else self.from_stop,
-                n_trips=self.n_trips,
-                infinite=self.infinite,
-            )
-        )
-
-    def update_trip(self, trip: Trip, new_boarding_stop: Stop) -> Label:
-        """
-        Updates the trip and the boarding stop associated with the current label.
-        Returns the updated label.
-
-        :param trip: new trip to update the label with
-        :param new_boarding_stop: new boarding stop to update the label with, only if the provided
-            trip is different from the current one. Otherwise, the current stop is not updated.
-        :return: updated label
-        """
-
-        return copy(
-            Label(
-                earliest_arrival_time=self.earliest_arrival_time,
-                fare=self.fare,
-                trip=trip,
-                from_stop=new_boarding_stop if self.trip != trip else self.from_stop,
-                n_trips=self.n_trips + 1 if self.trip != trip else self.n_trips,
-                infinite=self.infinite,
-            )
-        )
-
-
-@dataclass(frozen=True)
-class Bag:
-    """
-    Bag B(k,p) or route bag B_r
-    """
-
-    labels: List[Label] = field(default_factory=list)
-    updated: bool = False
-
-    def __len__(self):
-        return len(self.labels)
-
-    def __repr__(self):
-        return f"Bag({self.labels}, updated={self.updated})"
-
-    def add(self, label: Label):
-        """Add"""
-        self.labels.append(label)
-
-    def merge(self, other_bag: Bag) -> Bag:
-        """Merge other bag in current bag and return updated Bag"""
-
-        pareto_labels = self.labels + other_bag.labels
-
-        if len(pareto_labels) == 0:
-            return Bag(labels=[], updated=False)
-
-        pareto_labels = pareto_set(pareto_labels)
-        bag_update = True if pareto_labels != self.labels else False
-
-        return Bag(labels=pareto_labels, updated=bag_update)
-
-    def labels_with_trip(self):
-        """All labels with trips, i.e. all labels that are reachable with a trip with given criterion"""
-        return [l for l in self.labels if l.trip is not None]
-
-    def earliest_arrival(self) -> int:
-        """Earliest arrival"""
-        return min([self.labels[i].earliest_arrival_time for i in range(len(self))])
-
-
-def pareto_set(labels: List[Label], keep_equal=False):
-    """
-    Find the pareto-efficient points
-
-    :param labels: list with labels
-    :param keep_equal: return also labels with equal criteria
-    :return: list with pairwise non-dominating labels
-    """
-
-    is_efficient = np.ones(len(labels), dtype=bool)
-    labels_criteria = np.array([label.criteria for label in labels])
-    for i, label in enumerate(labels_criteria):
-        if is_efficient[i]:
-            # Keep any point with a lower cost
-            # TODO qui vengono effettuati i confronti multi-criterio:
-            #   i criteri sono hardcoded dentro la proprietà criteria di structures.Label
-            #   bisogna trovare un modo di definirli dinamicamente
-            if keep_equal:
-                # keep point with all labels equal or one lower
-                # Note: list1 < list2 determines if list1 is smaller than list2
-                #   based on lexicographic ordering
-                #   (i.e. the smaller list is the one with the smaller leftmost element)
-                is_efficient[is_efficient] = np.any(
-                    labels_criteria[is_efficient] < label, axis=1
-                ) + np.all(labels_criteria[is_efficient] == label, axis=1)
-
-            else:
-                is_efficient[is_efficient] = np.any(
-                    labels_criteria[is_efficient] < label, axis=1
-                )
-
-            is_efficient[i] = True  # And keep self
-
-    return list(compress(labels, is_efficient))
-
-
-class McRaptorAlgorithm:
+class WeightedMcRaptorAlgorithm:
     """McRAPTOR Algorithm"""
 
-    def __init__(self, timetable: Timetable):
-        self.timetable = timetable
+    timetable: Timetable
+    """Object containing the data that will be used by the algorithm"""
+
+    criteria_file_path: str | bytes | os.PathLike
+    """Path to the criteria configuration file"""
+
+    bag_star: Dict[Stop, MultiCriteriaLabel]
+    """Dictionary pairing each stop which its best label, independently from the round number"""
+
+    def __init__(self, timetable: Timetable, criteria_file_path: str | bytes | os.PathLike):
+        """
+        :param timetable: object containing the data that will be used by the algorithm
+        :param criteria_file_path: path to the criteria configuration file
+        """
+
+        self.timetable= timetable
+
+        if not os.path.exists(criteria_file_path):
+            raise FileNotFoundError(f"'{criteria_file_path}' is not a valid path to a criteria configuration file.")
+
+        self.criteria_file_path: str | bytes | os.PathLike = criteria_file_path
+        """Path to the criteria configuration file"""
+
+        self.bag_star = {}
 
     def run(
             self, from_stops: List[Stop], dep_secs: int, rounds: int, previous_run: Dict[Stop, Bag] = None
@@ -293,16 +83,25 @@ class McRaptorAlgorithm:
             # For the range query
             bag_round_stop[0] = copy(previous_run)
 
-        # Add origin stops to bag
+        # TODO pass as
+        criteria_provider = CriteriaProvider(criteria_config_path="data/input/mc.json")
+
+        # Add to bag multi-criterion label for origin stops
         for from_stop in from_stops:
-            bag_round_stop[0][from_stop].add(
-                Label(
-                    earliest_arrival_time=dep_secs,
-                    fare=0,
-                    trip=None,
-                    from_stop=from_stop
-                )
+            with_departure_time = criteria_provider.get_criteria(
+                defaults={
+                    # Default arrival time for origin stops is the departure time
+                    ArrivalTimeCriterion: dep_secs
+                }
             )
+            mc_label = MultiCriteriaLabel(
+                boarding_stop=from_stop,
+                trip=None,
+                criteria=with_departure_time
+            )
+
+            bag_round_stop[0][from_stop].add(mc_label)
+            self.bag_star[from_stop] = mc_label
 
         marked_stops = from_stops
 
@@ -396,19 +195,20 @@ class McRaptorAlgorithm:
                 # Step 1: update the earliest arrival times and criteria for each label L in route-bag
                 updated_labels = []
                 for label in route_bag.labels:
-                    # Get the arrival time of the trip at the current stop
-                    trip_stop_time = label.trip.get_stop_time(current_stop)
-
-                    # Take fare of previous stop in trip as fare is defined on start
-                    # TODO this is another part relevant for the multi-criteria approach:
-                    #   here fares for each label are updated based on the traversed trips
-                    previous_stop = remaining_stops_in_route[current_stop_idx - 1]
-                    from_fare = label.trip.get_fare(previous_stop)
-
-                    label = label.update(
-                        earliest_arrival_time=trip_stop_time.dts_arr,
-                        fare_addition=from_fare,
+                    # Here the arrival time for the label needs to be updated to that
+                    #   of the current stop for its associated trip (Step 1).
+                    # This means that the (implicit) arrival stop associated
+                    #   to the label is `current_stop`
+                    # Boarding stop and trip stay the same, because
+                    #   they have been updated at the final part of Step 3
+                    update_data = LabelUpdate(
+                        boarding_stop=label.boarding_stop,  # Boarding stop stays the same
+                        arrival_stop=current_stop,
+                        old_trip=label.trip,
+                        new_trip=label.trip,  # Trip stays the same
+                        best_labels=self.bag_star
                     )
+                    label = label.update(data=update_data)
 
                     updated_labels.append(label)
 
@@ -426,9 +226,14 @@ class McRaptorAlgorithm:
                 )
                 bag_update = bag_round_stop[k][current_stop].updated
 
-                # Mark stop if bag is updated.
+                # Mark the stop if bag is updated and update the best label(s) for that stop
                 # Updated bag means that the current stop brought some improvements
                 if bag_update:
+                    # TODO need to understand what is inside each bag and how this influences
+                    #   what is assigned for each label
+                    #   I'm now assigning just the first label in the bag to see what happens,
+                    #       but I don't actually know if it's the best
+                    self.bag_star[current_stop] = bag_round_stop[k][current_stop].labels[0]
                     new_marked_stops.add(current_stop)
 
                 # Step 3: merge B_{k-1}(p) into B_r
@@ -443,13 +248,26 @@ class McRaptorAlgorithm:
                 updated_labels = []
                 for label in route_bag.labels:
                     earliest_trip = marked_route.earliest_trip(
-                        label.earliest_arrival_time, current_stop
+                        label.earliest_arrival_time, current_stop  # TODO earliest_arrival_time is a needed attr
                     )
                     if earliest_trip is not None:
                         # Update label with the earliest trip in route leaving from this station
                         # If trip is different, we board the trip at current_stop
-                        label = label.update_trip(earliest_trip, current_stop)
+                        # TODO how to update distance here? should I pass an `old_boarding_stop` attr to update data?
+                        #   I don't think it's needed. This update is just "temporary", meaning that we board the
+                        #   current trip at the current stop and also arrive at the current_stop,
+                        #   but then the actual arrival stop of the label is assigned at Step 1 of the next iteration
+                        update_data = LabelUpdate(
+                            boarding_stop=current_stop,
+                            arrival_stop=current_stop,
+                            old_trip=label.trip,
+                            new_trip=earliest_trip,
+                            best_labels=self.bag_star
+                        )
+                        label = label.update(data=update_data)
+
                         updated_labels.append(label)
+
                 route_bag = Bag(labels=updated_labels)
 
         logger.debug(f"{len(new_marked_stops)} reachable stops added")
@@ -483,22 +301,15 @@ class McRaptorAlgorithm:
                 # Create temp copy of B_k(p_i)
                 temp_bag = Bag()
                 for label in bag_round_stop[k][current_stop].labels:
-                    # Add arrival time to each label
+                    # Update label with new transfer trip, because the arrival time
+                    # at other_stop is better with said trip
+                    # NOTE: Each label contains the trip with which one arrives at the current stop
+                    #   with k legs by boarding the trip at from_stop, along with the criteria
+                    #   (i.e. boarding time, fares, number of legs)
                     transfer_arrival_time = (
                             label.earliest_arrival_time
                             + self.get_transfer_time(current_stop, other_stop)
                     )
-                    # Update label with new earliest arrival time at other_stop
-                    # NOTE: Each label contains the trip with which one arrives at the current stop
-                    #   with k legs by boarding the trip at from_stop, along with the criteria
-                    #   (i.e. boarding time, fares, number of legs)
-                    label = label.update(
-                        earliest_arrival_time=transfer_arrival_time,
-                        fare_addition=0,
-                        from_stop=current_stop,
-                    )
-
-                    # Update the trip with which to arrive at other_stop with a transfer trip
                     transfer_trip = TransferTrip(
                         from_stop=current_stop,
                         to_stop=other_stop,
@@ -507,12 +318,19 @@ class McRaptorAlgorithm:
 
                         # TODO add method or field `transfer_type` to Transfer class
                         #  such accesser is then overrode by shared mobility Transfer sub-classes
+                        #  As of now, default transfer mode is Walk
                         transport_type=TransportType.Walk
                     )
-                    label = label.update_trip(
-                        trip=transfer_trip,
-                        new_boarding_stop=current_stop
+
+                    update_data = LabelUpdate(
+                        boarding_stop=current_stop,
+                        arrival_stop=other_stop,
+                        old_trip=label.trip,
+                        new_trip=transfer_trip,
+                        best_labels=self.bag_star
                     )
+                    label = label.update(data=update_data)
+
                     temp_bag.add(label)
 
                 # Merge temp bag into B_k(p_j)
@@ -521,8 +339,11 @@ class McRaptorAlgorithm:
                 )
                 bag_update = bag_round_stop[k][other_stop].updated
 
-                # Mark stop if bag is updated
+                # Mark the stop and update the best label collection
+                # if there were improvements (bag is updated)
                 if bag_update:
+                    # TODO see above. is labels[0] actually the best label?
+                    self.bag_star[other_stop] = bag_round_stop[k][other_stop].labels[0]
                     marked_stops_transfers.add(other_stop)
 
         logger.debug(f"{len(marked_stops_transfers)} transferable stops added")
@@ -551,20 +372,18 @@ def best_legs_to_destination_station(
 
     # TODO Use merge function on Bag
     # Pareto optimal labels
-    pareto_optimal_labels: List[Label] = pareto_set([label for (_, label) in best_labels])
-    pareto_optimal_labels: List[Tuple[Stop, Label]] = [
+    pareto_optimal_labels = pareto_set([label for (_, label) in best_labels])
+    pareto_optimal_labels: List[Tuple[Stop, MultiCriteriaLabel]] = [
         (stop, label) for (stop, label) in best_labels if label in pareto_optimal_labels
     ]
 
     # Label to leg, i.e. add to_stop
     legs = [
         Leg(
-            label.from_stop,
-            to_stop,
-            label.trip,
-            label.earliest_arrival_time,
-            label.fare,
-            label.n_trips,
+            from_stop=label.boarding_stop,
+            to_stop=to_stop,
+            trip=label.trip,
+            criteria=label.criteria
         )
         for to_stop, label in pareto_optimal_labels
     ]
@@ -609,12 +428,10 @@ def reconstruct_journeys(
             labels_to_from_stop = last_round_bags[current_leg.from_stop].labels
             for new_label in labels_to_from_stop:
                 new_leg = Leg(
-                    new_label.from_stop,
-                    current_leg.from_stop,
-                    new_label.trip,
-                    new_label.earliest_arrival_time,
-                    new_label.fare,
-                    new_label.n_trips,
+                    from_stop=new_label.boarding_stop,
+                    to_stop=current_leg.from_stop,
+                    trip=new_label.trip,
+                    criteria=new_label.criteria
                 )
                 # Only prepend new_leg if compatible before current leg, e.g. earlier arrival time, etc.
                 if new_leg.is_compatible_before(current_leg):
