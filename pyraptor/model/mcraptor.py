@@ -582,10 +582,6 @@ def reconstruct_journeys(
     looping from destination to origin.
     """
 
-    # TODO debug
-    if "qt8 m1--1" in [leg.to_stop.name for leg in destination_legs]:
-        print("here")
-
     def loop(
             bag_round_stop: Dict[int, Dict[Stop, Bag]], k: int, journeys: List[Journey]
     ):

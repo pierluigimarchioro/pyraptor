@@ -965,8 +965,31 @@ class Criterion(ABC):
             raise TypeError(f"Cannot add type {Criterion.__name__} with type {other.__class__.__name__}.\n"
                             f"Second addend: {other}")
 
-    def __radd__(self, other):
+    def __radd__(self, other) -> Criterion | float:
         return self.__add__(other)
+
+    def __lt__(self, other):
+        return self.__cmp__(other) == -1
+
+    def __le__(self, other):
+        cmp = self.__cmp__(other)
+        return cmp == -1 or cmp == 0
+
+    def __gt__(self, other):
+        return self.__cmp__(other) == 1
+
+    def __ge__(self, other):
+        cmp = self.__cmp__(other)
+        return cmp == 1 or cmp == 0
+
+    def __cmp__(self, other) -> int:
+        # 0 if equal, -1 if < other, +1 if > other
+        if self.cost < other.cost:
+            return -1
+        elif self.cost == other.cost:
+            return 0
+        else:
+            return 1
 
     def __float__(self) -> float:
         return self.cost
