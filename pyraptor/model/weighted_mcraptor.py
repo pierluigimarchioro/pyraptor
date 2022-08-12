@@ -33,6 +33,13 @@ from pyraptor.model.structures import (
     ArrivalTimeCriterion, LabelUpdate
 )
 
+# TODO setting transfers weight to 0 breaks the query script
+#   because it says "max recursion depth exceeded". Maybe too many journeys?
+
+# TODO it seems there are problems with the way labels are updated:
+#  qt8 m1 had 2 transfers and arrival time 12:00. Transfer number is correct, but arrival time is not.
+#  this probably also causes problem with journey reconstruction, since the algo says that there is no
+#  journey to qt8 m1
 
 class WeightedMcRaptorAlgorithm:
     """McRAPTOR Algorithm"""
