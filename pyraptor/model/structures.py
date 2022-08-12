@@ -973,14 +973,14 @@ class Criterion(ABC):
 
     def __le__(self, other):
         cmp = self.__cmp__(other)
-        return cmp == -1 or cmp == 0
+        return cmp <= 0
 
     def __gt__(self, other):
         return self.__cmp__(other) == 1
 
     def __ge__(self, other):
         cmp = self.__cmp__(other)
-        return cmp == 1 or cmp == 0
+        return cmp >= 0
 
     def __cmp__(self, other) -> int:
         # 0 if equal, -1 if < other, +1 if > other
