@@ -15,6 +15,7 @@ from loguru import logger
 from os import path
 
 from pyraptor.model.structures import AlgorithmOutput, Leg, Stop, Coordinates
+from pyraptor.util import TRANSFER_TYPE, get_transport_type_description
 
 FILE_NAME = 'algo_output.html'
 
@@ -168,6 +169,25 @@ class MapVisualizer:
                 marker_setting=vis.setting
             )
 
+    def add_moves(self):
+        for leg in self.legs:
+            # TODO create LineVisualizer class
+            c1 = leg.from_stop.geo
+            c2 = leg.to_stop.geo
+            tt = leg.trip.route_info.transport_type
+            if tt != TRANSFER_TYPE:
+                desc = get_transport_type_description(tt)
+                linet = LineType.Public
+            else:
+                desc = leg.trip.route_info.name
+                linet = LineType.Walk if desc == 'walk path' else LineType.ShareMob
+            self.draw_line(
+                coord1=c1,
+                coord2=c2,
+                text=desc,
+                line_setting=LINE_TYPE_SETTINGS[linet]
+            )
+
     def put_marker(self, coord: Coordinates,
                    text: str | None = None, marker_setting: MarkerSetting = None):
         if marker_setting is None:
@@ -228,6 +248,7 @@ if __name__ == "__main__":
 
     visualizer = MapVisualizer(legs=output.journey.legs)
     visualizer.add_stops()
+    visualizer.add_moves()
 
     out_file_path = path.join(args.output_dir, 'algo_output.html')
     visualizer.save(path_=out_file_path, open_=True)
