@@ -52,7 +52,7 @@ class WeightedMcRaptorAlgorithm:
         :param criteria_file_path: path to the criteria configuration file
         """
 
-        self.timetable= timetable
+        self.timetable = timetable
 
         if not os.path.exists(criteria_file_path):
             raise FileNotFoundError(f"'{criteria_file_path}' is not a valid path to a criteria configuration file.")

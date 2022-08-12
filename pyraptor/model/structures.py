@@ -965,6 +965,12 @@ class Criterion(ABC):
             raise TypeError(f"Cannot add type {Criterion.__name__} with type {other.__class__.__name__}.\n"
                             f"Second addend: {other}")
 
+    def __radd__(self, other):
+        return self.__add__(other)
+
+    def __float__(self) -> float:
+        return self.cost
+
     def __repr__(self):
         return f"{self.__class__.__name__}(name={self.name};weight={self.weight};" \
                f"raw_value={self.raw_value};upper_bound={self.upper_bound})"
