@@ -1,0 +1,35 @@
+/**
+ * Each field represents a criteria to evaluate possible itineraries with;
+ * the value represents the weight assigned to that criteria in the evaluation process.
+ * Allowed weights are in the range [0, +inf], where 0 means that the criteria won't be considered.
+ */
+{
+  "distance": {
+    // Weight to assign to the total distance of the itinerary
+    "weight": 1,
+
+    // Maximum distance in km of an acceptable itinerary
+    "max": 100
+  },
+  "arrival_time": {
+    // Weight to assign to the final arrival time of the itinerary
+    "weight": 1,
+
+    // Maximum arrival time in seconds past midnight of the departure day
+    "max": 86400
+  },
+  "transfers": {
+    // Weight to assign to the number of transfers (changes of trip/transport) of the itinerary
+    "weight": 1,
+
+    // Maximum number of transfers in an acceptable itinerary
+    "max": 20
+  },
+  "co2": {
+    // Weight to assign to the co2 emissions of the itinerary
+    "weight": 1,
+
+    // Maximum kg of co2 emissions in an acceptable itinerary
+    "max": 100
+  }
+}

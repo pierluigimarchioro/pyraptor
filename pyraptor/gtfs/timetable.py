@@ -19,6 +19,7 @@ import pandas as pd
 import pathos.pools as p
 from loguru import logger
 from pathos.helpers.pp_helper import ApplyResult
+from pathos.helpers import cpu_count
 
 from pyraptor.dao import write_timetable
 from pyraptor.model.structures import (
@@ -37,7 +38,9 @@ from pyraptor.model.structures import (
     RouteInfo,
     RentingStation,
     SharedMobilityFeed,
-    Routes, Coordinates
+    Routes,
+    Coordinates,
+    TransportType,
 )
 from pyraptor.util import mkdir_if_not_exists, str2sec, TRANSFER_COST, MIN_DIST
 
@@ -54,8 +57,32 @@ class GtfsTimetable(TimetableInfo):
     transfers: pd.DataFrame = None
 
 
+def main(
+        input_folder: str,
+        output_folder: str,
+        departure_date: str,
+        agencies: List[str],
+        shared: bool,
+        n_jobs: int
+):
+    """Main function"""
+
+    logger.info("Parse timetable from GTFS files")
+    mkdir_if_not_exists(output_folder)
+
+    gtfs_timetable = read_gtfs_timetable(input_folder, departure_date, agencies)
+    timetable = gtfs_to_pyraptor_timetable(gtfs_timetable, n_jobs)
+
+    # TODO maybe study a better strategy for shared mobility inclusion ?
+    if shared:  # if default empty string, no shared-mobility service is considered
+        timetable = add_shared_mobility_to_pyraptor_timetable(timetable, shared)
+    timetable.counts()
+
+    write_timetable(output_folder, timetable)
+
+
 def parse_arguments():
-    """Parse arguments"""
+    """Parse command line arguments"""
     parser = argparse.ArgumentParser()
     parser.add_argument(
         "-i",
@@ -72,70 +99,109 @@ def parse_arguments():
         help="Input directory",
     )
     parser.add_argument(
-        "-d", "--date", type=str, default="20210906", help="Departure date (yyyymmdd)"
+        "-d",
+        "--date",
+        type=str,
+        default="20210906",
+        help="Departure date (yyyymmdd)"
     )
-    parser.add_argument("-a", "--agencies", nargs="+", default=["NS"])
+    parser.add_argument(
+        "-a",
+
+        "--agencies",
+        nargs="+",
+        default=["NS"]
+    )
+    parser.add_argument(
+        "-j",
+        "--jobs",
+        type=int,
+        default=-1,
+        help="Number of jobs to run (-1 or greater than 0)"
+    )
     parser.add_argument("-s", "--shared", type=str, default="",
                         help="path to .json file containing a single 'feeds' key specifying a list of dictionaries with url and lang")
-    parser.add_argument("-j", "--jobs", type=int, default=1, help="Number of jobs to run")
 
     arguments = parser.parse_args()
     return arguments
 
 
-def main(
-        input_folder: str,
-        output_folder: str,
-        departure_date: str,
-        agencies: List[str],
-        shared: str,
-        n_jobs: int
-):
-    """Main function"""
-
-    logger.info("Parse timetable from GTFS files")
-    mkdir_if_not_exists(output_folder)
-
-    gtfs_timetable = read_gtfs_timetable(input_folder, departure_date, agencies)
-    timetable = gtfs_to_pyraptor_timetable(gtfs_timetable, n_jobs)
-    # TODO maybe study a better strategy for shared mobility inclusion ?
-    if shared:  # if default empty string, no shared-mobility service is considered
-        timetable = add_shared_mobility_to_pyraptor_timetable(timetable, shared)
-    timetable.counts()
-
-    write_timetable(output_folder, timetable)
-
-
 def read_gtfs_timetable(
-        input_folder: str, departure_date: str, agencies: List[str]
+        input_folder: str, departure_date: str, agency_names: List[str]
 ) -> GtfsTimetable:
     """Extract operators from GTFS data"""
 
-    logger.info("Read GTFS data")
+    logger.info("Reading GTFS data")
 
     # Read agencies
-    logger.debug("Read Agencies")
+    logger.debug("Reading Agencies")
+    agencies_df = _process_agencies_table(input_folder=input_folder, agency_names=agency_names)
 
-    agencies_df = pd.read_csv(os.path.join(input_folder, "agency.txt"))
-    agencies_df = agencies_df.loc[agencies_df["agency_name"].isin(agencies)][
-        ["agency_id", "agency_name"]
-    ]
-    agency_ids = agencies_df.agency_id.values
+    agency_ids = agencies_df["agency_id"].values
 
     # Read routes
-    logger.debug("Read Routes")
+    logger.debug("Reading Routes")
+    routes = _process_routes_table(input_folder=input_folder, agency_ids=agency_ids)
 
+    # Read trips
+    logger.debug("Read Trips")
+    trips = _process_trips_table(
+        input_folder=input_folder,
+        route_ids=routes["route_id"].values,
+        dep_date=departure_date
+    )
+
+    # Read stop times
+    logger.debug("Read Stop Times")
+    stop_times = _process_stop_times_table(input_folder=input_folder, trip_ids=trips["trip_id"].values)
+
+    # Read stops (platforms)
+    logger.debug("Read Stops")
+    stops = _process_stops_table(input_folder=input_folder, stop_times=stop_times)
+
+    # Make sure stop times refer to the same stops as the processed
+    stop_times = stop_times[stop_times["stop_id"].isin(stops["stop_id"])]
+
+    logger.debug("Reading Transfers")
+    transfers = _process_transfers_table(input_folder=input_folder, stop_ids=stops["stop_id"].values)
+
+    gtfs_timetable = GtfsTimetable(
+        original_gtfs_dir=input_folder,
+        date=departure_date,
+        trips=trips,
+        stop_times=stop_times,
+        stops=stops,
+        routes=routes,
+        transfers=transfers
+    )
+
+    return gtfs_timetable
+
+
+def _process_agencies_table(input_folder: str, agency_names: Iterable[str]) -> pd.DataFrame:
+    agencies_df = pd.read_csv(os.path.join(input_folder, "agency.txt"))
+
+    agencies_df = agencies_df.loc[agencies_df["agency_name"].isin(agency_names)][
+        ["agency_id", "agency_name"]
+    ]
+
+    return agencies_df
+
+
+def _process_routes_table(input_folder: str, agency_ids: Iterable) -> pd.DataFrame:
     routes = pd.read_csv(os.path.join(input_folder, "routes.txt"))
+
     routes = routes[routes.agency_id.isin(agency_ids)]
     routes = routes[
         ["route_id", "agency_id", "route_short_name", "route_long_name", "route_type"]
     ]
 
-    # Read trips
-    logger.debug("Read Trips")
+    return routes
 
+
+def _process_trips_table(input_folder: str, route_ids: Iterable, dep_date: str) -> pd.DataFrame:
     trips = pd.read_csv(os.path.join(input_folder, "trips.txt"))
-    trips = trips[trips.route_id.isin(routes.route_id.values)]
+    trips = trips[trips.route_id.isin(route_ids)]
 
     trips_col_selector = [
         "route_id",
@@ -160,20 +226,21 @@ def read_gtfs_timetable(
     # Trips here are already filtered by agency ids
     valid_ids = trips["service_id"].values
     active_service_ids = calendar_processor.get_active_service_ids(
-        on_date=departure_date,
+        on_date=dep_date,
         valid_service_ids=valid_ids
     )
 
     # Filter trips based on the service ids active on the provided dep. date
     trips = trips[trips["service_id"].isin(active_service_ids)]
 
-    # Read stop times
-    logger.debug("Read Stop Times")
+    return trips
 
+
+def _process_stop_times_table(input_folder: str, trip_ids: Iterable) -> pd.DataFrame:
     stop_times = pd.read_csv(
         os.path.join(input_folder, "stop_times.txt"), dtype={"stop_id": str}
     )
-    stop_times = stop_times[stop_times.trip_id.isin(trips.trip_id.values)]
+    stop_times = stop_times[stop_times.trip_id.isin(trip_ids)]
     stop_times = stop_times[
         [
             "trip_id",
@@ -187,9 +254,10 @@ def read_gtfs_timetable(
     stop_times["arrival_time"] = stop_times["arrival_time"].apply(str2sec)
     stop_times["departure_time"] = stop_times["departure_time"].apply(str2sec)
 
-    # Read stops (platforms)
-    logger.debug("Read Stops")
+    return stop_times
 
+
+def _process_stops_table(input_folder: str, stop_times: pd.DataFrame) -> pd.DataFrame:
     stops_full = pd.read_csv(
         os.path.join(input_folder, "stops.txt"), dtype={"stop_id": str}
     )
@@ -240,33 +308,25 @@ def read_gtfs_timetable(
     # Remove the general station rows and make sure that stops and stop_times
     # are all referring to the same stop_ids
     stops = stops.loc[~to_remove_mask]
-    stop_times = stop_times[stop_times["stop_id"].isin(stops["stop_id"])]
 
-    stops: pd.DataFrame = stops[stops_col_selector]
+    return stops[stops_col_selector]
 
+
+def _process_transfers_table(input_folder: str, stop_ids: Iterable) -> pd.DataFrame:
     # Get transfers table only if it exists
     transfers_path = os.path.join(input_folder, "transfers.txt")
+
     if os.path.exists(transfers_path):
-        logger.debug("Read Transfers")
+        logger.debug("Transfers Table exists")
         transfers = pd.read_csv(transfers_path)
 
         # Keep only the stops for the current date
-        transfers = transfers[transfers["from_stop_id"].isin(stops["stop_id"])
-                              & transfers["to_stop_id"].isin(stops["stop_id"])]
+        transfers = transfers[transfers["from_stop_id"].isin(stop_ids)
+                              & transfers["to_stop_id"].isin(stop_ids)]
     else:
         transfers = None
 
-    gtfs_timetable = GtfsTimetable(
-        original_gtfs_dir=input_folder,
-        date=departure_date,
-        trips=trips,
-        stop_times=stop_times,
-        stops=stops,
-        routes=routes,
-        transfers=transfers
-    )
-
-    return gtfs_timetable
+    return transfers
 
 
 class GTFSCalendarProcessor:
@@ -477,12 +537,10 @@ class TripsProcessor:
                     log(f"Progress: {current_pct}% [trip #{processed_trips} of {table_length}]")
                     prev_pct_point = current_pct
 
-                trip = Trip()
-
                 # Transport description as hint
-                route_info = trip_route_info[row.trip_id]
-                trip.route_info = route_info
-                trip.hint = str(route_info)
+                trip_id = row.trip_id
+                route_info = trip_route_info[trip_id]
+                trip = Trip(id_=trip_id, route_info=route_info)
 
                 # Iterate over stops, ordered by sequence number:
                 # the first stop will be the one with stop_sequence == 1
@@ -497,7 +555,13 @@ class TripsProcessor:
                     # Trip Stop Times
                     stop = stops_info.get(stop_time.stop_id)
 
-                    trip_stop_time = TripStopTime(trip, stop_number, stop, dts_arr, dts_dep)
+                    trip_stop_time = TripStopTime(
+                        trip=trip,
+                        stop_idx=stop_number,
+                        stop=stop,
+                        dts_arr=dts_arr,
+                        dts_dep=dts_dep
+                    )
 
                     trip_stop_times.add(trip_stop_time)
                     trip.add_stop_time(trip_stop_time)
@@ -518,9 +582,14 @@ class TripsProcessor:
 
 def gtfs_to_pyraptor_timetable(
         gtfs_timetable: GtfsTimetable,
-        n_jobs: int) -> Timetable:
+        n_jobs: int = -1) -> Timetable:
     """
     Convert timetable for usage in Raptor algorithm.
+
+    :param gtfs_timetable: gtfs timetable instance
+    :param n_jobs: number of parallel jobs to run.
+        Defaults to -1, which means that the number of jobs is auto-detected.
+    :return:
     """
 
     logger.info("Convert GTFS timetable to timetable for PyRaptor algorithm")
@@ -557,12 +626,13 @@ def gtfs_to_pyraptor_timetable(
     for row in trips_and_routes.itertuples():
         route_name = getattr(row, "route_long_name", None)
         route_name = route_name if route_name is not None else getattr(row, "route_short_name", "missing_route_name")
-        trip_route_info[row.trip_id] = RouteInfo(name=route_name, transport_type=row.route_type)
+        trip_route_info[row.trip_id] = RouteInfo(name=route_name, transport_type=TransportType(int(row.route_type)))
 
     # Trips and Trip Stop Times
     logger.debug("Add trips and trip stop times")
 
     job_results: dict[int, ApplyResult] = {}
+    n_jobs = n_jobs if n_jobs != -1 else cpu_count()  # if jobs == -1, auto-detect
     pool = p.ProcessPool(nodes=n_jobs)
     for i in range(n_jobs):
         processor_id = i
@@ -622,6 +692,7 @@ def gtfs_to_pyraptor_timetable(
     logger.debug("Add transfers")
 
     # Add transfers between parent and child stations
+    # TODO remove? because they are (should) already be included in the transfers table?
     transfers = Transfers()
 
     # 1. transfer between each stop of the same station:

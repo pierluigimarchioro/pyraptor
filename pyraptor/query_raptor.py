@@ -113,7 +113,7 @@ def run_raptor(
     origin_station: str,
     dep_secs: int,
     rounds: int,
-) -> Dict[Station, Journey]:
+) -> Dict[str, Journey]:
     """
     Run the Raptor algorithm.
 
@@ -140,6 +140,7 @@ def run_raptor(
         journey_to_destinations = dict()
         for destination_station_name, to_stops in destination_stops.items():
             dest_stop = best_stop_at_target_station(to_stops, best_labels)
+
             if dest_stop != 0:
                 journey = reconstruct_journey(dest_stop, best_labels)
                 journey_to_destinations[destination_station_name] = journey

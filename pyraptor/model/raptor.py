@@ -1,53 +1,30 @@
 """RAPTOR algorithm"""
 from __future__ import annotations
 
-import itertools
+from collections.abc import Iterable
 from typing import List, Tuple, Dict
-from dataclasses import dataclass
 from copy import deepcopy
 
 from loguru import logger
 
 from pyraptor.dao.timetable import Timetable
-from pyraptor.model.structures import Stop, Trip, Route, Leg, Journey
+from pyraptor.model.structures import Stop, Route, Leg, Journey, TransferTrip, TransportType, Label, LabelUpdate, \
+    ArrivalTimeCriterion
 from pyraptor.util import LARGE_NUMBER
-
-
-@dataclass
-class Label:
-    """Label"""
-
-    earliest_arrival_time: int = LARGE_NUMBER
-    trip: Trip = None  # trip to take to obtain earliest_arrival_time
-    from_stop: Stop = None  # stop at which we hop-on trip with trip
-
-    def update(self, earliest_arrival_time=None, trip=None, from_stop=None):
-        """Update"""
-        if earliest_arrival_time is not None:
-            self.earliest_arrival_time = earliest_arrival_time
-        if trip is not None:
-            self.trip = trip
-        if from_stop is not None:
-            self.from_stop = from_stop
-
-    def is_dominating(self, other: Label):
-        """Dominates other label"""
-        return self.earliest_arrival_time <= other.earliest_arrival_time
-
-    def __repr__(self) -> str:
-        return f"Label(earliest_arrival_time={self.earliest_arrival_time}, trip={self.trip}, from_stop={self.from_stop})"
 
 
 class RaptorAlgorithm:
     """RAPTOR Algorithm"""
 
     def __init__(self, timetable: Timetable):
-        self.timetable = timetable
-        self.bag_star = None
+        self.timetable: Timetable = timetable
+        self.bag_round_stop: Dict[int, Dict[Stop, Label]] = {}
+        self.bag_star: Dict[Stop, Label] = {}
 
-    def run(self, from_stops, dep_secs, rounds) -> Dict[int, Dict[Stop, Label]]:
+    def run(self, from_stops: Iterable[Stop], dep_secs: int, rounds: int) -> Dict[int, Dict[Stop, Label]]:
         """
         Run Round-Based Algorithm
+
         :param from_stops: collection of stops to depart from
         :param dep_secs: departure time in seconds from midnight
         :param rounds: total number of rounds to execute
@@ -57,11 +34,10 @@ class RaptorAlgorithm:
         # Initialize empty bag of labels, i.e. B_k(p) = Label() for every k and p
         # Dictionary is keyed by round and contains another dictionary, where, for each stop, there
         # is a label representing the earliest arrival time (initialized at +inf)
-        bag_round_stop: Dict[int, Dict[Stop, Label]] = {}
         for k in range(0, rounds + 1):
-            bag_round_stop[k] = {}
+            self.bag_round_stop[k] = {}
             for p in self.timetable.stops:
-                bag_round_stop[k][p] = Label()
+                self.bag_round_stop[k][p] = Label()
 
         # Initialize bag with the earliest arrival times
         # This bag is used as a side-collection to efficiently retrieve
@@ -76,8 +52,11 @@ class RaptorAlgorithm:
         logger.debug(f"Starting from Stop IDs: {str(from_stops)}")
         marked_stops = []
         for from_stop in from_stops:
-            bag_round_stop[0][from_stop].update(dep_secs, None, None)
-            self.bag_star[from_stop].update(dep_secs, None, None)
+            departure_label = Label(earliest_arrival_time=dep_secs)
+
+            self.bag_round_stop[0][from_stop] = departure_label
+            self.bag_star[from_stop] = departure_label
+
             marked_stops.append(from_stop)
 
         # Run rounds
@@ -85,7 +64,7 @@ class RaptorAlgorithm:
             logger.info(f"Analyzing possibilities round {k}")
 
             # Initialize round k (current) with the labels of round k-1 (previous)
-            bag_round_stop[k] = deepcopy(bag_round_stop[k - 1])
+            self.bag_round_stop[k] = deepcopy(self.bag_round_stop[k - 1])
 
             # Get list of stops to evaluate in the process
             logger.debug(f"Stops to evaluate count: {len(marked_stops)}")
@@ -95,21 +74,21 @@ class RaptorAlgorithm:
             route_marked_stops = self.accumulate_routes(marked_stops)
 
             # Update stop arrival times calculated basing on reachable stops
-            bag_round_stop, marked_trip_stops = self.traverse_routes(
-                bag_round_stop, k, route_marked_stops
+            marked_trip_stops = self.traverse_routes(
+                k, route_marked_stops
             )
             logger.debug(f"{len(marked_trip_stops)} reachable stops added")
 
             # Add footpath transfers and update
-            bag_round_stop, marked_transfer_stops = self.add_transfer_time(
-                bag_round_stop, k, marked_trip_stops
+            marked_transfer_stops = self.add_transfer_time(
+                k, marked_trip_stops
             )
             logger.debug(f"{len(marked_transfer_stops)} transferable stops added")
 
             marked_stops = set(marked_trip_stops).union(marked_transfer_stops)
             logger.debug(f"{len(marked_stops)} stops to evaluate in next round")
 
-        return bag_round_stop
+        return self.bag_round_stop
 
     def accumulate_routes(self, marked_stops: List[Stop]) -> List[Tuple[Route, Stop]]:
         """Accumulate routes serving marked stops from previous round, i.e. Q"""
@@ -131,27 +110,25 @@ class RaptorAlgorithm:
 
     def traverse_routes(
             self,
-            bag_round_stop: Dict[int, Dict[Stop, Label]],
             k: int,
             route_marked_stops: List[Tuple[Route, Stop]],
-    ) -> Tuple:
+    ) -> List[Stop]:
         """
         Iterate through the stops reachable and add all new reachable stops
         by following all trips from the reached stations. Trips are only followed
         in the direction of travel and beyond already added points.
-        :param bag_round_stop: Bag per round per stop
+
         :param k: current round
         :param route_marked_stops: list of marked (route, stop) for evaluation
         """
         logger.debug(f"Traverse routes for round {k}")
 
-        bag_round_stop = deepcopy(bag_round_stop)
         new_stops = []
         n_evaluations = 0
         n_improvements = 0
 
         # For each route
-        for (marked_route, marked_stop) in route_marked_stops:
+        for marked_route, marked_stop in route_marked_stops:
 
             # Current trip for this marked stop
             current_trip = None
@@ -168,7 +145,7 @@ class RaptorAlgorithm:
                 # t != _|_
                 if current_trip is not None:
                     # Arrival time at stop, i.e. arr(current_trip, next_stop)
-                    new_arrival_time = current_trip.get_stop(current_stop).dts_arr
+                    new_arrival_time = current_trip.get_stop_time(current_stop).dts_arr
                     best_arrival_time = self.bag_star[
                         current_stop
                     ].earliest_arrival_time
@@ -178,12 +155,15 @@ class RaptorAlgorithm:
                         #   t_k(next_stop) = t_arr(t, pi)
                         #   t_star(p_i) = t_arr(t, pi)
 
-                        bag_round_stop[k][current_stop].update(
-                            new_arrival_time, current_trip, boarding_stop
+                        arrival_label = self.bag_round_stop[k][current_stop]
+                        update_data = LabelUpdate(
+                            boarding_stop=boarding_stop,
+                            arrival_stop=current_stop,
+                            old_trip=arrival_label.trip,
+                            new_trip=current_trip,
+                            best_labels=self.bag_star
                         )
-                        self.bag_star[current_stop].update(
-                            new_arrival_time, current_trip, boarding_stop
-                        )
+                        self.update_arrival_label(update_data=update_data, k=k)
 
                         # Logging
                         n_improvements += 1
@@ -192,7 +172,7 @@ class RaptorAlgorithm:
                 # Can we catch an earlier trip at p_i
                 # if tau_{k-1}(next_stop) <= tau_dep(t, next_stop)
                 # TODO why bag[k] and not bag[k-1]? Try putting k-1 and see what happens
-                previous_earliest_arrival_time = bag_round_stop[k][
+                previous_earliest_arrival_time = self.bag_round_stop[k][
                     current_stop
                 ].earliest_arrival_time
                 earliest_trip_stop_time = marked_route.earliest_trip_stop_time(
@@ -209,22 +189,21 @@ class RaptorAlgorithm:
         logger.debug(f"- Evaluations    : {n_evaluations}")
         logger.debug(f"- Improvements   : {n_improvements}")
 
-        return bag_round_stop, new_stops
+        return new_stops
 
     def add_transfer_time(
             self,
-            bag_round_stop: Dict[int, Dict[Stop, Label]],
             k: int,
             marked_stops: List[Stop],
-    ) -> Tuple:
+    ) -> List[Stop]:
         """
         Add transfers between platforms.
-        :param bag_round_stop: Label per round per stop
+
         :param k: current round
         :param marked_stops: list of marked stops for evaluation
         """
 
-        new_stops = []
+        new_stops: List[Stop] = []
 
         # Add in transfers from the transfers table
         for current_stop in marked_stops:
@@ -234,33 +213,42 @@ class RaptorAlgorithm:
                 t.to_stop for t in self.timetable.transfers if t.from_stop == current_stop
             ]
 
-            time_sofar = bag_round_stop[k][current_stop].earliest_arrival_time
-            for arrive_stop in other_station_stops:
+            time_sofar = self.bag_round_stop[k][current_stop].earliest_arrival_time
+            for arrival_stop in other_station_stops:
                 arrival_time_with_transfer = time_sofar + self.get_transfer_time(
-                    current_stop, arrive_stop
+                    current_stop, arrival_stop
                 )
                 previous_earliest_arrival = self.bag_star[
-                    arrive_stop
+                    arrival_stop
                 ].earliest_arrival_time
 
                 # Domination criteria
                 if arrival_time_with_transfer < previous_earliest_arrival:
-                    transfer_trip = Trip.get_transfer_trip(from_stop=current_stop,
-                                                           to_stop=arrive_stop,
-                                                           dep_time=time_sofar,
-                                                           arr_time=arrival_time_with_transfer)
+                    transfer_trip = TransferTrip(
+                        from_stop=current_stop,
+                        to_stop=arrival_stop,
+                        dep_time=time_sofar,
+                        arr_time=arrival_time_with_transfer,
 
-                    bag_round_stop[k][arrive_stop].update(
-                        arrival_time_with_transfer,
-                        transfer_trip,
-                        current_stop,
+                        # TODO add method or field `transfer_type` to Transfer class
+                        #  such accesser is then overrode by shared mobility Transfer sub-classes
+                        transport_type=TransportType.Walk
                     )
-                    self.bag_star[arrive_stop].update(
-                        arrival_time_with_transfer, transfer_trip, current_stop
-                    )
-                    new_stops.append(arrive_stop)
 
-        return bag_round_stop, new_stops
+                    # Update the label
+                    arrival_label = self.bag_round_stop[k][arrival_stop]
+                    update_data = LabelUpdate(
+                        boarding_stop=current_stop,
+                        arrival_stop=arrival_stop,
+                        old_trip=arrival_label.trip,
+                        new_trip=transfer_trip,
+                        best_labels=self.bag_star
+                    )
+                    self.update_arrival_label(update_data=update_data, k=k)
+
+                    new_stops.append(arrival_stop)
+
+        return new_stops
 
     def get_transfer_time(self, stop_from: Stop, stop_to: Stop) -> int:
         """
@@ -268,6 +256,23 @@ class RaptorAlgorithm:
         """
         transfers = self.timetable.transfers
         return transfers.stop_to_stop_idx[(stop_from, stop_to)].transfer_time
+
+    def update_arrival_label(self, update_data: LabelUpdate, k: int):
+        """
+        Updates the label, along with the bag that store it, for the provided arrival stop
+        :param update_data: data to update the label with
+        :param k: current round of the algorithm
+        :return:
+        """
+
+        arrival_label = self.bag_round_stop[k][update_data.arrival_stop]
+        arrival_label = arrival_label.update(
+            data=update_data
+        )
+
+        # Assign the updated label to the bags
+        self.bag_round_stop[k][update_data.arrival_stop] = arrival_label
+        self.bag_star[update_data.arrival_stop] = arrival_label
 
 
 def best_stop_at_target_station(to_stops: List[Stop], bag: Dict[Stop, Label]) -> Stop:
@@ -291,16 +296,30 @@ def reconstruct_journey(destination: Stop, bag: Dict[Stop, Label]) -> Journey:
     jrny = Journey()
     to_stop = destination
     while to_stop is not None:
-        from_stop = bag[to_stop].from_stop
-        bag_to_stop = bag[to_stop]
+        from_stop = bag[to_stop].boarding_stop
+        to_stop_label = bag[to_stop]
 
+        # The following are all default values except the raw value.
+        # The important is giving the leg object information
+        #   about arrival time, which allows it to check if legs are
+        #   compatible and to store correct information about the journey
+        # TODO using Criterion classes here feels out of place. what to do?
+        arrival_time_crit = ArrivalTimeCriterion(
+            name="arrival_time",
+            weight=1,
+            raw_value=to_stop_label.earliest_arrival_time,
+            upper_bound=LARGE_NUMBER
+        )
         leg = Leg(
-            from_stop, to_stop, bag_to_stop.trip, bag_to_stop.earliest_arrival_time
+            from_stop=from_stop,
+            to_stop=to_stop,
+            trip=to_stop_label.trip,
+            criteria=[arrival_time_crit]
         )
         jrny = jrny.prepend_leg(leg)
         to_stop = from_stop
 
-    jrny = jrny.remove_empty_legs()
+    jrny = jrny.remove_empty_and_same_station_legs()
 
     return jrny
 
@@ -328,7 +347,7 @@ def is_dominated(original_journey: List[Leg], new_journey: List[Leg]) -> bool:
     original_arrival = arrival(original_journey)
     new_arrival = arrival(new_journey)
 
-    # Is dominated, strictly better in one criteria and not worse in other
+    # Is dominated, strictly better in one criterion and not worse in other
     return (
         True
         if (original_depart >= new_depart and original_arrival < new_arrival)

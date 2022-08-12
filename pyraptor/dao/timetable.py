@@ -43,7 +43,7 @@ def write_timetable(output_folder: str, timetable: Timetable) -> None:
         with open(Path(output_folder, f"{name}.pcl"), "wb") as handle:
             joblib.dump(state, handle)
 
-    logger.info("Write PyRaptor timetable to output directory")
+    logger.info("Writing PyRaptor timetable to output directory")
 
     mkdir_if_not_exists(output_folder)
     write_joblib(timetable, "timetable")
