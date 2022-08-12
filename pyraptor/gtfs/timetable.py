@@ -3,21 +3,22 @@ from __future__ import annotations
 
 import argparse
 import calendar as cal
+import itertools
 import json
 import math
 import os
 import uuid
-import itertools
 from collections import defaultdict
 from collections.abc import Mapping
 from dataclasses import dataclass
 from datetime import datetime
-from typing import List, Iterable, Any, NamedTuple, Tuple, Callable
+from typing import List, Iterable, Any, NamedTuple, Tuple, Callable, Dict
 
 import numpy as np
 import pandas as pd
 import pathos.pools as p
 from loguru import logger
+from pathos.helpers.pp_helper import ApplyResult
 
 from pyraptor.dao import write_timetable
 from pyraptor.model.structures import (
@@ -34,10 +35,11 @@ from pyraptor.model.structures import (
     Transfers,
     TimetableInfo,
     RouteInfo,
-    SharedMobilityPhysicalStation,
-    SharedMobilityFeed, Routes
+    RentingStation,
+    SharedMobilityFeed,
+    Routes, Coordinates
 )
-from pyraptor.util import mkdir_if_not_exists, str2sec, TRANSFER_COST, MEAN_FOOT_SPEED, MIN_DIST
+from pyraptor.util import mkdir_if_not_exists, str2sec, TRANSFER_COST, MIN_DIST
 
 
 @dataclass
@@ -74,7 +76,7 @@ def parse_arguments():
     )
     parser.add_argument("-a", "--agencies", nargs="+", default=["NS"])
     parser.add_argument("-s", "--shared", type=str, default="",
-                        help="path to .json file specifying url and lang")
+                        help="path to .json file containing a single 'feeds' key specifying a list of dictionaries with url and lang")
     parser.add_argument("-j", "--jobs", type=int, default=1, help="Number of jobs to run")
 
     arguments = parser.parse_args()
@@ -96,6 +98,7 @@ def main(
 
     gtfs_timetable = read_gtfs_timetable(input_folder, departure_date, agencies)
     timetable = gtfs_to_pyraptor_timetable(gtfs_timetable, n_jobs)
+    # TODO maybe study a better strategy for shared mobility inclusion ?
     if shared:  # if default empty string, no shared-mobility service is considered
         timetable = add_shared_mobility_to_pyraptor_timetable(timetable, shared)
     timetable.counts()
@@ -535,8 +538,9 @@ def gtfs_to_pyraptor_timetable(
         #   existing station with that station_id is returned
 
         platform_code = getattr(s, "platform_code", -1)
-        stop_id = f"{s.stop_name}-{platform_code}"
-        stop = Stop(s.stop_id, stop_id, station, platform_code, stops.last_index + 1, (s.stop_lat, s.stop_lon))
+        #stop_id = f"{s.stop_name}-{platform_code}" TODO can we keep just name ?
+        stop_id = f"{s.stop_name}"
+        stop = Stop(s.stop_id, stop_id, station, platform_code, stops.last_index + 1, Coordinates(s.stop_lat, s.stop_lon))
 
         station.add_stop(stop)
         stops.add(stop)
@@ -606,7 +610,7 @@ def gtfs_to_pyraptor_timetable(
 
     # Make sure all the jobs are finished
     pool.join()
-    
+
     # Routes
     logger.debug("Add routes")
 
@@ -660,44 +664,46 @@ def gtfs_to_pyraptor_timetable(
 
 
 def add_shared_mobility_to_pyraptor_timetable(timetable: Timetable, shared: str):
+    logger.info("Adding shared mobility datas")
 
-    logger.info("Adding mobility services datas")
+    feed_infos: List[Dict] = json.load(open(shared))['feeds']
+    feeds: List[SharedMobilityFeed] = [SharedMobilityFeed(feed_info['url'], feed_info['lang']) for feed_info in feed_infos]
 
-    feed_info = json.load(open(shared))
-    feed = SharedMobilityFeed(feed_info['url'], feed_info['lang'])
+    logger.debug("Add stations and renting-stations")
 
-    logger.debug("Add stations and stops")
+    stations_1, stops_1 = len(timetable.stations), len(timetable.stops)  # debugging
 
-    for s in feed.stops:
-        s_name = s['name']
-        station = Station(s_name, s_name)
-        station = timetable.stations.add(station)
+    for feed in feeds:
+        for renting_station in feed.renting_stations:
 
-        platform_code = -1
-        stop_id = f"{s_name}-{platform_code}"
-        # stops for shared mobility
-        stop = SharedMobilityPhysicalStation(s['station_id'], stop_id, station, platform_code, timetable.stops.last_index + 1,
-                                            (s['lat'], s['lon']), s['capacity'], feed.vtype)
+            timetable.stops.add(renting_station)
+            timetable.stations.add(renting_station.station)
 
-        station.add_stop(stop)
-        timetable.stops.add(stop)
+        stations_2, stops_2 = len(timetable.stations), len(timetable.stops)  # debugging
+        logger.debug(f"Added {stations_2 - stations_1} new stations from {feed.system_id}")
+        logger.debug(f"Added {stops_2 - stops_1} new renting stations from {feed.system_id}")
+        stations_1, stops_1 = stations_2, stops_2
 
-    logger.debug("Add transfers")
+    logger.debug("Add vehicle-transfers")
 
-    others = [s for s in timetable.stops if not issubclass(type(s), SharedMobilityPhysicalStation)]
-    mobility = [s for s in timetable.stops if issubclass(type(s), SharedMobilityPhysicalStation)]
+    transfers_1 = len(timetable.transfers)  # debugging
+
+    public = timetable.stops.public_transport_stop
+    shared_mob = timetable.stops.shared_mobility_stops
 
     # TODO multiprocessor ?
-    for i, m in zip(range(len(mobility)), mobility):
-        if i % 25 == 0:
-            logger.debug(f'Progress: {i * 100 / len(mobility):0.0f}% [stop #{i} of {len(mobility)}]')
-        for o in others:
-            dist = m.distance_from(o)
-            if dist < MIN_DIST:
-                transfer_time = dist * 3600 / MEAN_FOOT_SPEED  # dist / speed --> time in hours, *3600 --> time in seconds
-                # add both A->B and B->A
-                timetable.transfers.add(Transfer(from_stop=m.id, to_stop=o.id, transfer_time=transfer_time))
-                timetable.transfers.add(Transfer(from_stop=o.id, to_stop=m.id, transfer_time=transfer_time))
+    for mob in shared_mob:
+        i = shared_mob.index(mob)
+        if i % 20 == 0:
+            logger.debug(f'Progress: {i * 100 / len(shared_mob):0.0f}% [stop #{i} of {len(shared_mob)}]')
+        for pub in public:
+            if mob.distance_from(pub) < MIN_DIST:
+                t_out, t_in = Transfer.get_transfer(mob, pub)
+                timetable.transfers.add(t_out)
+                timetable.transfers.add(t_in)
+
+    transfers_2 = len(timetable.transfers)  # debugging
+    logger.debug(f"Added new {transfers_2 - transfers_1} vehicle-transfers between public and shared-mobility stops")
 
     return timetable
 

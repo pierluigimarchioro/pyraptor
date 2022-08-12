@@ -1,13 +1,17 @@
 """Utility functions"""
+from __future__ import annotations
+
 import os
+from enum import Enum
+from typing import Mapping
+
 import numpy as np
 
+TRANSFER_COST: int = 2 * 60  # Default transfer between stop in same station time is 2 minutes
+LARGE_NUMBER: int = 2147483647  # Earliest arrival time at start of algorithm
 
-TRANSFER_COST = 2 * 60  # Default transfer between stop in same station time is 2 minutes
-LARGE_NUMBER = 2147483647  # Earliest arrival time at start of algorithm
-
-MIN_DIST = 0.3  # Minimum distance in kilometers to consider transfer
-MEAN_FOOT_SPEED = 4 # Default foot-speed as the crow flies in km/h
+MIN_DIST: float = 0.3  # Minimum distance in kilometers to consider transfer
+MEAN_FOOT_SPEED: float = 4  # Default foot-speed as the crow flies in km/h
 
 
 def mkdir_if_not_exists(name: str) -> None:
@@ -48,7 +52,7 @@ def sec2str(scnds: int, show_sec: bool = False) -> str:
     )
 
 
-WALK_TRANSPORT_TYPE = -1
+TRANSFER_TYPE = -1
 
 
 def get_transport_type_description(transport_type: int) -> str:
@@ -62,7 +66,7 @@ def get_transport_type_description(transport_type: int) -> str:
 
     # TODO maybe refactor transport_type to enum?
     transport_descriptions = {
-        WALK_TRANSPORT_TYPE: "Walk",
+        TRANSFER_TYPE: "Transfer",
         0: "Light Rail (e.g. Tram)",
         1: "Metro",
         2: "Rail",
@@ -76,3 +80,20 @@ def get_transport_type_description(transport_type: int) -> str:
     }
 
     return transport_descriptions[transport_type]
+
+
+
+class TransferType(Enum):
+    """
+    This class represent  walk transfer and all type of available vehicles in shared mobility network or
+    """
+    Walk = 'walk'
+    Car = 'car'
+    Bicycle = 'bicycle'
+
+
+VEHICLE_SPEED: Mapping[TransferType, float] = {
+    TransferType.Walk: MEAN_FOOT_SPEED,
+    TransferType.Bicycle: 20,
+    TransferType.Car: 50,
+}
