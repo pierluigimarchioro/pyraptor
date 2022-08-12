@@ -724,29 +724,13 @@ class Leg:
 
     def is_compatible_before(self, other_leg: Leg) -> bool:
         """
-        Check if Leg is allowed before another leg. That is if:
-
-        - It is possible to go from current leg to other leg concerning arrival time
-        - Number of trips of current leg differs by > 1, i.e. a different trip,
-          or >= 0 when the other_leg is a transfer_leg
-        - The accumulated value of a criteria of current leg is larger or equal to the accumulated value of
-          the other leg (current leg is instance of this class)
+        Check if Leg is allowed before another leg, that is if the accumulated value of
+        the criteria of the current leg is larger or equal to the accumulated value of
+        those of the other leg (current leg is instance of this class).
+        E.g. Leg X+1 criteria must be >= their counter-parts in Leg X, because
+        Leg X+1 comes later.
         """
 
-        # TODO remove?
-        # arrival_time_compatible = (
-        #         other_leg.earliest_arrival_time >= self.earliest_arrival_time
-        # )
-#
-        # n_trips_compatible = (
-        #     other_leg.n_trips >= self.n_trips
-        #     if other_leg.is_same_station_transfer()
-        #     else other_leg.n_trips > self.n_trips
-        # )
-
-        # TODO rationale here is that other_leg (which comes after the current)
-        #  can't have smaller values in each criteria.
-        #  I.e. the X criteria of leg_{y} must be smaller or equal to the X criteria of leg_{y+1}
         criteria_compatible = np.all(
             np.array([c for c in other_leg.criteria])
             >= np.array([c for c in self.criteria])
@@ -784,7 +768,6 @@ class LabelUpdate:
 
     boarding_stop: Stop
     """Stop at which the trip is boarded"""
-    # TODO """If None, the old boarding stop is kept"""
 
     arrival_stop: Stop
     """Stop at which the trip is hopped off"""
@@ -794,7 +777,6 @@ class LabelUpdate:
 
     new_trip: Trip
     """New trip to board to get from `boarding_stop` to `arrival_stop`."""
-    # TODO """If None, old_trip is used as default value"""
 
     # TODO make sure, in the algorithm code, that the reference to the best labels does not change
     best_labels: Dict[Stop, BaseLabel]
@@ -825,8 +807,6 @@ class BaseLabel(ABC):
 
     boarding_stop: Stop = None
     """Stop at which the trip is boarded"""
-
-    # TODO add field `to_stop`?
 
     @abstractmethod
     def update(self, data: LabelUpdate) -> BaseLabel:
@@ -859,8 +839,6 @@ class Label(BaseLabel):
     (https://www.microsoft.com/en-us/research/wp-content/uploads/2012/01/raptor_alenex.pdf).
     """
 
-    # TODO generalize this class to have just an ArrivalTimeCriterion? at that point
-    #   might as well use a MultiCriteriaLabel with just one criterion
     earliest_arrival_time: int = LARGE_NUMBER
     """Earliest time to get to the destination stop by boarding the current trip"""
 
@@ -1309,7 +1287,7 @@ class CriteriaProvider:
 
 
 @dataclass(frozen=True)
-class MultiCriteriaLabel(BaseLabel):  # TODO is it MultiCriteria or MultiCriterion?
+class MultiCriteriaLabel(BaseLabel):
     """
     Class that represents a multi-criteria label.
 
@@ -1353,6 +1331,7 @@ class MultiCriteriaLabel(BaseLabel):  # TODO is it MultiCriteria or MultiCriteri
             return int(arrival_time_crit.raw_value)
 
     def update(self, data: LabelUpdate) -> MultiCriteriaLabel:
+
         if len(self.criteria) == 0:
             raise Exception("Trying to update an instance with no criteria set")
 
@@ -1362,14 +1341,11 @@ class MultiCriteriaLabel(BaseLabel):  # TODO is it MultiCriteria or MultiCriteri
             updated_criteria.append(updated_c)
 
         updated_trip = data.new_trip if data.new_trip is not None else data.old_trip
+        updated_stop = data.boarding_stop if data.boarding_stop is not None else self.boarding_stop
 
         return MultiCriteriaLabel(
-            # TODO is this the correct way of updating stop? original way
-            boarding_stop=data.boarding_stop if self.trip != updated_trip else self.boarding_stop,
-            # TODO way 2
-            # boarding_stop=data.boarding_stop if data.boarding_stop is not None else self.boarding_stop,
-
-            trip=data.new_trip if data.new_trip is not None else data.old_trip,
+            boarding_stop=updated_stop,
+            trip=updated_trip,
             criteria=updated_criteria
         )
 
@@ -1615,9 +1591,6 @@ def pareto_set(labels: List[MultiCriteriaLabel], keep_equal=False):
     for i, cost in enumerate(label_costs):
         if is_efficient[i]:
             # Keep any point with a lower cost
-            # TODO qui vengono effettuati i confronti multi-criterio:
-            #   i criteri sono hardcoded dentro la proprietà criteria di structures.Label
-            #   bisogna trovare un modo di definirli dinamicamente
             if keep_equal:
                 # keep point with all labels equal or one lower
                 # Note: list1 < list2 determines if list1 is smaller than list2

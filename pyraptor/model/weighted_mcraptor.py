@@ -251,13 +251,19 @@ class WeightedMcRaptorAlgorithm:
                     )
                     if earliest_trip is not None:
                         # Update label with the earliest trip in route leaving from this station
-                        # If trip is different, we board the trip at current_stop
+                        # If trip is different, we board the trip at current_stop, else
+                        #   the trip is still boarded at the old boarding stop
+                        if label.trip != earliest_trip:
+                            boarding_stop = current_stop
+                        else:
+                            boarding_stop = label.boarding_stop
+
                         # TODO how to update distance here? should I pass an `old_boarding_stop` attr to update data?
                         #   I don't think it's needed. This update is just "temporary", meaning that we board the
                         #   current trip at the current stop and also arrive at the current_stop,
                         #   but then the actual arrival stop of the label is assigned at Step 1 of the next iteration
                         update_data = LabelUpdate(
-                            boarding_stop=current_stop,
+                            boarding_stop=boarding_stop,
                             arrival_stop=current_stop,
                             old_trip=label.trip,
                             new_trip=earliest_trip,
