@@ -19,7 +19,7 @@ class RentingStation(Stop):
     This class represents a Physical Renting Station used in urban network for shared mobility
     """
     system_id: str = attr.ib(default=None)  # Shared mobility system identifier
-    transport_type: TransportType = attr.ib(default=None)  # Type of vehicle rentable in the station
+    transport_type: List[TransportType] = attr.ib(default=None)  # Types of vehicle rentable in the station
 
     @property
     # @abstractmethod TODO check AttributeError
@@ -41,7 +41,7 @@ class RentingStations(Stops, ABC):
     """
 
     system_id: str = attr.ib(default=None)
-    system_transport_type: TransportType = attr.ib(default=None)
+    system_transport_type: List[TransportType] = attr.ib(default=None)
 
     @property
     def no_source(self) -> List[RentingStation]:
@@ -145,7 +145,10 @@ class PhysicalRentingStations(RentingStations):
             station.docks_available = state['num_docks_available']
 
             # TODO check for possible vehicles names
-            v_name = 'bike' if self.system_transport_type == TransportType.Bike else 'other'
+            v_name = 'bike' if \
+                TransportType.Bike in self.system_transport_type or \
+                TransportType.ElectricBike in self.system_transport_type \
+                else 'other'
 
             station.vehicles_available = state[f'num_{v_name}s_available']
 
@@ -268,7 +271,7 @@ class SharedMobilityFeed:
         self.lang: str = lang  # lang of feed
         self.feeds_url: Mapping[str, str] = self._get_feeds_url()  # mapping between feed_name and url
         self.system_id: str = self._get_items_list(feed_name='system_information')['system_id']  # feed system_id
-        self.transport_type: TransportType = self._get_transport_type()
+        self.transport_type: List[TransportType] = self._get_transport_type()
         self.renting_stations: RentingStations = self._get_station()
 
     @property
@@ -304,19 +307,28 @@ class SharedMobilityFeed:
         else:
             return datas  # in system_information datas is an items list
 
-    def _get_transport_type(self) -> TransportType:
+    def _get_transport_type(self) -> List[TransportType]:
         """
         Retrieves vehicle type from associated feeds
-        if more than one, raise an exception
         """
 
-        v_types = set([v_type['form_factor'] for v_type in self._get_items_list(feed_name='vehicle_types')])
-        if len(v_types) > 1:
-            raise Exception(f"Multiple vehicles: {v_types}")
-        else:
-            value = next(iter(list(v_types)))
-
-            return TransportType(value)
+        form_propulsion = set([(v_type['form_factor'], v_type['propulsion_type'])
+                               for v_type in self._get_items_list(feed_name='vehicle_types')])
+        types: List[TransportType] = []
+        for form, propulsion in form_propulsion:
+            if form == 'bicycle':
+                if propulsion == 'human':
+                    value = 9002  # Bike
+                elif propulsion == 'electric_assist':
+                    value = 9003  # Electric Bike
+                else:
+                    raise ValueError(f"No TransportType for vehicle{form} with {propulsion} propulsion")
+            elif form == 'car':
+                value = 9001  # Car
+            else:
+                raise ValueError(f"No TransportType for vehicle{form} with {propulsion} propulsion")
+            types.append(TransportType(value))
+        return types
 
     def _get_station(self) -> RentingStations:
         """ Basing on available feeds distinguish from PhysicalRentingStation or GeofenceArea"""
