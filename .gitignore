@@ -64,6 +64,7 @@ coverage.xml
 # Repository
 data
 !data/mc.json.sample
+!data/sm.json.sample
 output/
 otp2/
 test-output.xml
