@@ -370,7 +370,7 @@ class TransportType(Enum):
 PUBLIC_TRANSPORT_TYPES: List[TransportType] = [TransportType.LightRail, TransportType.Metro, TransportType.Rail,
                                                TransportType.Bike, TransportType.Ferry, TransportType.CableTram,
                                                TransportType.AerialLift, TransportType.Funicular,
-                                               TransportType.TrolleyBus, TransportType.Monorail]
+                                               TransportType.TrolleyBus, TransportType.Monorail, TransportType.Bus]
 
 SHARED_MOBILITY_TYPES: List[TransportType] = [TransportType.Bike, TransportType.ElectricBike, TransportType.Car]
 
