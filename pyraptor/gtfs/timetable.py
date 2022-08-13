@@ -139,7 +139,7 @@ def parse_arguments():
         "--feeds",
         type=str,
         default="data/input/gbfs.json",
-        help="path to .json file containing a single 'feeds' key specifying a list of dictionaries with url and lang"
+        help="Path to .json key specifying list of feeds and langs"
     )
 
     arguments = parser.parse_args()
