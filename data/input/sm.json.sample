@@ -1,0 +1,12 @@
+/*
+ * json contains only 'feeds' field as a list of feeds;
+ * each feed has two feeds:
+ * - 'url' specifying gbfs.json url (see https://github.com/NABSA/gbfs/blob/master/gbfs.md#gbfsjson);
+ * - 'lang' specifying lang of feed;
+*/
+
+{
+  "feeds": [
+    {"url": "https://gbfs.urbansharing.com/bikemi.com/gbfs.json", "lang": "it"}
+  ]
+}
