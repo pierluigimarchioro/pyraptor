@@ -229,7 +229,7 @@ class Journey:
                     logger.info(f"-- Trip Change #{n_changes} --")
                     n_changes += 1
 
-                prev_trip = current_trip.route_info
+                prev_trip = current_trip
             else:
                 raise Exception(f"Leg trip cannot be {None}. Value: {current_trip}")
 
