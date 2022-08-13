@@ -5,7 +5,7 @@ import pytest
 import pandas as pd
 import numpy as np
 
-from pyraptor.model.structures import Timetable
+from pyraptor.model.timetable import Timetable
 from tests.utils import to_stops_and_trips, to_timetable
 
 

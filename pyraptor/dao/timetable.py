@@ -5,7 +5,7 @@ from pathlib import Path
 from loguru import logger
 import joblib
 
-from pyraptor.model.structures import Timetable
+from pyraptor.model.timetable import Timetable
 from pyraptor.util import mkdir_if_not_exists
 
 

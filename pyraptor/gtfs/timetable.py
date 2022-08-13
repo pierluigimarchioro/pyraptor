@@ -22,7 +22,7 @@ from pathos.helpers.pp_helper import ApplyResult
 from pathos.helpers import cpu_count
 
 from pyraptor.dao import write_timetable
-from pyraptor.model.structures import (
+from pyraptor.model.timetable import (
     Timetable,
     Stop,
     Stops,
@@ -36,12 +36,11 @@ from pyraptor.model.structures import (
     Transfers,
     TimetableInfo,
     RouteInfo,
-    RentingStation,
-    SharedMobilityFeed,
     Routes,
     Coordinates,
     TransportType,
 )
+from pyraptor.model.shared_mobility import RentingStation, SharedMobilityFeed
 from pyraptor.util import mkdir_if_not_exists, str2sec, TRANSFER_COST, MIN_DIST
 
 
@@ -553,7 +552,7 @@ class TripsProcessor:
                     dts_dep = stop_time.departure_time
 
                     # Trip Stop Times
-                    stop = stops_info.get(stop_time.stop_id)
+                    stop = stops_info.get_stop(stop_time.stop_id)
 
                     trip_stop_time = TripStopTime(
                         trip=trip,
@@ -612,7 +611,7 @@ def gtfs_to_pyraptor_timetable(
         stop = Stop(s.stop_id, stop_id, station, platform_code, stops.last_index + 1, Coordinates(s.stop_lat, s.stop_lon))
 
         station.add_stop(stop)
-        stops.add(stop)
+        stops.add_stop(stop)
 
     # Stop Times
     stop_times = defaultdict(list)
@@ -747,7 +746,7 @@ def add_shared_mobility_to_pyraptor_timetable(timetable: Timetable, shared: str)
     for feed in feeds:
         for renting_station in feed.renting_stations:
 
-            timetable.stops.add(renting_station)
+            timetable.stops.add_stop(renting_station)
             timetable.stations.add(renting_station.station)
 
         stations_2, stops_2 = len(timetable.stations), len(timetable.stops)  # debugging

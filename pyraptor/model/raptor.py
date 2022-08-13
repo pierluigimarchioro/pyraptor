@@ -1,4 +1,5 @@
 """RAPTOR algorithm"""
+
 from __future__ import annotations
 
 from collections.abc import Iterable
@@ -8,8 +9,9 @@ from copy import deepcopy
 from loguru import logger
 
 from pyraptor.dao.timetable import Timetable
-from pyraptor.model.structures import Stop, Route, Leg, Journey, TransferTrip, TransportType, Label, LabelUpdate, \
-    ArrivalTimeCriterion
+from pyraptor.model.timetable import Stop, Route, TransferTrip, TransportType
+from pyraptor.model.criteria import Label, LabelUpdate, ArrivalTimeCriterion
+from pyraptor.model.output import Leg, Journey
 from pyraptor.util import LARGE_NUMBER
 
 
@@ -304,6 +306,10 @@ def reconstruct_journey(destination: Stop, bag: Dict[Stop, Label]) -> Journey:
         #   about arrival time, which allows it to check if legs are
         #   compatible and to store correct information about the journey
         # TODO using Criterion classes here feels out of place. what to do?
+        # TODO could this function be refactored to be used with any type of label?
+        #   one way would be to make criteria and earliest_arrival_time base class attributes/properties
+        #   to correctly implement polymorphism. Downside is that there would be some kind of overlap
+        #   between Label and MultiCriteriaLabel
         arrival_time_crit = ArrivalTimeCriterion(
             name="arrival_time",
             weight=1,

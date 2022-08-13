@@ -15,7 +15,7 @@ from loguru import logger
 
 import pyraptor.gtfs.io as io
 
-from pyraptor.model.structures import AlgorithmOutput
+from pyraptor.model.output import AlgorithmOutput
 from pyraptor.util import sec2str
 
 

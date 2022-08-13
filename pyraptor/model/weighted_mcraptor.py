@@ -18,20 +18,22 @@ from copy import copy
 from time import perf_counter
 
 from loguru import logger
-from pyraptor.model.structures import (
+from pyraptor.model.timetable import (
     Timetable,
     Stop,
     Route,
-    Bag,
-    MultiCriteriaLabel,
-    Leg,
-    Journey,
-    pareto_set,
     TransferTrip,
     TransportType,
-    CriteriaProvider,
-    ArrivalTimeCriterion, LabelUpdate
 )
+from pyraptor.model.criteria import (
+    Bag,
+    MultiCriteriaLabel,
+    CriteriaProvider,
+    ArrivalTimeCriterion,
+    LabelUpdate,
+    pareto_set
+)
+from pyraptor.model.output import Leg, Journey
 
 # TODO setting transfers weight to 0 breaks the query script
 #   because it says "max recursion depth exceeded". Maybe too many journeys?

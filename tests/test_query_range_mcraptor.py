@@ -1,6 +1,6 @@
 """Test Range Query or McRaptor"""
 from pyraptor import query_range_mcraptor
-from pyraptor.model.structures import Timetable
+from pyraptor.model.timetable import Timetable
 
 
 def test_has_main():

@@ -7,7 +7,8 @@ from time import perf_counter
 from loguru import logger
 
 from pyraptor.dao.timetable import read_timetable
-from pyraptor.model.structures import Timetable, Journey, Station, Stop
+from pyraptor.model.timetable import Timetable, Station, Stop
+from pyraptor.model.output import Journey
 from pyraptor.util import str2sec
 
 

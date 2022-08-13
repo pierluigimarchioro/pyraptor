@@ -4,7 +4,7 @@ from collections import defaultdict
 import pandas as pd
 from loguru import logger
 
-from pyraptor.model.structures import (
+from pyraptor.model.timetable import (
     Timetable,
     Stop,
     Stops,
@@ -77,7 +77,7 @@ def to_timetable(stops_df, stop_times_df, trips_df) -> Timetable:
         stop = Stop(s.stop_id, s.stop_id, station, s.stop_id)
 
         station.add_stop(stop)
-        stops.add(stop)
+        stops.add_stop(stop)
 
     # Stop Times
     stop_times = defaultdict(list)
@@ -105,7 +105,7 @@ def to_timetable(stops_df, stop_times_df, trips_df) -> Timetable:
             fare = stop_time.toeslag
 
             # Trip Stop Times
-            stop = stops.get(stop_time.stop_id)
+            stop = stops.get_stop(stop_time.stop_id)
             trip_stop_time = TripStopTime(
                 trip=trip,
                 stop_idx=stop_idx,

@@ -2,7 +2,7 @@
 This is the original implementation of the McRAPTOR algorithm,
 which closely follows what is described in the Microsoft paper.
 TODO The old model classes have been locally copied to this file,
-    since structures.py now contains the new multi-criterion classes.
+    since criteria.py now contains the new multi-criteria classes.
     Consider moving them to their own file (old_mc_structures.py?)
 """
 
@@ -17,15 +17,15 @@ import numpy as np
 from loguru import logger
 from itertools import compress
 
-from pyraptor.model.structures import (
+from pyraptor.model.timetable import (
     Timetable,
     Stop,
     Route,
-    Journey,
     TransferTrip,
     TransportType,
     Trip,
 )
+from pyraptor.model.output import Journey
 
 
 @dataclass

@@ -1,6 +1,6 @@
 """Test Query Raptor"""
 from pyraptor import query_raptor
-from pyraptor.model.structures import Timetable
+from pyraptor.model.timetable import Timetable
 
 
 def test_has_main():

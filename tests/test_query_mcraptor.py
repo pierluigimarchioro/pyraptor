@@ -2,7 +2,7 @@
 from bdb import set_trace
 from pyraptor import query_mcraptor
 from pyraptor.model.mcraptor import pareto_set, Label
-from pyraptor.model.structures import Stop, Trip
+from pyraptor.model.timetable import Stop, Trip
 
 
 def test_run_mcraptor_with_transfers_and_fares(timetable_with_transfers_and_fares):

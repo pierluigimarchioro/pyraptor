@@ -7,15 +7,14 @@ from enum import Enum
 from statistics import mean
 from typing import List, Tuple, Mapping, Callable, Any
 
-import attr
 import folium
 from folium import Map, Marker, PolyLine
 
 from loguru import logger
 from os import path
 
-from pyraptor.model.structures import AlgorithmOutput, Leg, Stop, Coordinates
-from pyraptor.util import TRANSFER_TYPE, get_transport_type_description
+from pyraptor.model.timetable import Stop, Coordinates
+from pyraptor.model.output import AlgorithmOutput, Leg
 
 FILE_NAME = 'algo_output.html'
 
@@ -67,6 +66,7 @@ LINE_TYPE_SETTINGS: Mapping[LineType, LineTypeSetting] = {
     LineType.ShareMob: LineTypeSetting(color='green', weight=2, opacity=1, dash_array='8'),
     LineType.Walk: LineTypeSetting(color='blue', weight=2, opacity=0.8, dash_array='15')
 }
+
 
 class StopVisualizer(object):
 

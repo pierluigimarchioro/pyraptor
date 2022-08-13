@@ -11,7 +11,9 @@ from pyraptor.model.raptor_sm import (
     reconstruct_journey,
     best_stop_at_target_station,
 )
-from pyraptor.model.structures import Journey, Station, Timetable, AlgorithmOutput, SharedMobilityFeed
+from pyraptor.model.timetable import Timetable
+from pyraptor.model.output import Journey, AlgorithmOutput
+from pyraptor.model.shared_mobility import SharedMobilityFeed
 from pyraptor.util import str2sec
 
 
@@ -130,11 +132,12 @@ def run_raptor(
     origin_station: str,
     dep_secs: int,
     rounds: int,
-) -> Dict[Station, Journey]:
+) -> Dict[str, Journey]:
     """
-    Run the Raptor algorithm.
+    Run the Shared Mobility Raptor algorithm.
+
     :param timetable: timetable
-    :param shared_mobility: timetable
+    :param feeds: share mobility feeds to include in the timetable
     :param origin_station: Name of origin station
     :param dep_secs: Time of departure in seconds
     :param rounds: Number of iterations to perform
