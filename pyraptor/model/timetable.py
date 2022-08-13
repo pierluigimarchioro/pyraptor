@@ -444,6 +444,10 @@ class Trip:
         self.stop_times.append(stop_time)
         self.stop_times_index[stop_time.stop] = len(self.stop_times) - 1
 
+    def get_stop(self, stop: Stop) -> TripStopTime:
+        """Get stop"""
+        return self.stop_times[self.stop_times_index[stop]]
+
     def get_stop_time(self, stop: Stop) -> TripStopTime:
         """Get stop"""
         return self.stop_times[self.stop_times_index[stop]]
