@@ -11,7 +11,7 @@ from pyraptor.model.algos.raptor_sm import (
     reconstruct_journey,
     best_stop_at_target_station,
 )
-from pyraptor.model.timetable import Timetable
+from pyraptor.model.timetable import Timetable, TransportType
 from pyraptor.model.output import Journey, AlgorithmOutput
 from pyraptor.model.shared_mobility import SharedMobilityFeed
 from pyraptor.util import str2sec
@@ -30,11 +30,11 @@ def parse_arguments():
         help="Input directory",
     )
     parser.add_argument(
-        "-s",
-        "--shared",
+        "-f",
+        "--feeds",
         type=str,
         default="data/input/gbfs.json",
-        help="path to .json file specifying url and lang",
+        help="Path to .json key specifying list of feeds and langs"
     )
     parser.add_argument(
         "-or",
@@ -51,7 +51,25 @@ def parse_arguments():
         help="Destination station of the journey",
     )
     parser.add_argument(
-        "-t", "--time", type=str, default="08:35:00", help="Departure time (hh:mm:ss)"
+        "-t",
+        "--time",
+        type=str,
+        default="08:35:00",
+        help="Departure time (hh:mm:ss)"
+    )
+    parser.add_argument(
+        "-p",
+        "--preferred",
+        type=str,
+        default="regular",
+        help="Preferred type of vehicle (regular | electric | car)"
+    )
+    parser.add_argument(
+        "-c",
+        "--car",
+        type=bool,
+        default=True,
+        help="Enable car-sharing transfers"
     )
     parser.add_argument(
         "-r",
@@ -74,21 +92,26 @@ def parse_arguments():
 
 def main(
     input_folder: str,
-    shared: str,
+    feeds: str,
     origin_station: str,
     destination_station: str,
     departure_time: str,
+    preferred: str,
+    car: bool,
     rounds: int,
     output_folder: str
 ):
     """Run RAPTOR-sm algorithm"""
 
     logger.debug("Input directory     : {}", input_folder)
-    logger.debug("Input shared-mob    : {}", shared)
+    logger.debug("Input shared-mob    : {}", feeds)
     logger.debug("Origin station      : {}", origin_station)
     logger.debug("Destination station : {}", destination_station)
     logger.debug("Departure time      : {}", departure_time)
+    logger.debug("Preferred vehicle   : {}", preferred)
+    logger.debug("Use car             : {}", car)
     logger.debug("Rounds              : {}", str(rounds))
+    logger.debug("Output folder       : {}", output_folder)
 
     timetable = read_timetable(input_folder)
 
@@ -99,9 +122,25 @@ def main(
     logger.debug("Departure time (s.)  : " + str(dep_secs))
 
     # Reading shared mobility feed
-    feed_infos: List[Dict] = json.load(open(shared))['feeds']
+    feed_infos: List[Dict] = json.load(open(feeds))['feeds']
     feeds: List[SharedMobilityFeed] = [SharedMobilityFeed(feed_info['url'], feed_info['lang']) for feed_info in feed_infos]
     logger.debug(f"{[feed.system_id for feed in feeds]} feeds got successfully")
+
+    # Preferred bike type
+    if preferred == 'car':
+        value = 9001  # Car
+    elif preferred == 'regular':
+        value = 9002  # Bike
+    elif preferred == 'electric':
+        value = 9003  # ElectricBike
+    else:
+        raise ValueError(f"No {preferred} vehicle")
+
+    preferred_vehicle = TransportType(value)
+
+    # Car check
+    if preferred_vehicle == TransportType.Car and not car:
+        raise Exception("Preferred vehicle is car, but car-sharing transfers are disabled")
 
     # Find route between two stations
     journey_to_destinations = run_raptor(
@@ -110,6 +149,8 @@ def main(
         origin_station,
         dep_secs,
         rounds,
+        preferred_vehicle,
+        car
     )
 
     # Print journey to destination
@@ -133,6 +174,8 @@ def run_raptor(
     origin_station: str,
     dep_secs: int,
     rounds: int,
+    preferred_vehicle: TransportType,
+    use_car: bool
 ) -> Dict[str, Journey]:
     """
     Run the Shared Mobility Raptor algorithm.
@@ -142,6 +185,8 @@ def run_raptor(
     :param origin_station: Name of origin station
     :param dep_secs: Time of departure in seconds
     :param rounds: Number of iterations to perform
+    :param preferred_vehicle: type of preferred vehicle
+    :param use_car: car-sharing transfer enabled
     """
 
     # Get stops for origin and all destinations
@@ -153,7 +198,7 @@ def run_raptor(
     destination_stops.pop(origin_station, None)
 
     # Run Round-Based Algorithm
-    raptor = RaptorAlgorithmSharedMobility(timetable, feeds)
+    raptor = RaptorAlgorithmSharedMobility(timetable, feeds, preferred_vehicle, use_car)
     bag_round_stop = raptor.run(from_stops, dep_secs, rounds)
     best_labels = bag_round_stop[rounds]
 
@@ -173,10 +218,12 @@ if __name__ == "__main__":
     args = parse_arguments()
     main(
         input_folder=args.input,
-        shared=args.shared,
+        feeds=args.feeds,
         origin_station=args.origin,
         destination_station=args.destination,
         departure_time=args.time,
+        preferred=args.preferred,
+        car=args.car,
         rounds=args.rounds,
         output_folder=args.output
     )
