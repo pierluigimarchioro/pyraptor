@@ -203,6 +203,7 @@ class GeofenceAreas(RentingStations):
 VEHICLE_SPEED: Mapping[TransportType, float] = {
     TransportType.Walk: MEAN_FOOT_SPEED,
     TransportType.Bike: 20,
+    TransportType.ElectricBike: 15,
     TransportType.Car: 50,
 }
 
