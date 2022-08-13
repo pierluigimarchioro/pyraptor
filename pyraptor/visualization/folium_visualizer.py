@@ -293,7 +293,8 @@ class MapVisualizer:
     def save(self, path_: str, open_: bool = False):
         self.map_.save(path_)
         if open_:
-            webbrowser.open(url=path.abspath(path_), new=1)
+            path_url = 'file:///'+path.abspath(path_)
+            webbrowser.open(url=path_url, new=1)
 
 
 def parse_arguments():
