@@ -218,16 +218,18 @@ class Journey:
 
         # Print all legs in journey
         first_trip = self.legs[0].trip
-        prev_route = first_trip.route_info if first_trip is not None else None
+        prev_trip = first_trip if first_trip is not None else None
+        n_changes = 1
         for leg in self:
             current_trip = leg.trip
             if current_trip is not None:
                 hint = current_trip.hint
 
-                if current_trip.route_info != prev_route:
-                    logger.info("-- Trip Change --")
+                if current_trip != prev_trip:
+                    logger.info(f"-- Trip Change #{n_changes} --")
+                    n_changes += 1
 
-                prev_route = current_trip.route_info
+                prev_trip = current_trip.route_info
             else:
                 raise Exception(f"Leg trip cannot be {None}. Value: {current_trip}")
 

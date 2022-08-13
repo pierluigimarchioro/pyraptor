@@ -3,7 +3,6 @@ from __future__ import annotations
 import os
 import uuid
 from collections import defaultdict
-from collections.abc import Iterable
 from dataclasses import dataclass
 from enum import Enum
 from operator import attrgetter
@@ -160,27 +159,6 @@ class Stops:
             self.set_index[stop.index] = stop
             self.last_index += 1
         return stop
-
-    # TODO remove
-    # @property
-    # def public_transport_stop(self) -> List[Stop]:
-    #     """ Returns its public stops  """
-    #     return self.filter_public_transport(self)
-#
-    # @property
-    # def shared_mobility_stops(self) -> List[RentingStation]:
-    #     """ Returns its shared mobility stops  """
-    #     return self.filter_shared_mobility(self)
-#
-    # @staticmethod
-    # def filter_public_transport(stops: Iterable[Stop]) -> List[Stop]:
-    #     """ Filter only Stop objects, not its subclasses  """
-    #     return [s for s in stops if type(s) == Stop]
-#
-    # @staticmethod
-    # def filter_shared_mobility(stops: Iterable[Stop]) -> list[RentingStation]:
-    #     """ Filter only subclasses of RentingStation  """
-    #     return [s for s in stops if isinstance(s, RentingStation)]
 
 
 @attr.s(repr=False, cmp=False)
@@ -393,10 +371,13 @@ class TransferRouteInfo(RouteInfo):
 
     def __init__(self, transport_type: TransportType):
         """
-        :param transport_type:
+        :param transport_type: transport that the transfer is carried out with
         """
 
-        super(TransferRouteInfo, self).__init__(transport_type=transport_type, name="Transfer")
+        super(TransferRouteInfo, self).__init__(
+            transport_type=transport_type,
+            name=f"Transfer ({transport_type.name})"
+        )
 
 
 @attr.s(repr=False, cmp=False, init=False)
