@@ -452,18 +452,26 @@ class ArrivalTimeCriterion(Criterion):
         )
 
 
+DEFAULT_ORIGIN_TRIP = None
+"""Trip initially assigned to the origin stops of a journey"""
+
+
 class TransfersNumberCriterion(Criterion):
     """
-    Class that represents and handles calculations for the number of transfers criterion
+    Class that represents and handles calculations for the number of transfers criterion.
+    A transfer is defined as a change of trip, excluding the initial change that happens
+    at the origin stops to board the first trip.
     """
 
     def __str__(self):
         return f"Total Transfers: {self.raw_value}"
 
     def update(self, data: LabelUpdate) -> TransfersNumberCriterion:
-        # The leg counter is updated only if the new trip isn't a transfer
-        # between stops of the same station
-        add_new_leg = data.new_trip != data.old_trip
+        # The leg counter is updated only if
+        # - there is a trip change (new != old) and
+        #       the old isn't the initial trip (origin trip)
+        # - the new trip isn't a transfer between stops of the same station
+        add_new_leg = data.new_trip != data.old_trip and data.old_trip != DEFAULT_ORIGIN_TRIP
         if add_new_leg and isinstance(data.new_trip, TransferTrip):
             # Transfer trips refer to movements between just two stops
             from_stop = data.new_trip.stop_times[0].stop

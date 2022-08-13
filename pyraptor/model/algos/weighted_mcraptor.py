@@ -31,7 +31,8 @@ from pyraptor.model.criteria import (
     CriteriaProvider,
     ArrivalTimeCriterion,
     LabelUpdate,
-    pareto_set
+    pareto_set,
+    DEFAULT_ORIGIN_TRIP
 )
 from pyraptor.model.output import Leg, Journey
 
@@ -101,7 +102,7 @@ class WeightedMcRaptorAlgorithm:
             )
             mc_label = MultiCriteriaLabel(
                 boarding_stop=from_stop,
-                trip=None,
+                trip=DEFAULT_ORIGIN_TRIP,
                 criteria=with_departure_time
             )
 
