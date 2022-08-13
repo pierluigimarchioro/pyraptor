@@ -22,13 +22,14 @@ from pyraptor.model.output import Leg, Journey
 from pyraptor.util import LARGE_NUMBER
 
 
+# TODO inherit from BaseLabel or use criteria.Label class
 @dataclass
 class Label:
     """Label"""
 
     earliest_arrival_time: int = LARGE_NUMBER
     trip: Trip = None  # trip to take to obtain earliest_arrival_time
-    from_stop: Stop = None  # stop at which we hop-on trip with trip
+    boarding_stop: Stop = None  # stop at which we hop-on trip with trip
 
     def update(self, earliest_arrival_time=None, trip=None, from_stop=None):
         """Update"""
@@ -37,14 +38,14 @@ class Label:
         if trip is not None:
             self.trip = trip
         if from_stop is not None:
-            self.from_stop = from_stop
+            self.boarding_stop = from_stop
 
     def is_dominating(self, other: Label):
         """Dominates other label"""
         return self.earliest_arrival_time <= other.earliest_arrival_time
 
     def __repr__(self) -> str:
-        return f"Label(earliest_arrival_time={self.earliest_arrival_time}, trip={self.trip}, from_stop={self.from_stop})"
+        return f"Label(earliest_arrival_time={self.earliest_arrival_time}, trip={self.trip}, from_stop={self.boarding_stop})"
 
 
 class RaptorAlgorithmSharedMobility:
