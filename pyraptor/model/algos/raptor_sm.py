@@ -8,7 +8,7 @@ from typing import List, Tuple, Dict
 from loguru import logger
 from numpy import argmin
 
-import pyraptor.model.raptor as raptor
+import pyraptor.model.algos.raptor as raptor
 from pyraptor.dao.timetable import Timetable
 from pyraptor.model.timetable import Stop, Trip, Route, Transfer, TransferTrip, TransportType
 from pyraptor.model.shared_mobility import (

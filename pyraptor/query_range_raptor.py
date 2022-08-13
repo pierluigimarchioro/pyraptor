@@ -7,7 +7,7 @@ from loguru import logger
 from pyraptor.dao.timetable import read_timetable
 from pyraptor.model.timetable import Timetable
 from pyraptor.model.output import Journey
-from pyraptor.model.raptor import (
+from pyraptor.model.algos.raptor import (
     RaptorAlgorithm,
     best_stop_at_target_station,
     reconstruct_journey,

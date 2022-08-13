@@ -1,7 +1,6 @@
 """Test Query McRaptor"""
-from bdb import set_trace
 from pyraptor import query_mcraptor
-from pyraptor.model.mcraptor import pareto_set, Label
+from pyraptor.model.algos.mcraptor import pareto_set, Label
 from pyraptor.model.timetable import Stop, Trip
 
 

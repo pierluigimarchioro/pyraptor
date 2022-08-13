@@ -5,9 +5,9 @@ from typing import Dict
 from loguru import logger
 
 from pyraptor.dao.timetable import read_timetable
-from pyraptor.model.timetable import Station, Timetable
+from pyraptor.model.timetable import Timetable
 from pyraptor.model.output import Journey, AlgorithmOutput
-from pyraptor.model.raptor import (
+from pyraptor.model.algos.raptor import (
     RaptorAlgorithm,
     reconstruct_journey,
     best_stop_at_target_station,

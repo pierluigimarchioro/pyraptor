@@ -8,9 +8,8 @@ from loguru import logger
 
 from pyraptor.dao.timetable import read_timetable
 from pyraptor.model.timetable import Timetable
-from pyraptor.model.criteria import pareto_set
 from pyraptor.model.output import Journey
-from pyraptor.model.mcraptor import (
+from pyraptor.model.algos.mcraptor import (
     McRaptorAlgorithm,
     best_legs_to_destination_station,
     reconstruct_journeys,

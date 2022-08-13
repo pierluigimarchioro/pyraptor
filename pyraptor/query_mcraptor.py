@@ -136,14 +136,14 @@ def run_mcraptor(
 
     # Select McRaptor variant
     if is_weighted_mc:
-        from pyraptor.model.weighted_mcraptor import (
+        from pyraptor.model.algos.weighted_mcraptor import (
             WeightedMcRaptorAlgorithm,
             reconstruct_journeys,
             best_legs_to_destination_station
         )
         raptor = WeightedMcRaptorAlgorithm(timetable, criteria_file_path)
     else:
-        from pyraptor.model.mcraptor import (
+        from pyraptor.model.algos.mcraptor import (
             McRaptorAlgorithm,
             reconstruct_journeys,
             best_legs_to_destination_station,

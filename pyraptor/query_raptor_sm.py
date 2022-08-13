@@ -6,7 +6,7 @@ from typing import Dict, List
 from loguru import logger
 
 from pyraptor.dao.timetable import read_timetable
-from pyraptor.model.raptor_sm import (
+from pyraptor.model.algos.raptor_sm import (
     RaptorAlgorithmSharedMobility,
     reconstruct_journey,
     best_stop_at_target_station,
