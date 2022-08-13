@@ -16,7 +16,7 @@ from pyraptor.model.shared_mobility import (
     RentingStation,
     VehicleTransfer,
     VehicleTransfers,
-    filter_shared_mobility
+    filter_shared_mobility, VEHICLE_SPEED
 )
 from pyraptor.model.output import Leg, Journey
 from pyraptor.util import LARGE_NUMBER
@@ -50,9 +50,13 @@ class Label:
 class RaptorAlgorithmSharedMobility:
     """RAPTOR Algorithm Shared Mobility"""
 
-    def __init__(self, timetable: Timetable, shared_mobility_feeds: List[SharedMobilityFeed]):
+    def __init__(self, timetable: Timetable, shared_mobility_feeds: List[SharedMobilityFeed],
+                 preferred_vehicle: TransportType, use_car: bool):
         self.timetable: Timetable = timetable
         self.shared_mobility_feeds: List[SharedMobilityFeed] = shared_mobility_feeds
+        self.preferred_vehicle: TransportType = preferred_vehicle
+        self.use_car = use_car
+
         self.bag_star: Dict[Stop, Label] = {}
 
         self.no_source: List[RentingStation] = []
@@ -66,16 +70,36 @@ class RaptorAlgorithmSharedMobility:
 
     def _add_vehicle_transfer(self, stop_a: RentingStation, stop_b: RentingStation):
         """ Given two stop adds associated outdoor vehicle-transfer
-            to a vehicles transfers depending on availability and system belongings """
+            to a vehicles transfers depending on availability and system belongings
 
-        # a) they are part of same system
+            If stops have common available multiple vehicles:
+             * uses preferred vehicle if present,
+             * otherwise uses an other vehicle TODO more option criteria
+        """
+
+        # 1) they are part of same system
         if stop_a.system_id == stop_b.system_id:
+            # 2.a) evaluating common transport type
+            common_ttypes: List[TransportType] = list(set(stop_a.transport_type).intersection(stop_b.transport_type))
+            # 2.b) removed car transfer if disabled
+            if not self.use_car:
+                car_ttype: TransportType.Car = TransportType(9001)  # Car
+                common_ttypes = list(set(common_ttypes).difference([car_ttype]))
+            # 2.c) create a vehicle transfer if at least one common transport type found
+            if len(common_ttypes) > 0:
+                # 3.a) if preferred vehicle is present, transfer is generated
+                if self.preferred_vehicle in common_ttypes:
+                    ttype = self.preferred_vehicle
+                # 3.b) other fatest one is choshen # TODO different possible criteria
+                else:
+                    ind = argmin([VEHICLE_SPEED[ttype] for ttype in common_ttypes])
+                    ttype = common_ttypes[ind]
+                # 4) creating  transfer
+                t_out, _ = VehicleTransfer.get_vehicle_transfer(stop_a, stop_b, ttype)
 
-            t_out, _ = VehicleTransfer.get_vehicle_transfer(stop_a, stop_b, stop_a.transport_type)
-
-            # b) compatibility to real-time availability
-            if stop_a not in self.no_source and stop_b not in self.no_dest:
-                self.v_transfers.add(t_out)
+                # 5) compatibility to real-time availability
+                if stop_a not in self.no_source and stop_b not in self.no_dest:
+                    self.v_transfers.add(t_out)
 
     def _update_availability_info(self):
         """ Updates stops availability based on real-time query
@@ -419,9 +443,9 @@ class RaptorAlgorithmSharedMobility:
 
                 # Domination criteria
                 if arrival_time_with_transfer < previous_earliest_arrival:
-                    transport_type = (transfer.transport_type
-                                      if isinstance(transfer, VehicleTransfer)
-                                      else TransportType.Walk)
+                    transport_type = transfer.transport_type \
+                                      if isinstance(transfer, VehicleTransfer) \
+                                      else TransportType.Walk
                     transfer_trip = TransferTrip(
                         from_stop=current_stop,
                         to_stop=arrive_stop,
