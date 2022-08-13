@@ -18,6 +18,7 @@ from pyraptor.util import str2sec
 
 
 def parse_arguments():
+
     """Parse arguments"""
 
     parser = argparse.ArgumentParser()
