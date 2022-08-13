@@ -30,14 +30,14 @@ def seconds_to_hour(seconds: int) -> str:
 
 class MarkerType(Enum):
     """ This class represent all possible types
-        of a point in the map """
+        of a point on the map """
     PublicStop = 'public_transport'
     RentingStation = 'shared_mobility'
 
 
 class LineType(Enum):
     """ This class represent all possible types
-        of a conjunction between two points in the map """
+        of a conjunction between two points on the map """
     PublicTransport = 'public_transport'
     ShareMobility = 'shared_mobility'
     Walk = 'walk'
@@ -88,7 +88,7 @@ LINE_SETTINGS: Mapping[LineType, LineSetting] = {
 
 
 class StopVisualizer(object):
-    """  This class represents a Stop in the map """
+    """  This class represents a Stop on the map """
 
     def __init__(self, stop: Stop):
         self.stop: Stop = stop
@@ -170,7 +170,7 @@ class StopVisualizer(object):
 
 
 class MovementVisualizer:
-    """  This class represents a Movement in the map between two stops """
+    """  This class represents a Movement on the map between two stops """
 
     def __init__(self, leg: Leg):
         self.leg: Leg = leg
@@ -266,7 +266,7 @@ class MapVisualizer:
 
     def put_marker(self, coord: Coordinates,
                     text: str | None = None, marker_setting: MarkerSetting = None):
-        """ Creates a marker in the map """
+        """ Creates a marker on the map """
         if marker_setting is None:
             marker_setting = MarkerSetting()
         marker = Marker(
@@ -279,7 +279,7 @@ class MapVisualizer:
 
     def draw_line(self, coord1: Coordinates, coord2: Coordinates,
                    text: str | None = None, line_setting: LineSetting = LineSetting()):
-        """ Creates a line in the map """
+        """ Creates a line on the map """
         line = PolyLine(
             locations=[coord1.to_list, coord2.to_list],
             tooltip=text,
