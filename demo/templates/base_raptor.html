@@ -1,0 +1,39 @@
+<!DOCTYPE html>
+<html lang="en">
+
+    <head>
+        <title>Base RAPTOR</title>
+    </head>
+
+    <body>
+        <h1> Base RAPTOR </h1>
+        <div class="container">
+            <form action="/base_raptor_run" method="POST">
+
+            <label>Choose origin:</label>
+            <select name="origin">
+                {% for stop_name in stop_names %}
+                    <option  value="{{stop_name}}">{{stop_name}}</option>
+                {% endfor %}
+            </select>
+            <br><br>
+
+            <label>Choose destination:</label>
+            <select name="destination">
+                {% for stop_name in stop_names %}
+                    <option  value="{{stop_name}}">{{stop_name}}</option>
+                {% endfor %}
+            </select>
+            <br><br>
+
+            <label>Choose departure time:</label>
+            <input type="time" name="time" min="00:00" max="23:59">
+            <br><br>
+
+            <input type="submit" value="Run">
+            </form>
+            <a href="home">Back</a>
+        </div>
+    </body>
+
+</html>

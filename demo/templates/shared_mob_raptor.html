@@ -1,0 +1,51 @@
+<!DOCTYPE html>
+<html lang="en">
+
+    <head>
+        <title>Shared Mobility RAPTOR</title>
+    </head>
+
+    <body>
+        <h1> Shared Mobility RAPTOR </h1>
+        <div class="container">
+            <form action="/shared_mob_raptor_run" method="POST">
+
+            <label>Choose origin:</label>
+            <select name="origin">
+                {% for stop_name in stop_names %}
+                    <option  value="{{stop_name}}">{{stop_name}}</option>
+                {% endfor %}
+            </select>
+            <br><br>
+
+            <label>Choose destination:</label>
+            <select name="destination">
+                {% for stop_name in stop_names %}
+                    <option  value="{{stop_name}}">{{stop_name}}</option>
+                {% endfor %}
+            </select>
+            <br><br>
+
+            <label>Choose departure time:</label>
+            <input type="time" name="time" min="00:00" max="23:59">
+            <br><br>
+
+            <label>Choose preferred vehicle:</label>
+            <select name="preferred">
+                {% for vehicle in vehicles %}
+                    <option  value="{{vehicle}}">{{vehicle}}</option>
+                {% endfor %}
+            </select>
+            <br><br>
+
+            <input type="checkbox" name="car" >
+            <label> Use car </label>
+            <br><br>
+
+            <input type="submit" value="Run">
+            </form>
+            <a href="home">Back</a>
+        </div>
+    </body>
+
+</html>

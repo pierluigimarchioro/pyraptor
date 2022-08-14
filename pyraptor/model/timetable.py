@@ -76,7 +76,7 @@ class Coordinates:
         return self.lat, self.lon
 
     @property
-    def to_list(self) -> List[float]:
+    def to_list(self) -> [float, float]:
         return [self.lat, self.lon]
 
     def __eq__(self, coord: Coordinates):
@@ -333,6 +333,26 @@ class TransportType(Enum):
     TrolleyBus = 11
     Monorail = 12
 
+    def __str__(self):
+        tt = TransportType
+        to_str = {
+            tt.Walk: 'Walk',
+            tt.Car: 'Car sharing',
+            tt.Bike: 'Bike sharing',
+            tt.ElectricBike: 'Bike sharing (electric bike)',
+            tt.LightRail: 'Light Rail',
+            tt.Metro: 'Metro',
+            tt.Rail: 'Rail',
+            tt.Bus: 'Bus',
+            tt.Ferry: 'Ferry',
+            tt.CableTram: 'Cable Tram',
+            tt.AerialLift: 'Aerail Lift',
+            tt.Funicular: 'Funicular',
+            tt.TrolleyBus: 'Trolley Bus',
+            tt.Monorail: 'Monorail'
+        }
+        return to_str[self]
+
     def get_description(self) -> str:
         """
         Returns a more verbose description for the value of the current instance.
@@ -345,6 +365,14 @@ class TransportType(Enum):
         }
 
         return transport_descriptions[self]
+
+
+PUBLIC_TRANSPORT_TYPES: List[TransportType] = [TransportType.LightRail, TransportType.Metro, TransportType.Rail,
+                                               TransportType.Bike, TransportType.Ferry, TransportType.CableTram,
+                                               TransportType.AerialLift, TransportType.Funicular,
+                                               TransportType.TrolleyBus, TransportType.Monorail, TransportType.Bus]
+
+SHARED_MOBILITY_TYPES: List[TransportType] = [TransportType.Bike, TransportType.ElectricBike, TransportType.Car]
 
 
 @dataclass(frozen=True)
