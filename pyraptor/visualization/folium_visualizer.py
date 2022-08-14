@@ -314,21 +314,46 @@ def parse_arguments():
         default="data/output",
         help="Path to directory to save algo.html file",
     )
+    parser.add_argument(
+        "-b",
+        "--browser",
+        type=bool,
+        default=True,
+        help="If True opens html in browser",
+    )
 
     arguments = parser.parse_args()
     return arguments
 
+def main(
+        algo_output: str,
+        output_dir: str,
+        open_: bool
+):
+    logger.debug("Algorythm path      : {}", algo_output)
+    logger.debug("Output directory    : {}", output_dir)
+    logger.debug("Open in browser     : {}", open_)
 
-if __name__ == "__main__":
-    args = parse_arguments()
+    logger.info(algo_output)
 
-    logger.info(f"Loading Raptor algorithm output from {args.algo_output}")
-    output: AlgorithmOutput = AlgorithmOutput.read_from_file(filepath=args.algo_output)
+    try:
+        output: AlgorithmOutput = AlgorithmOutput.read_from_file(filepath=algo_output)
+    except:
+        raise Exception(f"No algo_output.pcl found in {algo_output}")
 
     visualizer = MapVisualizer(legs=output.journey.legs)
 
     visualizer.add_stops()
     visualizer.add_moves()
 
-    out_file_path = path.join(args.output_dir, 'algo_output.html')
-    visualizer.save(path_=out_file_path, open_=True)
+    out_file_path = path.join(output_dir, 'algo_output.html')
+    visualizer.save(path_=out_file_path, open_=open_)
+
+
+if __name__ == "__main__":
+    args = parse_arguments()
+    main(
+        algo_output=args.algo_output,
+        output_dir=args.output_dir,
+        open_=args.browser
+    )
