@@ -251,10 +251,10 @@ class MapVisualizer:
 
     def add_stops(self):
         """ Adds journey stops to map """
-        visualizers: Mapping[Stop, StopVisualizer] = {stop: StopVisualizer(stop) for stop in self.stops}
+        visualizers: Mapping[str, StopVisualizer] = {stop.name: StopVisualizer(stop) for stop in self.stops}
         for leg in self.legs:
-            visualizers[leg.from_stop].dep = leg.dep
-            visualizers[leg.to_stop].arr = leg.arr
+            visualizers[leg.from_stop.name].dep = leg.dep
+            visualizers[leg.to_stop.name].arr = leg.arr
         for vis in visualizers.values():
             vis.add_to(map_visualizer=self)
 
