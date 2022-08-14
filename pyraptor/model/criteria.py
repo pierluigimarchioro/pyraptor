@@ -603,9 +603,6 @@ class MultiCriteriaLabel(BaseLabel):
         if arrival_time_crit is None:
             raise ValueError(f"No {ArrivalTimeCriterion.__name__} is defined for this label")
         else:
-            if np.isnan(arrival_time_crit.raw_value):
-                loguru.logger.error(f"Arrival time is NaN. Criterion Value: {arrival_time_crit}")
-                raise ValueError(f"Arrival time cannot be NaN")
 
             return int(arrival_time_crit.raw_value)
 
