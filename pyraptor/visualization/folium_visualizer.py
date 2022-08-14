@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import os
 import webbrowser
 from datetime import timedelta
 from enum import Enum
@@ -265,7 +266,7 @@ class MapVisualizer:
             vis.add_to(self)
 
     def put_marker(self, coord: Coordinates,
-                    text: str | None = None, marker_setting: MarkerSetting = None):
+                   text: str | None = None, marker_setting: MarkerSetting = None):
         """ Creates a marker in the map """
         if marker_setting is None:
             marker_setting = MarkerSetting()
@@ -278,7 +279,7 @@ class MapVisualizer:
         marker.add_to(self.map_)
 
     def draw_line(self, coord1: Coordinates, coord2: Coordinates,
-                   text: str | None = None, line_setting: LineSetting = LineSetting()):
+                  text: str | None = None, line_setting: LineSetting = LineSetting()):
         """ Creates a line in the map """
         line = PolyLine(
             locations=[coord1.to_list, coord2.to_list],
@@ -293,8 +294,8 @@ class MapVisualizer:
     def save(self, path_: str, open_: bool = False):
         self.map_.save(path_)
         if open_:
-            path_url = 'file:///'+path.abspath(path_)
-            webbrowser.open(url=path_url, new=1)
+            path_url = 'file:///' + path.abspath(path_)
+            webbrowser.open(url=path_url, new=2)
 
 
 def parse_arguments():
@@ -314,21 +315,48 @@ def parse_arguments():
         default="data/output",
         help="Path to directory to save algo.html file",
     )
+    parser.add_argument(
+        "-b",
+        "--browser",
+        type=bool,
+        default=True,
+        help="If True opens html in browser",
+    )
 
     arguments = parser.parse_args()
     return arguments
 
 
-if __name__ == "__main__":
-    args = parse_arguments()
+def main(
+        algo_output: str,
+        output_dir: str,
+        open_: bool
+):
+    logger.debug("Algorythm path      : {}", algo_output)
+    logger.debug("Output directory    : {}", output_dir)
+    logger.debug("Open in browser     : {}", open_)
 
-    logger.info(f"Loading Raptor algorithm output from {args.algo_output}")
-    output: AlgorithmOutput = AlgorithmOutput.read_from_file(filepath=args.algo_output)
+    logger.info("wd " + os.getcwd())
+    logger.info(algo_output)
+
+    try:
+        output: AlgorithmOutput = AlgorithmOutput.read_from_file(filepath=algo_output)
+    except:
+        raise Exception(f"No algo_output.pcl found in {algo_output}")
 
     visualizer = MapVisualizer(legs=output.journey.legs)
 
     visualizer.add_stops()
     visualizer.add_moves()
 
-    out_file_path = path.join(args.output_dir, 'algo_output.html')
-    visualizer.save(path_=out_file_path, open_=True)
+    out_file_path = path.join(output_dir, 'algo_output.html')
+    visualizer.save(path_=out_file_path, open_=open_)
+
+
+if __name__ == "__main__":
+    args = parse_arguments()
+    main(
+        algo_output=args.algo_output,
+        output_dir=args.output_dir,
+        open_=args.browser
+    )
