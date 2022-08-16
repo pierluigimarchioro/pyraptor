@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import argparse
 import webbrowser
-from datetime import timedelta
+from datetime import timedelta, datetime
 from enum import Enum
 from statistics import mean
 from typing import List, Tuple, Mapping, Callable
@@ -15,14 +15,23 @@ from os import path
 
 from pyraptor.model.timetable import Stop, Coordinates, TransportType, SHARED_MOBILITY_TYPES, PUBLIC_TRANSPORT_TYPES
 from pyraptor.model.output import AlgorithmOutput, Leg
+from pyraptor.util import TRANSFER_COST
 
 FILE_NAME = 'algo_output.html'
 
 
 def seconds_to_hour(seconds: int) -> str:
-    """ Convert number of seconds to string hour"""
+    """ Convert number of seconds to hour string"""
     if seconds is not None:
-        return str(timedelta(seconds=seconds))
+        return str(timedelta(seconds=int(seconds)))
+
+
+def hour_to_seconds(hour: str) -> int:
+    """ Convert hour string to number of seconds"""
+    date_time = datetime.strptime(hour, "%H:%M:%S")
+    a_timedelta = date_time - datetime(1900, 1, 1)
+    seconds = a_timedelta.total_seconds()
+    return int(seconds)
 
 
 """ Marker and Line Types"""
@@ -40,7 +49,8 @@ class LineType(Enum):
         of a conjunction between two points on the map """
     PublicTransport = 'public_transport'
     ShareMobility = 'shared_mobility'
-    Walk = 'walk'
+    Walk = 'walk',
+    StationTransfer = 'station'
 
 
 """ Marker and Line Setting """
@@ -81,7 +91,8 @@ MARKER_SETTINGS: Mapping[MarkerType, Callable[[], MarkerSetting]] = {
 LINE_SETTINGS: Mapping[LineType, LineSetting] = {
     LineType.PublicTransport: LineSetting(color='red', weight=2.5, opacity=1, dash_array='1'),
     LineType.ShareMobility: LineSetting(color='green', weight=2, opacity=1, dash_array='8'),
-    LineType.Walk: LineSetting(color='blue', weight=2, opacity=0.8, dash_array='15')
+    LineType.Walk: LineSetting(color='blue', weight=2, opacity=0.8, dash_array='15'),
+    LineType.StationTransfer: LineSetting(color='darkgreen', weight=2, opacity=0.8, dash_array='10')
 }
 
 """ Visualizers """
@@ -234,7 +245,14 @@ class MapVisualizer:
     @property
     def stops(self) -> List[Stop]:
         """ Returns all journeys stops """
-        return [next(iter(self.legs)).from_stop] + [leg.to_stop for leg in self.legs]
+        return list(set([l.from_stop for l in self.legs]).union([l.to_stop for l in self.legs]))
+
+    @property
+    def same_station(self) -> List[Tuple[Stop, Stop]]:
+        """ Returns all journeys stops """
+        return [(self.legs[i].to_stop, self.legs[i + 1].from_stop)
+                for i in range(0, len(self.legs) - 1)
+                if self.legs[i].to_stop != self.legs[i + 1].from_stop]
 
     @property
     def bounds(self) -> [[float, float], [float, float]]:
@@ -251,10 +269,13 @@ class MapVisualizer:
 
     def add_stops(self):
         """ Adds journey stops to map """
-        visualizers: Mapping[str, StopVisualizer] = {stop.name: StopVisualizer(stop) for stop in self.stops}
+        visualizers: Mapping[Stop, StopVisualizer] = {stop: StopVisualizer(stop) for stop in self.stops}
         for leg in self.legs:
-            visualizers[leg.from_stop.name].dep = leg.dep
-            visualizers[leg.to_stop.name].arr = leg.arr
+            visualizers[leg.from_stop].dep = leg.dep
+            visualizers[leg.to_stop].arr = leg.arr
+        for from_, to in self.same_station:
+            visualizers[from_].dep = hour_to_seconds(visualizers[from_].arr)
+            visualizers[to].arr = hour_to_seconds(visualizers[from_].dep) + TRANSFER_COST
         for vis in visualizers.values():
             vis.add_to(map_visualizer=self)
 
@@ -264,8 +285,17 @@ class MapVisualizer:
         for vis in visualizers:
             vis.add_to(self)
 
+        """ Adds station movement"""
+        for from_, to in self.same_station:
+            self.draw_line(
+                coord1=from_.geo,
+                coord2=to.geo,
+                text="Internal Station",
+                line_setting=LINE_SETTINGS[LineType.StationTransfer]
+            )
+
     def put_marker(self, coord: Coordinates,
-                    text: str | None = None, marker_setting: MarkerSetting = None):
+                   text: str | None = None, marker_setting: MarkerSetting = None):
         """ Creates a marker on the map """
         if marker_setting is None:
             marker_setting = MarkerSetting()
@@ -278,7 +308,7 @@ class MapVisualizer:
         marker.add_to(self.map_)
 
     def draw_line(self, coord1: Coordinates, coord2: Coordinates,
-                   text: str | None = None, line_setting: LineSetting = LineSetting()):
+                  text: str | None = None, line_setting: LineSetting = LineSetting()):
         """ Creates a line on the map """
         line = PolyLine(
             locations=[coord1.to_list, coord2.to_list],
@@ -293,7 +323,7 @@ class MapVisualizer:
     def save(self, path_: str, open_: bool = False):
         self.map_.save(path_)
         if open_:
-            path_url = 'file:///'+path.abspath(path_)
+            path_url = 'file:///' + path.abspath(path_)
             webbrowser.open(url=path_url, new=1)
 
 
@@ -324,6 +354,7 @@ def parse_arguments():
 
     arguments = parser.parse_args()
     return arguments
+
 
 def main(
         algo_output: str,
