@@ -1,6 +1,6 @@
 """Test Range Query or McRaptor"""
 from pyraptor import query_range_mcraptor
-from pyraptor.model.timetable import Timetable
+from pyraptor.model.timetable import RaptorTimetable
 
 
 def test_has_main():
@@ -8,7 +8,7 @@ def test_has_main():
     assert query_range_mcraptor.main
 
 
-def test_query_range_mcraptor(default_timetable: Timetable):
+def test_query_range_mcraptor(default_timetable: RaptorTimetable):
     """Test perform range query on McRaptor"""
     origin_station = "A"
     destination_station = "F"

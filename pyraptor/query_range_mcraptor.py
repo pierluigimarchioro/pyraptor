@@ -7,7 +7,7 @@ from time import perf_counter
 from loguru import logger
 
 from pyraptor.dao.timetable import read_timetable
-from pyraptor.model.timetable import Timetable
+from pyraptor.model.timetable import RaptorTimetable
 from pyraptor.model.output import Journey
 from pyraptor.model.algos.mcraptor import (
     McRaptorAlgorithm,
@@ -109,7 +109,7 @@ def main(
 
 
 def run_range_mcraptor(
-    timetable: Timetable,
+    timetable: RaptorTimetable,
     origin_station: str,
     dep_secs_min: int,
     dep_secs_max: int,

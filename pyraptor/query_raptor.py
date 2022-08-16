@@ -5,7 +5,7 @@ from typing import Dict
 from loguru import logger
 
 from pyraptor.dao.timetable import read_timetable
-from pyraptor.model.timetable import Timetable
+from pyraptor.model.timetable import RaptorTimetable
 from pyraptor.model.output import Journey, AlgorithmOutput
 from pyraptor.model.algos.raptor import (
     RaptorAlgorithm,
@@ -114,7 +114,7 @@ def main(
 
 
 def run_raptor(
-    timetable: Timetable,
+    timetable: RaptorTimetable,
     origin_station: str,
     dep_secs: int,
     rounds: int,

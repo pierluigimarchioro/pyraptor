@@ -44,7 +44,7 @@ class TimetableInfo:
 
 
 @dataclass
-class Timetable(TimetableInfo):
+class RaptorTimetable(TimetableInfo):
     """Timetable data"""
 
     stations: Stations = None

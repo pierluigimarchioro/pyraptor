@@ -11,7 +11,7 @@ from pyraptor.model.algos.raptor_sm import (
     reconstruct_journey,
     best_stop_at_target_station,
 )
-from pyraptor.model.timetable import Timetable, TransportType
+from pyraptor.model.timetable import RaptorTimetable, TransportType
 from pyraptor.model.output import Journey, AlgorithmOutput
 from pyraptor.model.shared_mobility import SharedMobilityFeed
 from pyraptor.util import str2sec
@@ -172,7 +172,7 @@ def main(
 
 
 def run_raptor(
-    timetable: Timetable,
+    timetable: RaptorTimetable,
     feeds: List[SharedMobilityFeed],
     origin_station: str,
     dep_secs: int,

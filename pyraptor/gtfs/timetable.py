@@ -23,7 +23,7 @@ from pathos.helpers import cpu_count
 
 from pyraptor.dao import write_timetable
 from pyraptor.model.timetable import (
-    Timetable,
+    RaptorTimetable,
     Stop,
     Stops,
     Trip,
@@ -638,7 +638,7 @@ def gtfs_to_pyraptor_timetable(
             transfers.add(t)
 
     # Timetable
-    timetable = Timetable(
+    timetable = RaptorTimetable(
         stations=stations,
         stops=stops,
         trips=trips,
