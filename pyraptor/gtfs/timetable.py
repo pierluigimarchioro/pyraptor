@@ -9,10 +9,10 @@ import math
 import os
 import uuid
 from collections import defaultdict
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from datetime import datetime
-from typing import List, Iterable, Any, NamedTuple, Tuple, Callable, Dict
+from typing import List, Iterable, Any, NamedTuple, Tuple, Callable, Dict, TypeVar
 
 import numpy as np
 import pandas as pd
@@ -56,39 +56,6 @@ class GtfsTimetable(TimetableInfo):
     transfers: pd.DataFrame = None
 
 
-def main(
-        input_folder: str,
-        output_folder: str,
-        departure_date: str,
-        agencies: List[str],
-        shared_mobility: bool,
-        feeds: str,
-        n_jobs: int
-):
-    """Main function"""
-
-    logger.debug("Input directory       : {}", input_folder)
-    logger.debug("Output directory      : {}", output_folder)
-    logger.debug("Departure date        : {}", departure_date)
-    logger.debug("Agencies              : {}", agencies)
-    logger.debug("Using shared-mobility : {}", shared_mobility)
-    if shared_mobility:
-        logger.debug("Shared-mobility feeds : {}", feeds)
-    logger.debug("jobs                  : {}", n_jobs)
-
-    logger.info("Parse timetable from GTFS files")
-    mkdir_if_not_exists(output_folder)
-
-    gtfs_timetable = read_gtfs_timetable(input_folder, departure_date, agencies)
-    timetable = gtfs_to_pyraptor_timetable(gtfs_timetable, n_jobs)
-
-    if shared_mobility:
-        timetable = add_shared_mobility_to_pyraptor_timetable(timetable, feeds)
-    timetable.counts()
-
-    write_timetable(output_folder, timetable)
-
-
 def parse_arguments():
     """Parse command line arguments"""
     parser = argparse.ArgumentParser()
@@ -123,8 +90,8 @@ def parse_arguments():
         "-j",
         "--jobs",
         type=int,
-        default=-1,
-        help="Number of jobs to run (-1 or greater than 0)"
+        default=cpu_count(),
+        help="Number of jobs to run (greater than 0, leave default to auto-detect available cpus)"
     )
     parser.add_argument(
         "-sm",
@@ -145,6 +112,41 @@ def parse_arguments():
     return arguments
 
 
+def main(
+        input_folder: str,
+        output_folder: str,
+        departure_date: str,
+        agencies: List[str],
+        shared_mobility: bool,
+        feeds_path: str,
+        n_jobs: int
+):
+    """Main function"""
+
+    logger.debug("Input directory                   : {}", input_folder)
+    logger.debug("Output directory                  : {}", output_folder)
+    logger.debug("Departure date                    : {}", departure_date)
+    logger.debug("Agencies                          : {}", agencies)
+    logger.debug("Using shared-mobility             : {}", shared_mobility)
+
+    if shared_mobility:
+        logger.debug("Path to shared-mobility feeds : {}", feeds_path)
+
+    logger.debug("jobs                              : {}", n_jobs)
+
+    logger.info("Parse timetable from GTFS files")
+    mkdir_if_not_exists(output_folder)
+
+    gtfs_timetable = read_gtfs_timetable(input_folder, departure_date, agencies)
+    timetable = gtfs_to_pyraptor_timetable(gtfs_timetable, n_jobs)
+
+    if shared_mobility:
+        add_shared_mobility_to_pyraptor_timetable(timetable, feeds_path, n_jobs)
+    timetable.counts()
+
+    write_timetable(output_folder, timetable)
+
+
 def read_gtfs_timetable(
         input_folder: str, departure_date: str, agency_names: List[str]
 ) -> GtfsTimetable:
@@ -163,7 +165,7 @@ def read_gtfs_timetable(
     routes = _process_routes_table(input_folder=input_folder, agency_ids=agency_ids)
 
     # Read trips
-    logger.debug("Read Trips")
+    logger.debug("Reading Trips")
     trips = _process_trips_table(
         input_folder=input_folder,
         route_ids=routes["route_id"].values,
@@ -171,11 +173,11 @@ def read_gtfs_timetable(
     )
 
     # Read stop times
-    logger.debug("Read Stop Times")
+    logger.debug("Reading Stop Times")
     stop_times = _process_stop_times_table(input_folder=input_folder, trip_ids=trips["trip_id"].values)
 
     # Read stops (platforms)
-    logger.debug("Read Stops")
+    logger.debug("Reading Stops")
     stops = _process_stops_table(input_folder=input_folder, stop_times=stop_times)
 
     # Make sure stop times refer to the same stops as the processed
@@ -239,8 +241,8 @@ def _process_trips_table(input_folder: str, route_ids: Iterable, dep_date: str) 
     trips = trips[trips_col_selector]
 
     # Read calendar
-    logger.debug("Read Calendar")
-    calendar_processor = GTFSCalendarProcessor(input_folder=input_folder)
+    logger.debug("Reading Calendar")
+    calendar_processor = CalendarHandler(input_folder=input_folder)
 
     # Trips here are already filtered by agency ids
     valid_ids = trips["service_id"].values
@@ -348,7 +350,7 @@ def _process_transfers_table(input_folder: str, stop_ids: Iterable) -> pd.DataFr
     return transfers
 
 
-class GTFSCalendarProcessor:
+class CalendarHandler:
     """
     Class that handles the processing of the calendar and calendar_dates tables
     of the provided GTFS feed.
@@ -388,7 +390,7 @@ class GTFSCalendarProcessor:
         elif self._is_alternate_calendar_repr():
             return self._handle_alternate_calendar(on_date, valid_service_ids)
         else:
-            raise Exception("Calendar Representation Not Handled")
+            raise Exception("Unhandled Calendar Representation")
 
     def _is_recommended_calendar_repr(self) -> bool:
         """
@@ -506,19 +508,159 @@ class GTFSCalendarProcessor:
             return exception_type
         except Exception:
             # Exception not found
-            # logger.debug(f"Exception type for service {service_id} on date {date} not found. Reason: {x}")
             return -1
 
 
-def get_trips_processor(trips_row_iterator: Iterable[NamedTuple],
-                        stops_info: Stops,
-                        trip_route_info: Mapping[Any, RouteInfo],
-                        stop_times_by_trip_id: Mapping[Any, List],
-                        processor_id: uuid.UUID | int | str = uuid.uuid4()) -> Callable[
-    [], Tuple[Trips, TripStopTimes]]:
+def gtfs_to_pyraptor_timetable(
+        gtfs_timetable: GtfsTimetable,
+        n_jobs: int) -> Timetable:
+    """
+    Convert timetable for usage in Raptor algorithm.
+
+    :param gtfs_timetable: gtfs timetable instance
+    :param n_jobs: number of parallel jobs to run.
+        Defaults to -1, which means that the number of jobs is auto-detected.
+    :return:
+    """
+
+    logger.info("Convert GTFS timetable to timetable for PyRaptor algorithm")
+
+    # Stations and stops, i.e. platforms
+    logger.debug("Adding stations and stops")
+
+    stations = Stations()
+    stops = Stops()
+
+    for s in gtfs_timetable.stops.itertuples():
+        station = Station(s.stop_name, s.stop_name)
+        station = stations.add(station)
+        #   if station_id (same of first stop_name) is already present
+        #   existing station with that station_id is returned
+
+        platform_code = getattr(s, "platform_code", -1)
+        # stop_id = f"{s.stop_name}-{platform_code}" TODO can we keep just name ?
+        stop_id = f"{s.stop_name}"
+        stop = Stop(s.stop_id, stop_id, station, platform_code, stops.last_index + 1,
+                    Coordinates(s.stop_lat, s.stop_lon))
+
+        station.add_stop(stop)
+        stops.add_stop(stop)
+
+    # Stop Times
+    stop_times = defaultdict(list)
+    for stop_time in gtfs_timetable.stop_times.itertuples():
+        stop_times[stop_time.trip_id].append(stop_time)
+
+    logger.debug("Extracting transport type for each trip")
+
+    trip_route_info: dict[Any, RouteInfo] = {}
+    trips_and_routes: pd.DataFrame = pd.merge(gtfs_timetable.trips, gtfs_timetable.routes, on="route_id")
+    for row in trips_and_routes.itertuples():
+        route_name = getattr(row, "route_long_name", None)
+        route_name = route_name if route_name is not None else getattr(row, "route_short_name", "missing_route_name")
+        trip_route_info[row.trip_id] = RouteInfo(name=route_name, transport_type=TransportType(int(row.route_type)))
+
+    # Trips and Trip Stop Times
+    logger.debug("Adding trips and trip stop times")
+
+    jobs = []
+    for i in range(n_jobs):
+        total_trips = len(gtfs_timetable.trips)
+        interval_length = math.floor(total_trips / n_jobs)
+        start = i * interval_length
+
+        if i == (n_jobs - 1):
+            # Make sure that all the trips are processed and
+            # that no trip is left out due to rounding errors
+            # in calculating interval_length
+            end = total_trips
+        else:
+            end = (start + interval_length) - 1  # -1 because the interval_length-th trip belongs to the next round
+
+        job = trips_processor_job(
+            trips_row_iterator=itertools.islice(gtfs_timetable.trips.itertuples(), start, end),
+            stops_info=stops,
+            trip_route_info=trip_route_info,
+            stop_times_by_trip_id=stop_times,
+            job_id=f"#{i}"
+        )
+        jobs.append(job)
+
+    logger.debug(f"Starting {n_jobs} jobs to process timetable trips")
+    job_results = execute_jobs(jobs=jobs, cpus=n_jobs)
+
+    trips = Trips()
+    trip_stop_times = TripStopTimes()
+    for res_trips, res_stop_times in job_results:
+        # Add the results
+        for res_trip in res_trips.set_idx.values():
+            trips.add(res_trip)
+
+        for res_trip_stop_time in res_stop_times.set_idx.values():
+            trip_stop_times.add(res_trip_stop_time)
+
+    # Routes
+    logger.debug("Adding routes")
+
+    routes = Routes()
+    for trip in trips:
+        routes.add(trip)
+
+    # Transfers
+    logger.debug("Adding transfers")
+
+    # Add transfers between parent and child stations
+    # TODO remove? because they are (should) already be included in the transfers table?
+    transfers = Transfers()
+
+    # 1. transfer between each stop of the same station:
+    #   transfer between stop with same 'stop_name' field
+    for station in stations:
+        station_stops = station.stops
+        station_transfers = [
+            Transfer(from_stop=stop_i, to_stop=stop_j, transfer_time=TRANSFER_COST)  # TRANSFER_COST is a macro like
+            # variable, constant value is set to 120 sec
+            for stop_i in station_stops
+            for stop_j in station_stops
+            if stop_i != stop_j
+        ]
+        for st in station_transfers:
+            transfers.add(st)
+
+    # 2. Add transfers based on the transfers.txt table, if it exists
+    if gtfs_timetable.transfers is not None:
+        for t_row in gtfs_timetable.transfers.itertuples():
+            from_stop = stops[t_row.from_stop_id]
+            to_stop = stops[t_row.to_stop_id]
+            t_time = t_row.min_transfer_time
+
+            t = Transfer(from_stop=from_stop, to_stop=to_stop, transfer_time=t_time)
+            transfers.add(t)
+
+    # Timetable
+    timetable = Timetable(
+        stations=stations,
+        stops=stops,
+        trips=trips,
+        trip_stop_times=trip_stop_times,
+        routes=routes,
+        transfers=transfers,
+        original_gtfs_dir=gtfs_timetable.original_gtfs_dir,
+        date=gtfs_timetable.date
+    )
+
+    return timetable
+
+
+def trips_processor_job(
+        trips_row_iterator: Iterable[NamedTuple],
+        stops_info: Stops,
+        trip_route_info: Mapping[Any, RouteInfo],
+        stop_times_by_trip_id: Mapping[Any, List],
+        job_id: uuid.UUID | int | str = uuid.uuid4()
+) -> Callable[[], Tuple[Trips, TripStopTimes]]:
     """
     Returns a function that processes the provided trips.
-    The resulting Trip and TripStopTime instances will be added to the provided storage.
 
     :param trips_row_iterator: iterator that cycles over the rows of
         a GtfsTimetable.trips dataframe
@@ -528,12 +670,15 @@ def get_trips_processor(trips_row_iterator: Iterable[NamedTuple],
         information about the route that each trip belongs to
     :param stop_times_by_trip_id: default dictionary where keys are trip ids and
         values are collections of stop times.
-    :param processor_id: id to assign to this processor.
-        Its purpose is only to identify this instance in the logger output.
+    :param job_id: id to assign to this job.
+        Its purpose is only to identify the job in the logger output.
     :return: tuple containing the generated collections of Trip and TripStopTime instances
     """
 
-    def process_trips() -> Tuple[Trips, TripStopTimes]:
+    def job():
+        def log(msg: str):
+            logger.debug(f"[TripsProcessor {job_id}] {msg}")
+
         trips = Trips()
         trip_stop_times = TripStopTimes()
 
@@ -588,214 +733,141 @@ def get_trips_processor(trips_row_iterator: Iterable[NamedTuple],
 
         return trips, trip_stop_times
 
-    def log(msg: str):
-        logger.debug(f"[TripsProcessor {processor_id}] {msg}")
-
-    return process_trips
+    return job
 
 
-def gtfs_to_pyraptor_timetable(
-        gtfs_timetable: GtfsTimetable,
-        n_jobs: int = -1) -> Timetable:
+def add_shared_mobility_to_pyraptor_timetable(timetable: Timetable, feeds_path: str, n_jobs: int):
     """
-    Convert timetable for usage in Raptor algorithm.
+    Adds shared mobility data to the provided timetable.
 
-    :param gtfs_timetable: gtfs timetable instance
-    :param n_jobs: number of parallel jobs to run.
-        Defaults to -1, which means that the number of jobs is auto-detected.
-    :return:
+    :param timetable: timetable instance
+    :param feeds_path: path to the file containing shared mobility feed info
+    :param n_jobs: number of jobs to execute when processing shared mob data
     """
 
-    logger.info("Convert GTFS timetable to timetable for PyRaptor algorithm")
-
-    # Stations and stops, i.e. platforms
-    logger.debug("Add stations and stops")
-
-    stations = Stations()
-    stops = Stops()
-
-    for s in gtfs_timetable.stops.itertuples():
-        station = Station(s.stop_name, s.stop_name)
-        station = stations.add(station)
-        #   if station_id (same of first stop_name) is already present
-        #   existing station with that station_id is returned
-
-        platform_code = getattr(s, "platform_code", -1)
-        # stop_id = f"{s.stop_name}-{platform_code}" TODO can we keep just name ?
-        stop_id = f"{s.stop_name}"
-        stop = Stop(s.stop_id, stop_id, station, platform_code, stops.last_index + 1,
-                    Coordinates(s.stop_lat, s.stop_lon))
-
-        station.add_stop(stop)
-        stops.add_stop(stop)
-
-    # Stop Times
-    stop_times = defaultdict(list)
-    for stop_time in gtfs_timetable.stop_times.itertuples():
-        stop_times[stop_time.trip_id].append(stop_time)
-
-    logger.debug("Extracting transport type for each trip")
-
-    trip_route_info: dict[Any, RouteInfo] = {}
-    trips_and_routes: pd.DataFrame = pd.merge(gtfs_timetable.trips, gtfs_timetable.routes, on="route_id")
-    for row in trips_and_routes.itertuples():
-        route_name = getattr(row, "route_long_name", None)
-        route_name = route_name if route_name is not None else getattr(row, "route_short_name", "missing_route_name")
-        trip_route_info[row.trip_id] = RouteInfo(name=route_name, transport_type=TransportType(int(row.route_type)))
-
-    # Trips and Trip Stop Times
-    logger.debug("Add trips and trip stop times")
-
-    job_results: dict[int, ApplyResult] = {}
-    n_jobs = n_jobs if n_jobs != -1 else cpu_count()  # if jobs == -1, auto-detect
-    pool = p.ProcessPool(nodes=n_jobs)
-    for i in range(n_jobs):
-        processor_id = i
-        logger.debug(f"Starting Trips Processor Job #{processor_id}...")
-
-        total_trips = len(gtfs_timetable.trips)
-        interval_length = math.floor(total_trips / n_jobs)
-        start = i * interval_length
-
-        if i == (n_jobs - 1):
-            # Make sure that all the trips are processed and
-            # that no trip is left out due to rounding errors
-            # in calculating interval_length
-            end = total_trips
-        else:
-            end = (start + interval_length) - 1  # -1 because the interval_length-th trip belongs to the next round
-
-        processor = get_trips_processor(
-            trips_row_iterator=itertools.islice(gtfs_timetable.trips.itertuples(), start, end),
-            stops_info=stops,
-            trip_route_info=trip_route_info,
-            stop_times_by_trip_id=stop_times,
-            processor_id=processor_id
-        )
-        job_results[processor_id] = pool.apipe(processor)
-
-    pool.close()
-
-    logger.debug(f"Waiting for jobs to finish...")
-
-    trips = Trips()
-    trip_stop_times = TripStopTimes()
-    for p_id, result in job_results.items():
-        res: Tuple[Trips, TripStopTimes] = result.get()
-        logger.debug(f"Processor #{p_id} has completed its execution")
-        logger.debug(f"Trips produced: {len(res[0])}; TripStopTimes produced: {len(res[1])}")
-
-        # Add the results
-        for res_trip in res[0].set_idx.values():
-            trips.add(res_trip)
-
-        for res_trip_stop_time in res[1].set_idx.values():
-            trip_stop_times.add(res_trip_stop_time)
-
-    # Make sure all the jobs are finished
-    pool.join()
-
-    # Routes
-    logger.debug("Add routes")
-
-    routes = Routes()
-    for trip in trips:
-        routes.add(trip)
-
-    # Transfers
-    logger.debug("Add transfers")
-
-    # Add transfers between parent and child stations
-    # TODO remove? because they are (should) already be included in the transfers table?
-    transfers = Transfers()
-
-    # 1. transfer between each stop of the same station:
-    #   transfer between stop with same 'stop_name' field
-    for station in stations:
-        station_stops = station.stops
-        station_transfers = [
-            Transfer(from_stop=stop_i, to_stop=stop_j, transfer_time=TRANSFER_COST)  # TRANSFER_COST is a macro like
-            # variable, constant value is set to 120 sec
-            for stop_i in station_stops
-            for stop_j in station_stops
-            if stop_i != stop_j
-        ]
-        for st in station_transfers:
-            transfers.add(st)
-
-    # 2. Add transfers based on the transfers.txt table, if it exists
-    if gtfs_timetable.transfers is not None:
-        for t_row in gtfs_timetable.transfers.itertuples():
-            from_stop = stops[t_row.from_stop_id]
-            to_stop = stops[t_row.to_stop_id]
-            t_time = t_row.min_transfer_time
-
-            t = Transfer(from_stop=from_stop, to_stop=to_stop, transfer_time=t_time)
-            transfers.add(t)
-
-    # Timetable
-    timetable = Timetable(
-        stations=stations,
-        stops=stops,
-        trips=trips,
-        trip_stop_times=trip_stop_times,
-        routes=routes,
-        transfers=transfers,
-        original_gtfs_dir=gtfs_timetable.original_gtfs_dir,
-        date=gtfs_timetable.date
-    )
-
-    return timetable
-
-
-def add_shared_mobility_to_pyraptor_timetable(timetable: Timetable, feeds: str):
     logger.info("Adding shared mobility datas")
 
-    feed_infos: List[Dict] = json.load(open(feeds))['feeds']
-    feeds: List[SharedMobilityFeed] = [SharedMobilityFeed(feed_info['url'], feed_info['lang']) for feed_info in
-                                       feed_infos]
+    feed_infos: List[Dict] = json.load(open(feeds_path))['feeds']
+    feeds_path: List[SharedMobilityFeed] = [SharedMobilityFeed(feed_info['url'], feed_info['lang'])
+                                            for feed_info in feed_infos]
 
-    logger.debug("Add stations and renting-stations")
+    logger.debug("Adding stations and renting-stations")
 
-    stations_1, stops_1 = len(timetable.stations), len(timetable.stops)  # debugging
+    stations_before_sm, stops_before_sm = len(timetable.stations), len(timetable.stops)  # debugging
 
-    for feed in feeds:
+    for feed in feeds_path:
         for renting_station in feed.renting_stations:
             timetable.stops.add_stop(renting_station)
             timetable.stations.add(renting_station.station)
 
-        stations_2, stops_2 = len(timetable.stations), len(timetable.stops)  # debugging
-        logger.debug(f"Added {stations_2 - stations_1} new stations from {feed.system_id}")
-        logger.debug(f"Added {stops_2 - stops_1} new renting stations from {feed.system_id}")
-        stations_1, stops_1 = stations_2, stops_2
+        stations_after_sm, stops_after_sm = len(timetable.stations), len(timetable.stops)  # debugging
+        logger.debug(f"Added {stations_after_sm - stations_before_sm} new stations from {feed.system_id}")
+        logger.debug(f"Added {stops_after_sm - stops_before_sm} new renting stations from {feed.system_id}")
+        stations_before_sm, stops_before_sm = stations_after_sm, stops_after_sm
 
-    logger.debug("Add vehicle-transfers")
+    logger.debug("Adding vehicle-transfers")
 
-    transfers_1 = len(timetable.transfers)  # debugging
+    # Number of transfers before shared mob - for debugging/logging purposes
+    transfers_before_sm = len(timetable.transfers)
 
-    public = public_transport_stop(for_stops=timetable.stops)
-    shared_mob = shared_mobility_stops(for_stops=timetable.stops)
+    public_stops = public_transport_stop(for_stops=timetable.stops)
+    shared_mob_stops = shared_mobility_stops(for_stops=timetable.stops)
 
-    # TODO multiprocessor ?
-    for mob in shared_mob:
-        i = shared_mob.index(mob)
-        if i % 20 == 0:
-            logger.debug(f'Progress: {i * 100 / len(shared_mob):0.0f}% [stop #{i} of {len(shared_mob)}]')
-        for pub in public:
-            if mob.distance_from(pub) < MIN_DIST:
-                t_out, t_in = Transfer.get_transfer(mob, pub)
-                timetable.transfers.add(t_out)
-                timetable.transfers.add(t_in)
+    jobs = []
+    for i in range(n_jobs):
+        total_sm_stops = len(shared_mob_stops)
+        interval_length = math.floor(total_sm_stops / n_jobs)
+        start = i * interval_length
 
-    transfers_2 = len(timetable.transfers)  # debugging
-    logger.debug(f"Added new {transfers_2 - transfers_1} vehicle-transfers between public and shared-mobility stops")
+        if i == (n_jobs - 1):
+            # Make sure that all the shared mob stops are processed and
+            # that no stop is left out due to rounding errors
+            # in calculating interval_length
+            end = total_sm_stops
+        else:
+            end = (start + interval_length) - 1  # -1 because the interval_length-th stop belongs to the next round
 
-    return timetable
+        job = shared_mob_processor_job(
+            shared_mob_stops=list(itertools.islice(shared_mob_stops, start, end)),
+            public_stops=public_stops,
+            job_id=f"#{i}"
+        )
+        jobs.append(job)
+
+    logger.debug(f"Starting {n_jobs} jobs to process timetable trips")
+    job_results = execute_jobs(jobs=jobs, cpus=n_jobs)
+
+    for transfer in itertools.chain.from_iterable(job_results):
+        timetable.transfers.add(transfer)
+
+    # Number of public transport + shared mobility transfers - for debugging/logging purposes
+    transfers_after_sm = len(timetable.transfers)
+    logger.debug(f"Added new {transfers_after_sm - transfers_before_sm} vehicle-transfers "
+                 f"between public and shared-mobility stops")
+
+
+def shared_mob_processor_job(
+        shared_mob_stops: Sequence[Stop],
+        public_stops: Sequence[Stop],
+        job_id: int | str | uuid.UUID = uuid.uuid4()
+) -> Callable[[], Iterable[Transfer]]:
+    """
+    Returns a function that creates and returns transfers between
+    the provided shared mobility stops and public stops (i.e. GTFS stops)
+
+    :param shared_mob_stops: stops related to shared mobility
+    :param public_stops: stops related to public transit
+    :param job_id: id to assign to this job.
+        Its purpose is only to identify the job in the logger output.
+    :return: collection of transfers between the aforementioned stops
+    """
+
+    def job():
+        def log(msg: str):
+            logger.debug(f"[SharedMobProcessor {job_id}] {msg}")
+
+        transfers = []
+        for i, mob in enumerate(shared_mob_stops):
+            log(f'Progress: {i * 100 / len(shared_mob_stops):0.0f}% '
+                f'[Stop #{i} of {len(shared_mob_stops)}]')
+
+            for pub in public_stops:
+                if mob.distance_from(pub) < MIN_DIST:
+                    both_way_transfers = Transfer.get_transfer(mob, pub)
+                    transfers.extend(both_way_transfers)
+
+        return transfers
+
+    return job
+
+
+# TypeVar for job results
+_J = TypeVar('_J')
+
+
+def execute_jobs(
+        jobs: Iterable[Callable[[], _J]],
+        cpus: int = cpu_count()
+) -> Iterable[_J]:
+    job_results: dict[int, ApplyResult] = {}  # if jobs == -1, auto-detect
+    pool = p.ProcessPool(nodes=cpus)
+    for i, job in enumerate(jobs):
+        job_id = i
+        logger.debug(f"Starting Job #{job_id}...")
+
+        job_results[job_id] = pool.apipe(job)
+
+    logger.debug(f"Waiting for jobs to finish...")
+    for job_id, result in job_results.items():
+        res: _J = result.get()
+        logger.debug(f"Job #{job_id} has completed its execution")
+
+        yield res
 
 
 if __name__ == "__main__":
     args = parse_arguments()
     main(input_folder=args.input, output_folder=args.output,
          departure_date=args.date, agencies=args.agencies,
-         shared_mobility=args.shared_mobility, feeds=args.feeds,
+         shared_mobility=args.shared_mobility, feeds_path=args.feeds,
          n_jobs=args.jobs)
