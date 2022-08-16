@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import argparse
 import json
 import os
@@ -6,13 +8,14 @@ import webbrowser
 from os import path
 from typing import List
 
+import flask
 from flask import Flask, render_template, redirect, url_for, request
 from loguru import logger
 
 from generate_station_names import NAMES_FILE
+from pyraptor.model.output import AlgorithmOutput
 
 app = Flask(__name__)
-
 
 QUERY_DIR: str = "./../pyraptor"
 QUERY_RAPTOR: str = 'query_raptor.py'
@@ -22,10 +25,40 @@ QUERY_RAPTOR_SHARED_MOB_DIR: str = 'raptor_sm'
 
 VISUALIZER_PATH = './../pyraptor/visualization/folium_visualizer.py'
 ALGO_OUTPUT_NAME = 'algo-output.pcl'
+DEMO_OUTPUT = './../data/output/demo'
 
-IN: str = ''
-FEED: str = ''
+IN: str = "data/output"
+FEED: str = "data/input/gbfs.json"
 NAMES: List[str] = []
+
+DEBUG: bool = False
+
+
+def run_script(file_name: str, flags: str):
+    cmd = f"python {file_name} {flags}"
+    if not DEBUG:
+        proc = subprocess.run(cmd, text=True, shell=True, capture_output=True)
+        if proc.returncode != 0:
+            exc = proc.stderr.split('\n')[-2]
+            raise Exception(exc)
+    else:
+        proc = subprocess.run(cmd, shell=True)
+        if proc.returncode != 0:
+            raise Exception("Internal Error")
+
+
+def visualize(dir_: str):
+    algo_file = path.join(dir_, ALGO_OUTPUT_NAME)
+    flags = f"-a {algo_file} -o {dir_} -b True"
+    run_script(file_name=VISUALIZER_PATH, flags=flags)
+
+
+def journey_desc(dir_: str) -> flask.templating:
+    algo_file: str = path.join(dir_, ALGO_OUTPUT_NAME)
+    desc: str = AlgorithmOutput.read_from_file(filepath=algo_file).journey.print()
+    descs: List[str] = desc.split('\n')
+    return render_template("journey_desc.html", descs=descs)
+
 
 @app.route("/")
 def root():
@@ -51,16 +84,11 @@ def base_raptor_run():
         time = request.form.get("time")
         # query command line
         file = path.join(QUERY_DIR, QUERY_RAPTOR)
-        out = path.join(IN, QUERY_RAPTOR_DIR)
+        out = path.join(DEMO_OUTPUT, QUERY_RAPTOR_DIR)
         flags = f"-i {IN} -or \"{origin}\" -d \"{destination}\" -t {time} -o {out}"
-        cmd = f"python {file} {flags}"
-        subprocess.run(cmd, shell=True)
-        # visualization
-        algo_file = path.join(out, ALGO_OUTPUT_NAME)
-        flags = f"-a {algo_file} -o {out} -b True"
-        cmd = f"python {VISUALIZER_PATH} {flags}"
-        subprocess.run(cmd, shell=True)
-        return redirect(url_for('home'))
+        run_script(file_name=file, flags=flags)
+        visualize(out)
+        return journey_desc(out)
 
 
 @app.route("/shared_mob_raptor")
@@ -76,19 +104,14 @@ def shared_mob_raptor_run():
         destination = request.form.get("destination")
         time = request.form.get("time")
         preferred = request.form.get("preferred")
-        car = request.form.get("car")
+        car = request.form.get("car") == 'on'
         # query command line
         file = path.join(QUERY_DIR, QUERY_RAPTOR_SHARED_MOB)
         out = path.join(IN, QUERY_RAPTOR_SHARED_MOB_DIR)
-        flags = f"-i {IN} -f {FEED} -or \"{origin}\" -d \"{destination}\" -t \"{time}\" -p \"{preferred}\" -c {car} -o {out}"
-        cmd = f"python {file} {flags}"
-        subprocess.run(cmd, shell=True)
-        # visualization
-        algo_file = path.join(IN, QUERY_RAPTOR_SHARED_MOB_DIR, ALGO_OUTPUT_NAME)
-        flags = f"-a {algo_file} -o {out} -b True"
-        cmd = f"python {VISUALIZER_PATH} {flags}"
-        subprocess.run(cmd, shell=True)
-        return redirect(url_for('home'))
+        flags = f"-i {IN} -f {FEED} -or \"{origin}\" -d \"{destination}\" -t \"{time}\" -p \"{preferred}\" {'-c True' if car else ''} -o {out}"
+        run_script(file_name=file, flags=flags)
+        visualize(out)
+        return journey_desc(out)
 
 
 def open_browser():
@@ -96,35 +119,46 @@ def open_browser():
 
 
 def parse_arguments():
-
     parser = argparse.ArgumentParser()
     parser.add_argument(
         "-i",
         "--input",
         type=str,
-        default="data/output",
+        default=IN,
         help="Input directory containing timetable.pcl (and names.json)",
     )
     parser.add_argument(
         "-f",
         "--feed",
         type=str,
-        default="data/input/gbfs.json",
+        default=FEED,
         help="Path to .json key specifying list of feeds and langs"
+    )
+    parser.add_argument(
+        "-d",
+        "--debug",
+        type=bool,
+        default=DEBUG,
+        help="Debug mode"
     )
 
     arguments = parser.parse_args()
     return arguments
 
 
-def main(folder: str, feed: str):
+def main(folder: str, feed: str, debug: bool):
     logger.debug("Input folder     : {}", folder)
+    logger.debug("Input feed       : {}", feed)
+    logger.debug("Input debug      : {}", debug)
 
     global IN
     IN = folder
 
     global FEED
     FEED = feed
+
+    global DEBUG
+    DEBUG = debug
 
     names_file = path.join(folder, NAMES_FILE)
     try:
@@ -139,4 +173,4 @@ def main(folder: str, feed: str):
 
 if __name__ == "__main__":
     args = parse_arguments()
-    main(folder=args.input, feed=args.feed)
+    main(folder=args.input, feed=args.feed, debug=args.debug)
