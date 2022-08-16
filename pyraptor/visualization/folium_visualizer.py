@@ -276,6 +276,9 @@ class MapVisualizer:
         for from_, to in self.same_station:
             visualizers[from_].dep = hour_to_seconds(visualizers[from_].arr)
             visualizers[to].arr = hour_to_seconds(visualizers[from_].dep) + TRANSFER_COST
+            # check
+            if visualizers[to].arr > visualizers[to].dep:
+                raise Exception(f"{to.name}: departure before arrival ")
         for vis in visualizers.values():
             vis.add_to(map_visualizer=self)
 
