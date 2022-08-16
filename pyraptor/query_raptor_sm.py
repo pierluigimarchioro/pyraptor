@@ -18,7 +18,6 @@ from pyraptor.util import str2sec
 
 
 def parse_arguments():
-
     """Parse arguments"""
 
     parser = argparse.ArgumentParser()
@@ -68,7 +67,7 @@ def parse_arguments():
         "-c",
         "--car",
         type=bool,
-        default=True,
+        default=False,
         help="Enable car-sharing transfers"
     )
     parser.add_argument(
@@ -112,6 +111,10 @@ def main(
     logger.debug("Use car             : {}", car)
     logger.debug("Rounds              : {}", str(rounds))
     logger.debug("Output folder       : {}", output_folder)
+
+    # Input check TODO move check in other position ?
+    if origin_station == destination_station:
+        raise ValueError(f"{origin_station} is both origin and destination")
 
     timetable = read_timetable(input_folder)
 
@@ -210,7 +213,6 @@ def run_raptor(
             journey_to_destinations[destination_station_name] = journey
 
     return journey_to_destinations
-
 
 
 if __name__ == "__main__":

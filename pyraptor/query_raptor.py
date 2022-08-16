@@ -78,6 +78,10 @@ def main(
     logger.debug("Departure time        : {}", departure_time)
     logger.debug("Rounds                : {}", str(rounds))
 
+    # Input check TODO move check in other position ?
+    if origin_station == destination_station:
+        raise ValueError(f"{origin_station} is both origin and destination")
+
     timetable = read_timetable(input_folder)
 
     logger.info(f"Calculating network from: {origin_station}")
