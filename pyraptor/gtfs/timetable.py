@@ -147,6 +147,167 @@ def main(
     write_timetable(output_folder, timetable)
 
 
+class CalendarHandler:
+    """
+    Class that handles the processing of the calendar and calendar_dates tables
+    of the provided GTFS feed.
+    """
+
+    def __init__(self, input_folder: str | bytes | os.PathLike):
+        """
+        :param input_folder: path to the folder containing the calendar
+            and/or calendar_dates tables
+        """
+
+        calendar_path = os.path.join(input_folder, "calendar.txt")
+        if os.path.exists(calendar_path):
+            self.calendar: pd.DataFrame = pd.read_csv(calendar_path, dtype={"start_date": str, "end_date": str})
+        else:
+            self.calendar = None
+
+        calendar_dates_path = os.path.join(input_folder, "calendar_dates.txt")
+        if os.path.exists(calendar_dates_path):
+            self.calendar_dates: pd.DataFrame = pd.read_csv(calendar_dates_path, dtype={"date": str})
+        else:
+            self.calendar_dates = None
+
+    def get_active_service_ids(self, on_date: str, valid_service_ids: Iterable) -> Iterable:
+        """
+        Returns the list of service ids active in the provided date. Said service ids
+        are extracted from the calendar and calendar_dates tables.
+
+        :param on_date: date to get the active services for
+        :param valid_service_ids: list of service ids considered valid.
+            Any service_id outside this list will not be considered in the calculations.
+        :return: list of service ids active in the provided date
+        """
+
+        if self._is_recommended_calendar_repr():
+            return self._handle_recommended_calendar(on_date, valid_service_ids)
+        elif self._is_alternate_calendar_repr():
+            return self._handle_alternate_calendar(on_date, valid_service_ids)
+        else:
+            raise Exception("Unhandled Calendar Representation")
+
+    def _is_recommended_calendar_repr(self) -> bool:
+        """
+        Returns true if the service calendar is represented in the recommended way:
+        calendar table for regular services, calendar dates table for exceptions.
+        :return:
+        """
+
+        # If calendar table is present and not empty, the service calendar
+        # is in the recommended way
+        return self.calendar is not None and len(self.calendar) > 0
+
+    def _handle_recommended_calendar(self, date: str, valid_service_ids: Iterable) -> pd.Series:
+        """
+        Returns the list of service ids active in the provided date, only if those ids
+        are included in the provided valid service ids list.
+
+        :param date:
+        :param valid_service_ids:
+        :return:
+        """
+
+        # Consider only valid service_ids
+        only_valid_services = self.calendar[self.calendar["service_id"].isin(valid_service_ids)]
+
+        def is_service_active_on_date(row):
+            # Check if date is included in service interval
+            date_format = "%Y%m%d"
+            start_date = datetime.strptime(row["start_date"], date_format)
+            end_date = datetime.strptime(row["end_date"], date_format)
+            date_to_check = datetime.strptime(date, date_format)
+            is_in_service_interval = start_date <= date_to_check <= end_date
+
+            # Check if the service is active in the weekday of the provided date
+            weekday_to_col = {
+                0: "monday",
+                1: "tuesday",
+                2: "wednesday",
+                3: "thursday",
+                4: "friday",
+                5: "saturday",
+                6: "sunday",
+            }
+            weekday = cal.weekday(date_to_check.year, date_to_check.month, date_to_check.day)
+            is_weekday_active = row[weekday_to_col[weekday]] == 1
+
+            exception_type = self._get_exception_for_service_date(row["service_id"], date)
+
+            # Service is normally active and no exception on that day
+            is_normally_active = is_in_service_interval and is_weekday_active and exception_type == -1
+
+            # Service is active because of an exceptional date
+            is_exceptionally_active = not (is_in_service_interval and is_weekday_active) and exception_type == 1
+
+            return is_normally_active or is_exceptionally_active
+
+        # Extract only the rows of the services active on the provided date
+        active_on_date_mask = only_valid_services.apply(is_service_active_on_date, axis="columns")
+
+        services_active_on_date = only_valid_services[active_on_date_mask]
+
+        return services_active_on_date["service_id"]
+
+    def _is_alternate_calendar_repr(self):
+        """
+        Returns true if the service calendar is represented in the alternate way:
+        just the calendar dates table where each record represents a service day
+        :return:
+        """
+
+        # If the only calendar table is calendar_dates, then this is the
+        # alternate way of representing the service calendar
+        return (self.calendar is None
+                and self.calendar_dates is not None
+                and len(self.calendar_dates) > 0)
+
+    def _handle_alternate_calendar(self, date: str, valid_service_ids: Iterable) -> Iterable:
+        """
+        Returns the list of service ids active in the provided date, only if those ids
+        are included in the provided valid service ids list.
+
+        :param date:
+        :param valid_service_ids:
+        :return:
+        """
+        active_service_ids = []
+        for s_id in valid_service_ids:
+            ex_type = self._get_exception_for_service_date(service_id=s_id, date=date)
+
+            if ex_type == 1:
+                active_service_ids.append(s_id)
+
+        return active_service_ids
+
+    def _get_exception_for_service_date(self, service_id: Any, date: str) -> int:
+        """
+        Tries to retrieve the exception defined in the calendar_dates table for
+        the provided date. Returns an integer code representing the exception type.
+
+        :param date: date to check exception for
+        :return: 3 different integer values:
+            * -1 if no exception was found for the provided date
+            * 1 if the service is exceptionally active in the provided date
+            * 2 if the service is exceptionally not active in the provided date
+        """
+
+        try:
+            # Extract exceptions for the provided service id
+            service_exceptions: pd.DataFrame = self.calendar_dates[self.calendar_dates["service_id"] == service_id]
+
+            # Extract the exception type for the provided date
+            exception_on_date = service_exceptions[service_exceptions["date"] == date]
+            exception_type = int(exception_on_date["exception_type"].iloc[0])
+
+            return exception_type
+        except IndexError:
+            # Exception not found
+            return -1
+
+
 def read_gtfs_timetable(
         input_folder: str, departure_date: str, agency_names: List[str]
 ) -> GtfsTimetable:
@@ -350,184 +511,55 @@ def _process_transfers_table(input_folder: str, stop_ids: Iterable) -> pd.DataFr
     return transfers
 
 
-class CalendarHandler:
-    """
-    Class that handles the processing of the calendar and calendar_dates tables
-    of the provided GTFS feed.
-    """
-
-    def __init__(self, input_folder: str | bytes | os.PathLike):
-        """
-        :param input_folder: path to the folder containing the calendar
-            and/or calendar_dates tables
-        """
-
-        calendar_path = os.path.join(input_folder, "calendar.txt")
-        if os.path.exists(calendar_path):
-            self.calendar: pd.DataFrame = pd.read_csv(calendar_path, dtype={"start_date": str, "end_date": str})
-        else:
-            self.calendar = None
-
-        calendar_dates_path = os.path.join(input_folder, "calendar_dates.txt")
-        if os.path.exists(calendar_dates_path):
-            self.calendar_dates: pd.DataFrame = pd.read_csv(calendar_dates_path, dtype={"date": str})
-        else:
-            self.calendar_dates = None
-
-    def get_active_service_ids(self, on_date: str, valid_service_ids: Iterable) -> Iterable:
-        """
-        Returns the list of service ids active in the provided date. Said service ids
-        are extracted from the calendar and calendar_dates tables.
-
-        :param on_date: date to get the active services for
-        :param valid_service_ids: list of service ids considered valid.
-            Any service_id outside this list will not be considered in the calculations.
-        :return: list of service ids active in the provided date
-        """
-
-        if self._is_recommended_calendar_repr():
-            return self._handle_recommended_calendar(on_date, valid_service_ids)
-        elif self._is_alternate_calendar_repr():
-            return self._handle_alternate_calendar(on_date, valid_service_ids)
-        else:
-            raise Exception("Unhandled Calendar Representation")
-
-    def _is_recommended_calendar_repr(self) -> bool:
-        """
-        Returns true if the service calendar is represented in the recommended way:
-        calendar table for regular services, calendar dates table for exceptions.
-        :return:
-        """
-
-        # If calendar table is present and not empty, the service calendar
-        # is in the recommended way
-        return self.calendar is not None and len(self.calendar) > 0
-
-    def _handle_recommended_calendar(self, date: str, valid_service_ids: Iterable) -> pd.Series:
-        """
-        Returns the list of service ids active in the provided date, only if those ids
-        are included in the provided valid service ids list.
-
-        :param date:
-        :param valid_service_ids:
-        :return:
-        """
-
-        # Consider only valid service_ids
-        only_valid_services = self.calendar[self.calendar["service_id"].isin(valid_service_ids)]
-
-        def is_service_active_on_date(row):
-            # Check if date is included in service interval
-            date_format = "%Y%m%d"
-            start_date = datetime.strptime(row["start_date"], date_format)
-            end_date = datetime.strptime(row["end_date"], date_format)
-            date_to_check = datetime.strptime(date, date_format)
-            is_in_service_interval = start_date <= date_to_check <= end_date
-
-            # Check if the service is active in the weekday of the provided date
-            weekday_to_col = {
-                0: "monday",
-                1: "tuesday",
-                2: "wednesday",
-                3: "thursday",
-                4: "friday",
-                5: "saturday",
-                6: "sunday",
-            }
-            weekday = cal.weekday(date_to_check.year, date_to_check.month, date_to_check.day)
-            is_weekday_active = row[weekday_to_col[weekday]] == 1
-
-            exception_type = self._get_exception_for_service_date(row["service_id"], date)
-
-            # Service is normally active and no exception on that day
-            is_normally_active = is_in_service_interval and is_weekday_active and exception_type == -1
-
-            # Service is active because of an exceptional date
-            is_exceptionally_active = not (is_in_service_interval and is_weekday_active) and exception_type == 1
-
-            return is_normally_active or is_exceptionally_active
-
-        # Extract only the rows of the services active on the provided date
-        active_on_date_mask = only_valid_services.apply(is_service_active_on_date, axis="columns")
-
-        services_active_on_date = only_valid_services[active_on_date_mask]
-
-        return services_active_on_date["service_id"]
-
-    def _is_alternate_calendar_repr(self):
-        """
-        Returns true if the service calendar is represented in the alternate way:
-        just the calendar dates table where each record represents a service day
-        :return:
-        """
-
-        # If the only calendar table is calendar_dates, then this is the
-        # alternate way of representing the service calendar
-        return self.calendar is None \
-               and self.calendar_dates is not None \
-               and len(self.calendar_dates) > 0
-
-    def _handle_alternate_calendar(self, date: str, valid_service_ids: Iterable) -> Iterable:
-        """
-        Returns the list of service ids active in the provided date, only if those ids
-        are included in the provided valid service ids list.
-
-        :param date:
-        :param valid_service_ids:
-        :return:
-        """
-        active_service_ids = []
-        for s_id in valid_service_ids:
-            ex_type = self._get_exception_for_service_date(service_id=s_id, date=date)
-
-            if ex_type == 1:
-                active_service_ids.append(s_id)
-
-        return active_service_ids
-
-    def _get_exception_for_service_date(self, service_id: Any, date: str) -> int:
-        """
-        Tries to retrieve the exception defined in the calendar_dates table for
-        the provided date. Returns an integer code representing the exception type.
-
-        :param date: date to check exception for
-        :return: 3 different integer values:
-            * -1 if no exception was found for the provided date
-            * 1 if the service is exceptionally active in the provided date
-            * 2 if the service is exceptionally not active in the provided date
-        """
-
-        try:
-            # Extract exceptions for the provided service id
-            service_exceptions: pd.DataFrame = self.calendar_dates[self.calendar_dates["service_id"] == service_id]
-
-            # Extract the exception type for the provided date
-            exception_on_date = service_exceptions[service_exceptions["date"] == date]
-            exception_type = int(exception_on_date["exception_type"].iloc[0])
-
-            return exception_type
-        except Exception:
-            # Exception not found
-            return -1
-
-
 def gtfs_to_pyraptor_timetable(
         gtfs_timetable: GtfsTimetable,
-        n_jobs: int) -> Timetable:
+        n_jobs: int) -> RaptorTimetable:
     """
-    Convert timetable for usage in Raptor algorithm.
+    Converts gtfs timetable to data structures suitable for the RAPTOR algorithm.
 
     :param gtfs_timetable: gtfs timetable instance
-    :param n_jobs: number of parallel jobs to run.
-        Defaults to -1, which means that the number of jobs is auto-detected.
-    :return:
+    :param n_jobs: number of parallel jobs to run
+    :return: RAPTOR timetable
     """
 
     logger.info("Convert GTFS timetable to timetable for PyRaptor algorithm")
 
     # Stations and stops, i.e. platforms
     logger.debug("Adding stations and stops")
+    stations, stops = _get_stations_and_stops(gtfs_timetable=gtfs_timetable)
 
+    # Trips and Trip Stop Times
+    logger.debug("Adding trips and trip stop times")
+    trips, trip_stop_times = _get_trips_and_stop_times(
+        gtfs_timetable=gtfs_timetable,
+        stops=stops,
+        n_jobs=n_jobs
+    )
+
+    # Routes
+    logger.debug("Adding routes")
+    routes = _get_routes(trips=trips)
+
+    # Transfers
+    logger.debug("Adding transfers")
+    transfers = _get_transfers(gtfs_timetable=gtfs_timetable, stations=stations, stops=stops)
+
+    # Timetable
+    timetable = RaptorTimetable(
+        stations=stations,
+        stops=stops,
+        trips=trips,
+        trip_stop_times=trip_stop_times,
+        routes=routes,
+        transfers=transfers,
+        original_gtfs_dir=gtfs_timetable.original_gtfs_dir,
+        date=gtfs_timetable.date
+    )
+
+    return timetable
+
+
+def _get_stations_and_stops(gtfs_timetable: GtfsTimetable) -> Tuple[Stations, Stops]:
     stations = Stations()
     stops = Stops()
 
@@ -546,11 +578,14 @@ def gtfs_to_pyraptor_timetable(
         station.add_stop(stop)
         stops.add_stop(stop)
 
-    # Stop Times
-    stop_times = defaultdict(list)
-    for stop_time in gtfs_timetable.stop_times.itertuples():
-        stop_times[stop_time.trip_id].append(stop_time)
+    return stations, stops
 
+
+def _get_trips_and_stop_times(
+        gtfs_timetable: GtfsTimetable,
+        stops: Stops,
+        n_jobs: int
+) -> Tuple[Trips, TripStopTimes]:
     logger.debug("Extracting transport type for each trip")
 
     trip_route_info: dict[Any, RouteInfo] = {}
@@ -560,8 +595,10 @@ def gtfs_to_pyraptor_timetable(
         route_name = route_name if route_name is not None else getattr(row, "route_short_name", "missing_route_name")
         trip_route_info[row.trip_id] = RouteInfo(name=route_name, transport_type=TransportType(int(row.route_type)))
 
-    # Trips and Trip Stop Times
-    logger.debug("Adding trips and trip stop times")
+    # Stop Times
+    stop_times = defaultdict(list)
+    for stop_time in gtfs_timetable.stop_times.itertuples():
+        stop_times[stop_time.trip_id].append(stop_time)
 
     jobs = []
     for i in range(n_jobs):
@@ -599,16 +636,18 @@ def gtfs_to_pyraptor_timetable(
         for res_trip_stop_time in res_stop_times.set_idx.values():
             trip_stop_times.add(res_trip_stop_time)
 
-    # Routes
-    logger.debug("Adding routes")
+    return trips, trip_stop_times
 
+
+def _get_routes(trips: Trips) -> Routes:
     routes = Routes()
     for trip in trips:
         routes.add(trip)
 
-    # Transfers
-    logger.debug("Adding transfers")
+    return routes
 
+
+def _get_transfers(gtfs_timetable: GtfsTimetable, stations: Stations, stops: Stops) -> Transfers:
     # Add transfers between parent and child stations
     # TODO remove? because they are (should) already be included in the transfers table?
     transfers = Transfers()
@@ -637,19 +676,7 @@ def gtfs_to_pyraptor_timetable(
             t = Transfer(from_stop=from_stop, to_stop=to_stop, transfer_time=t_time)
             transfers.add(t)
 
-    # Timetable
-    timetable = RaptorTimetable(
-        stations=stations,
-        stops=stops,
-        trips=trips,
-        trip_stop_times=trip_stop_times,
-        routes=routes,
-        transfers=transfers,
-        original_gtfs_dir=gtfs_timetable.original_gtfs_dir,
-        date=gtfs_timetable.date
-    )
-
-    return timetable
+    return transfers
 
 
 def trips_processor_job(
@@ -736,7 +763,7 @@ def trips_processor_job(
     return job
 
 
-def add_shared_mobility_to_pyraptor_timetable(timetable: Timetable, feeds_path: str, n_jobs: int):
+def add_shared_mobility_to_pyraptor_timetable(timetable: RaptorTimetable, feeds_path: str, n_jobs: int):
     """
     Adds shared mobility data to the provided timetable.
 
