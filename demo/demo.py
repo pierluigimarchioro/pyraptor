@@ -14,6 +14,7 @@ from loguru import logger
 
 from generate_station_names import NAMES_FILE
 from pyraptor.model.output import AlgorithmOutput
+from pyraptor.util import mkdir_if_not_exists
 
 app = Flask(__name__)
 
@@ -22,10 +23,13 @@ QUERY_RAPTOR: str = 'query_raptor.py'
 QUERY_RAPTOR_DIR: str = 'raptor'
 QUERY_RAPTOR_SHARED_MOB: str = 'query_raptor_sm.py'
 QUERY_RAPTOR_SHARED_MOB_DIR: str = 'raptor_sm'
+QUERY_MC_RAPTOR: str = 'query_mcraptor.py'
+QUERY_MC_RAPTOR_DIR: str = 'mc_raptor'
 
 VISUALIZER_PATH = './../pyraptor/visualization/folium_visualizer.py'
 ALGO_OUTPUT_NAME = 'algo-output.pcl'
 DEMO_OUTPUT = './../data/output/demo'
+MC_CONFIG = 'mc_demo_config.json'
 
 IN: str = "data/output"
 FEED: str = "data/input/gbfs.json"
@@ -83,8 +87,8 @@ def base_raptor_run():
         destination = request.form.get("destination")
         time = request.form.get("time")
         # query command line
-        file = path.join(QUERY_DIR, QUERY_RAPTOR)
-        out = path.join(DEMO_OUTPUT, QUERY_RAPTOR_DIR)
+        file = path.join(QUERY_DIR, QUERY_RAPTOR_SHARED_MOB)
+        out = path.join(DEMO_OUTPUT, QUERY_RAPTOR_SHARED_MOB_DIR)
         flags = f"-i {IN} -or \"{origin}\" -d \"{destination}\" -t {time} -o {out}"
         run_script(file_name=file, flags=flags)
         visualize(out)
@@ -109,6 +113,47 @@ def shared_mob_raptor_run():
         file = path.join(QUERY_DIR, QUERY_RAPTOR_SHARED_MOB)
         out = path.join(IN, QUERY_RAPTOR_SHARED_MOB_DIR)
         flags = f"-i {IN} -f {FEED} -or \"{origin}\" -d \"{destination}\" -t \"{time}\" -p \"{preferred}\" {'-c True' if car else ''} -o {out}"
+        run_script(file_name=file, flags=flags)
+        visualize(out)
+        return journey_desc(out)
+
+
+@app.route("/mc_raptor_weights")
+def mc_raptor_weights():
+    return render_template('mc_raptor_weights.html')
+
+
+@app.route("/mc_raptor_weights_save", methods=["GET", "POST"])
+def mc_raptor_weights_save():
+    if request.method == "POST":
+        # form
+        form = request.form
+        weights = {criteria: {"weight": form.get(f"{criteria}-weight"), "max": form.get(f"{criteria}-max")}
+                   for criteria in ['distance', 'arrival_time', 'transfers', 'co2']}
+        mc_dir = path.join(DEMO_OUTPUT, QUERY_MC_RAPTOR_DIR)
+        mkdir_if_not_exists(mc_dir)
+        with open(path.join(mc_dir, MC_CONFIG), 'w') as f:
+            json.dump(weights, f)
+        return redirect(url_for('mc_raptor'))
+
+
+@app.route("/mc_raptor")
+def mc_raptor():
+    return render_template('mc_raptor.html', stop_names=NAMES)
+
+
+@app.route("/mc_raptor_run", methods=["GET", "POST"])
+def mc_raptor_run():
+    if request.method == "POST":
+        # form
+        origin = request.form.get("origin")
+        destination = request.form.get("destination")
+        time = request.form.get("time")
+        # query command line
+        file = path.join(QUERY_DIR, QUERY_MC_RAPTOR)
+        out = path.join(DEMO_OUTPUT, QUERY_MC_RAPTOR_DIR)
+        mc_path = path.join(DEMO_OUTPUT, QUERY_MC_RAPTOR_DIR, MC_CONFIG)
+        flags = f"-i {IN} -or \"{origin}\" -d \"{destination}\" -t {time} -o {out} -wmc True -cfg {mc_path}"
         run_script(file_name=file, flags=flags)
         visualize(out)
         return journey_desc(out)
