@@ -27,7 +27,7 @@
             <br><br>
 
             <label>Choose departure time:</label>
-            <input type="time" name="time" min="00:00" max="23:59">
+            <input type="time" name="time" min="00:00" max="23:59" required>
             <br><br>
 
             <input type="submit" value="Run">
@@ -37,3 +37,14 @@
     </body>
 
 </html>
+
+<script>
+    let date = new Date();
+    let curr_time = String(date.getHours()).padStart(2, '0') + ":" + String(date.getMinutes()).padStart(2, '0');
+    let els = document.getElementsByTagName('input')
+    els = [].slice.call(els) // cast to array
+    let times = els.filter(el => el.type == 'time')
+    for(let time of times) {
+        time.value = curr_time
+    }
+</script>
