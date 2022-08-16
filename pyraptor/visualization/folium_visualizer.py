@@ -321,6 +321,9 @@ class MapVisualizer:
         line.add_to(self.map_)
 
     def save(self, path_: str, open_: bool = False):
+        folium.TileLayer('openstreetmap').add_to(self.map_)
+        folium.TileLayer('cartodbpositron').add_to(self.map_)
+        folium.LayerControl().add_to(self.map_)
         self.map_.save(path_)
         if open_:
             path_url = 'file:///' + path.abspath(path_)

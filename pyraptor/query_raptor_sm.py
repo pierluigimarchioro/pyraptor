@@ -40,21 +40,21 @@ def parse_arguments():
         "-or",
         "--origin",
         type=str,
-        default="Hertogenbosch ('s)",
+        default="stazione centrale p.za duca d'aosta m2 m3",
         help="Origin station of the journey",
     )
     parser.add_argument(
         "-d",
         "--destination",
         type=str,
-        default="Rotterdam Centraal",
+        default="duomo m1 m3",
         help="Destination station of the journey",
     )
     parser.add_argument(
         "-t",
         "--time",
         type=str,
-        default="08:35:00",
+        default="07:00:00",
         help="Departure time (hh:mm:ss)"
     )
     parser.add_argument(
@@ -190,7 +190,6 @@ def run_raptor(
     """
 
     # Get stops for origin and all destinations
-
     from_stops = timetable.stations.get(origin_station).stops
     destination_stops = {
         st.name: timetable.stations.get_stops(st.name) for st in timetable.stations

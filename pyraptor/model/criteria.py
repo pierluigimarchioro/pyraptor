@@ -10,6 +10,7 @@ from typing import List, Type, Dict, TypeVar
 
 import attr
 import numpy as np
+from loguru import logger
 
 from pyraptor.model.timetable import TransferTrip, TransportType, Trip, Stop
 from pyraptor.util import sec2str, LARGE_NUMBER
@@ -444,6 +445,12 @@ class ArrivalTimeCriterion(Criterion):
     def update(self, data: LabelUpdate) -> ArrivalTimeCriterion:
         new_arrival_time = data.new_trip.get_stop_time(data.arrival_stop).dts_arr
 
+        if new_arrival_time is None or np.isnan(new_arrival_time):
+            logger.error(f"Arrival time for stop {data.arrival_stop} is None\n"
+                         f"Stop time object: {data.new_trip.get_stop_time(data.arrival_stop)}")
+
+            raise ValueError(f"Arrival time not found for stop {data.arrival_stop}")
+
         return ArrivalTimeCriterion(
             name=self.name,
             weight=self.weight,
@@ -596,6 +603,7 @@ class MultiCriteriaLabel(BaseLabel):
         if arrival_time_crit is None:
             raise ValueError(f"No {ArrivalTimeCriterion.__name__} is defined for this label")
         else:
+
             return int(arrival_time_crit.raw_value)
 
     def update(self, data: LabelUpdate) -> MultiCriteriaLabel:
