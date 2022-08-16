@@ -510,93 +510,88 @@ class GTFSCalendarProcessor:
             return -1
 
 
-class TripsProcessor:
+def get_trips_processor(trips_row_iterator: Iterable[NamedTuple],
+                        stops_info: Stops,
+                        trip_route_info: Mapping[Any, RouteInfo],
+                        stop_times_by_trip_id: Mapping[Any, List],
+                        processor_id: uuid.UUID | int | str = uuid.uuid4()) -> Callable[
+    [], Tuple[Trips, TripStopTimes]]:
     """
-    Class that handles the processing of GtfsTimetable trips, written with multi-threading in mind.
+    Returns a function that processes the provided trips.
+    The resulting Trip and TripStopTime instances will be added to the provided storage.
+
+    :param trips_row_iterator: iterator that cycles over the rows of
+        a GtfsTimetable.trips dataframe
+    :param stops_info: collection of stop instances that contain detailed information
+        for each stop
+    :param trip_route_info: mapping that pairs trip ids with an object containing
+        information about the route that each trip belongs to
+    :param stop_times_by_trip_id: default dictionary where keys are trip ids and
+        values are collections of stop times.
+    :param processor_id: id to assign to this processor.
+        Its purpose is only to identify this instance in the logger output.
+    :return: tuple containing the generated collections of Trip and TripStopTime instances
     """
 
-    @staticmethod
-    def get_processor(trips_row_iterator: Iterable[NamedTuple],
-                      stops_info: Stops,
-                      trip_route_info: Mapping[Any, RouteInfo],
-                      stop_times_by_trip_id: Mapping[Any, List],
-                      processor_id: uuid.UUID | int | str = uuid.uuid4()) -> Callable[[], Tuple[Trips, TripStopTimes]]:
-        """
-        Returns a function that processes the provided trips.
-        The resulting Trip and TripStopTime instances will be added to the provided storage.
+    def process_trips() -> Tuple[Trips, TripStopTimes]:
+        trips = Trips()
+        trip_stop_times = TripStopTimes()
 
-        :param trips_row_iterator: iterator that cycles over the rows of
-            a GtfsTimetable.trips dataframe
-        :param stops_info: collection of stop instances that contain detailed information
-            for each stop
-        :param trip_route_info: mapping that pairs trip ids with an object containing
-            information about the route that each trip belongs to
-        :param stop_times_by_trip_id: default dictionary where keys are trip ids and
-            values are collections of stop times.
-        :param processor_id: id to assign to this processor.
-            Its purpose is only to identify this instance in the logger output.
-        :return: tuple containing the generated collections of Trip and TripStopTime instances
-        """
+        # DEBUG: Keep track of progress since this operation is relatively heavy
+        processed_trips = -1
+        prev_pct_point = -1
 
-        def process_trips() -> Tuple[Trips, TripStopTimes]:
-            trips = Trips()
-            trip_stop_times = TripStopTimes()
+        trip_rows = list(trips_row_iterator)
+        for row in trip_rows:
+            processed_trips += 1
+            table_length = len(trip_rows)
+            current_pct = math.floor((processed_trips / table_length) * 100)
 
-            # DEBUG: Keep track of progress since this operation is relatively heavy
-            processed_trips = -1
-            prev_pct_point = -1
+            if math.floor(current_pct) > prev_pct_point or current_pct == 100:
+                log(f"Progress: {current_pct}% [trip #{processed_trips} of {table_length}]")
+                prev_pct_point = current_pct
 
-            trip_rows = list(trips_row_iterator)
-            for row in trip_rows:
-                processed_trips += 1
-                table_length = len(trip_rows)
-                current_pct = math.floor((processed_trips / table_length) * 100)
+            # Transport description as hint
+            trip_id = row.trip_id
+            route_info = trip_route_info[trip_id]
+            trip = Trip(id_=trip_id, route_info=route_info)
 
-                if math.floor(current_pct) > prev_pct_point or current_pct == 100:
-                    log(f"Progress: {current_pct}% [trip #{processed_trips} of {table_length}]")
-                    prev_pct_point = current_pct
+            # Iterate over stops, ordered by sequence number:
+            # the first stop will be the one with stop_sequence == 1
+            sort_stop_times = sorted(
+                stop_times_by_trip_id[row.trip_id], key=lambda s: int(s.stop_sequence)
+            )
+            for stop_number, stop_time in enumerate(sort_stop_times):
+                # Timestamps
+                dts_arr = stop_time.arrival_time
+                dts_dep = stop_time.departure_time
 
-                # Transport description as hint
-                trip_id = row.trip_id
-                route_info = trip_route_info[trip_id]
-                trip = Trip(id_=trip_id, route_info=route_info)
+                # Trip Stop Times
+                stop = stops_info.get_stop(stop_time.stop_id)
 
-                # Iterate over stops, ordered by sequence number:
-                # the first stop will be the one with stop_sequence == 1
-                sort_stop_times = sorted(
-                    stop_times_by_trip_id[row.trip_id], key=lambda s: int(s.stop_sequence)
+                trip_stop_time = TripStopTime(
+                    trip=trip,
+                    stop_idx=stop_number,
+                    stop=stop,
+                    dts_arr=dts_arr,
+                    dts_dep=dts_dep
                 )
-                for stop_number, stop_time in enumerate(sort_stop_times):
-                    # Timestamps
-                    dts_arr = stop_time.arrival_time
-                    dts_dep = stop_time.departure_time
 
-                    # Trip Stop Times
-                    stop = stops_info.get_stop(stop_time.stop_id)
+                trip_stop_times.add(trip_stop_time)
+                trip.add_stop_time(trip_stop_time)
 
-                    trip_stop_time = TripStopTime(
-                        trip=trip,
-                        stop_idx=stop_number,
-                        stop=stop,
-                        dts_arr=dts_arr,
-                        dts_dep=dts_dep
-                    )
+            # Add trip
+            if trip:
+                trips.add(trip)
 
-                    trip_stop_times.add(trip_stop_time)
-                    trip.add_stop_time(trip_stop_time)
+        log(f"Processing completed")
 
-                # Add trip
-                if trip:
-                    trips.add(trip)
+        return trips, trip_stop_times
 
-            log(f"Processing completed")
+    def log(msg: str):
+        logger.debug(f"[TripsProcessor {processor_id}] {msg}")
 
-            return trips, trip_stop_times
-
-        def log(msg: str):
-            logger.debug(f"[TripsProcessor {processor_id}] {msg}")
-
-        return process_trips
+    return process_trips
 
 
 def gtfs_to_pyraptor_timetable(
@@ -626,9 +621,10 @@ def gtfs_to_pyraptor_timetable(
         #   existing station with that station_id is returned
 
         platform_code = getattr(s, "platform_code", -1)
-        #stop_id = f"{s.stop_name}-{platform_code}" TODO can we keep just name ?
+        # stop_id = f"{s.stop_name}-{platform_code}" TODO can we keep just name ?
         stop_id = f"{s.stop_name}"
-        stop = Stop(s.stop_id, stop_id, station, platform_code, stops.last_index + 1, Coordinates(s.stop_lat, s.stop_lon))
+        stop = Stop(s.stop_id, stop_id, station, platform_code, stops.last_index + 1,
+                    Coordinates(s.stop_lat, s.stop_lon))
 
         station.add_stop(stop)
         stops.add_stop(stop)
@@ -669,14 +665,13 @@ def gtfs_to_pyraptor_timetable(
         else:
             end = (start + interval_length) - 1  # -1 because the interval_length-th trip belongs to the next round
 
-        processor = TripsProcessor.get_processor(
+        processor = get_trips_processor(
             trips_row_iterator=itertools.islice(gtfs_timetable.trips.itertuples(), start, end),
             stops_info=stops,
             trip_route_info=trip_route_info,
             stop_times_by_trip_id=stop_times,
             processor_id=processor_id
         )
-
         job_results[processor_id] = pool.apipe(processor)
 
     pool.close()
@@ -757,7 +752,8 @@ def add_shared_mobility_to_pyraptor_timetable(timetable: Timetable, feeds: str):
     logger.info("Adding shared mobility datas")
 
     feed_infos: List[Dict] = json.load(open(feeds))['feeds']
-    feeds: List[SharedMobilityFeed] = [SharedMobilityFeed(feed_info['url'], feed_info['lang']) for feed_info in feed_infos]
+    feeds: List[SharedMobilityFeed] = [SharedMobilityFeed(feed_info['url'], feed_info['lang']) for feed_info in
+                                       feed_infos]
 
     logger.debug("Add stations and renting-stations")
 
@@ -765,7 +761,6 @@ def add_shared_mobility_to_pyraptor_timetable(timetable: Timetable, feeds: str):
 
     for feed in feeds:
         for renting_station in feed.renting_stations:
-
             timetable.stops.add_stop(renting_station)
             timetable.stations.add(renting_station.station)
 
