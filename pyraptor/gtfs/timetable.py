@@ -544,7 +544,7 @@ def gtfs_to_pyraptor_timetable(
 
     # Transfers
     logger.debug("Adding transfers")
-    transfers = _get_transfers(gtfs_timetable=gtfs_timetable, stations=stations, stops=stops)
+    transfers = _get_transfers(gtfs_timetable=gtfs_timetable, stops=stops)
 
     # Timetable
     timetable = RaptorTimetable(
@@ -572,7 +572,6 @@ def _get_stations_and_stops(gtfs_timetable: GtfsTimetable) -> Tuple[Stations, St
         #   existing station with that station_id is returned
 
         platform_code = getattr(s, "platform_code", -1)
-        # stop_id = f"{s.stop_name}-{platform_code}" TODO can we keep just name ?
         stop_id = f"{s.stop_name}"
         stop = Stop(s.stop_id, stop_id, station, platform_code, stops.last_index + 1,
                     Coordinates(s.stop_lat, s.stop_lon))
@@ -649,25 +648,10 @@ def _get_routes(trips: Trips) -> Routes:
     return routes
 
 
-def _get_transfers(gtfs_timetable: GtfsTimetable, stations: Stations, stops: Stops) -> Transfers:
+def _get_transfers(gtfs_timetable: GtfsTimetable, stops: Stops) -> Transfers:
     transfers = Transfers()
 
-    # 1. transfer between each stop of the same station:
-    #   transfer between stop with same 'stop_name' field
-    # TODO remove? because they are (should) already be included in the transfers table?
-    for station in stations:
-        station_stops = station.stops
-        station_transfers = [
-            Transfer(from_stop=stop_i, to_stop=stop_j, transfer_time=TRANSFER_COST)  # TRANSFER_COST is a macro like
-            # variable, constant value is set to 120 sec
-            for stop_i in station_stops
-            for stop_j in station_stops
-            if stop_i != stop_j
-        ]
-        for st in station_transfers:
-            transfers.add(st)
-
-    # 2. Add transfers based on the transfers.txt table, if it exists
+    # Add transfers based on the transfers.txt table, if it exists
     if gtfs_timetable.transfers is not None:
         for t_row in gtfs_timetable.transfers.itertuples():
             from_stop = stops[t_row.from_stop_id]
