@@ -13,6 +13,7 @@ from folium import Map, Marker, PolyLine
 from loguru import logger
 from os import path
 
+from pyraptor.dao import read_timetable
 from pyraptor.model.timetable import Stop, Coordinates, TransportType, SHARED_MOBILITY_TYPES, PUBLIC_TRANSPORT_TYPES
 from pyraptor.model.output import AlgorithmOutput, Leg
 from pyraptor.util import TRANSFER_COST
@@ -383,7 +384,7 @@ def main(
     visualizer.add_stops()
     visualizer.add_moves()
 
-    out_file_path = path.join(output_dir, 'algo_output.html')
+    out_file_path = path.join(output_dir, FILE_NAME)
     visualizer.save(path_=out_file_path, open_=open_)
 
 
