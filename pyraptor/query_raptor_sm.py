@@ -167,8 +167,8 @@ def main(
         departure_time=departure_time,
         original_gtfs_dir=timetable.original_gtfs_dir
     )
-    AlgorithmOutput.save_to_dir(output_dir=output_folder,
-                                algo_output=algo_output)
+    AlgorithmOutput.save(output_dir=output_folder,
+                         algo_output=algo_output)
 
 
 def run_raptor(

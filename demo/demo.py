@@ -31,15 +31,18 @@ ALGO_OUTPUT_NAME = 'algo-output.pcl'
 DEMO_OUTPUT = './../data/output/demo'
 MC_CONFIG = 'mc_demo_config.json'
 
-IN: str = "data/output"
-FEED: str = "data/input/gbfs.json"
+IN: str = "./../data/output"
+FEED: str = "./../data/input/gbfs.json"
 NAMES: List[str] = []
 
-DEBUG: bool = False
+DEBUG: bool = True
 
 
 def run_script(file_name: str, flags: str):
     cmd = f"python {file_name} {flags}"
+
+    logger.debug(f"Running script with command `{cmd}`")
+
     if not DEBUG:
         proc = subprocess.run(cmd, text=True, shell=True, capture_output=True)
         if proc.returncode != 0:
@@ -118,7 +121,8 @@ def shared_mob_raptor_run():
         # query command line
         file = path.join(QUERY_DIR, QUERY_RAPTOR_SHARED_MOB)
         out = path.join(IN, QUERY_RAPTOR_SHARED_MOB_DIR)
-        flags = f"-i {IN} -f {FEED} -or \"{origin}\" -d \"{destination}\" -t \"{time}\" -p \"{preferred}\" {'-c True' if car else ''} -o {out}"
+        flags = (f"-i {IN} -f {FEED} -or \"{origin}\" -d \"{destination}\" -t \"{time}\" -p \"{preferred}\" "
+                 f"{'-c True' if car else ''} -o {out}")
         run_script(file_name=file, flags=flags)
         visualize(out)
         return journey_desc(out)
@@ -160,12 +164,12 @@ def mc_raptor_run():
         time = request.form.get("time")
         # query command line
         file = path.join(QUERY_DIR, QUERY_MC_RAPTOR)
-        out = path.join(DEMO_OUTPUT, QUERY_MC_RAPTOR_DIR)
+        output_dir = path.join(DEMO_OUTPUT, QUERY_MC_RAPTOR_DIR)
         mc_path = path.join(DEMO_OUTPUT, QUERY_MC_RAPTOR_DIR, MC_CONFIG)
-        flags = f"-i {IN} -or \"{origin}\" -d \"{destination}\" -t {time} -o {out} -wmc True -cfg {mc_path}"
+        flags = f"-i {IN} -or \"{origin}\" -d \"{destination}\" -t {time} -o {output_dir} -wmc True -cfg {mc_path}"
         run_script(file_name=file, flags=flags)
-        visualize(out)
-        return journey_desc(out)
+        visualize(output_dir)
+        return journey_desc(output_dir)
 
 
 def open_browser():
