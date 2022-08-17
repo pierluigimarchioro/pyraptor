@@ -616,7 +616,7 @@ def _get_trips_and_stop_times(
         else:
             end = (start + interval_length) - 1  # -1 because the interval_length-th trip belongs to the next round
 
-        job = trips_processor_job(
+        job = _trips_processor_job(
             trips_row_iterator=itertools.islice(gtfs_timetable.trips.itertuples(), start, end),
             stops_info=stops,
             trip_route_info=trip_route_info,
@@ -626,7 +626,7 @@ def _get_trips_and_stop_times(
         jobs.append(job)
 
     logger.debug(f"Starting {n_jobs} jobs to process timetable trips")
-    job_results = execute_jobs(jobs=jobs, cpus=n_jobs)
+    job_results = _execute_jobs(jobs=jobs, cpus=n_jobs)
 
     trips = Trips()
     trip_stop_times = TripStopTimes()
@@ -650,12 +650,11 @@ def _get_routes(trips: Trips) -> Routes:
 
 
 def _get_transfers(gtfs_timetable: GtfsTimetable, stations: Stations, stops: Stops) -> Transfers:
-    # Add transfers between parent and child stations
-    # TODO remove? because they are (should) already be included in the transfers table?
     transfers = Transfers()
 
     # 1. transfer between each stop of the same station:
     #   transfer between stop with same 'stop_name' field
+    # TODO remove? because they are (should) already be included in the transfers table?
     for station in stations:
         station_stops = station.stops
         station_transfers = [
@@ -681,7 +680,7 @@ def _get_transfers(gtfs_timetable: GtfsTimetable, stations: Stations, stops: Sto
     return transfers
 
 
-def trips_processor_job(
+def _trips_processor_job(
         trips_row_iterator: Iterable[NamedTuple],
         stops_info: Stops,
         trip_route_info: Mapping[Any, RouteInfo],
@@ -818,7 +817,7 @@ def add_shared_mobility_to_pyraptor_timetable(timetable: RaptorTimetable, feeds_
         else:
             end = (start + interval_length) - 1  # -1 because the interval_length-th stop belongs to the next round
 
-        job = shared_mob_processor_job(
+        job = _shared_mob_processor_job(
             shared_mob_stops=list(itertools.islice(shared_mob_stops, start, end)),
             public_stops=public_stops,
             job_id=f"#{i}"
@@ -826,7 +825,7 @@ def add_shared_mobility_to_pyraptor_timetable(timetable: RaptorTimetable, feeds_
         jobs.append(job)
 
     logger.debug(f"Starting {n_jobs} jobs to process timetable trips")
-    job_results = execute_jobs(jobs=jobs, cpus=n_jobs)
+    job_results = _execute_jobs(jobs=jobs, cpus=n_jobs)
 
     for transfer in itertools.chain.from_iterable(job_results):
         timetable.transfers.add(transfer)
@@ -837,7 +836,7 @@ def add_shared_mobility_to_pyraptor_timetable(timetable: RaptorTimetable, feeds_
                  f"between public and shared-mobility stops")
 
 
-def shared_mob_processor_job(
+def _shared_mob_processor_job(
         shared_mob_stops: Sequence[Stop],
         public_stops: Sequence[Stop],
         job_id: int | str | uuid.UUID = uuid.uuid4()
@@ -876,7 +875,7 @@ def shared_mob_processor_job(
 _J = TypeVar('_J')
 
 
-def execute_jobs(
+def _execute_jobs(
         jobs: Iterable[Callable[[], _J]],
         cpus: int = cpu_count()
 ) -> Iterable[_J]:
