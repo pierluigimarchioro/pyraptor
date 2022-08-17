@@ -9,7 +9,7 @@ from loguru import logger
 from numpy import argmin
 
 import pyraptor.model.algos.raptor as raptor
-from pyraptor.dao.timetable import Timetable
+from pyraptor.dao.timetable import RaptorTimetable
 from pyraptor.model.timetable import Stop, Trip, Route, Transfer, TransferTrip, TransportType
 from pyraptor.model.shared_mobility import (
     SharedMobilityFeed,
@@ -51,9 +51,9 @@ class Label:
 class RaptorAlgorithmSharedMobility:
     """RAPTOR Algorithm Shared Mobility"""
 
-    def __init__(self, timetable: Timetable, shared_mobility_feeds: List[SharedMobilityFeed],
+    def __init__(self, timetable: RaptorTimetable, shared_mobility_feeds: List[SharedMobilityFeed],
                  preferred_vehicle: TransportType, use_car: bool):
-        self.timetable: Timetable = timetable
+        self.timetable: RaptorTimetable = timetable
         self.shared_mobility_feeds: List[SharedMobilityFeed] = shared_mobility_feeds
         self.preferred_vehicle: TransportType = preferred_vehicle
         self.use_car = use_car

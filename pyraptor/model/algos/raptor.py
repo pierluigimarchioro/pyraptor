@@ -8,7 +8,7 @@ from copy import deepcopy
 
 from loguru import logger
 
-from pyraptor.dao.timetable import Timetable
+from pyraptor.dao.timetable import RaptorTimetable
 from pyraptor.model.timetable import Stop, Route, TransferTrip, TransportType
 from pyraptor.model.criteria import Label, LabelUpdate, ArrivalTimeCriterion
 from pyraptor.model.output import Leg, Journey
@@ -18,8 +18,8 @@ from pyraptor.util import LARGE_NUMBER
 class RaptorAlgorithm:
     """RAPTOR Algorithm"""
 
-    def __init__(self, timetable: Timetable):
-        self.timetable: Timetable = timetable
+    def __init__(self, timetable: RaptorTimetable):
+        self.timetable: RaptorTimetable = timetable
         self.bag_round_stop: Dict[int, Dict[Stop, Label]] = {}
         self.bag_star: Dict[Stop, Label] = {}
 

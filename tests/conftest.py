@@ -5,12 +5,12 @@ import pytest
 import pandas as pd
 import numpy as np
 
-from pyraptor.model.timetable import Timetable
+from pyraptor.model.timetable import RaptorTimetable
 from tests.utils import to_stops_and_trips, to_timetable
 
 
 @pytest.fixture(scope="session")
-def default_timetable() -> Timetable:
+def default_timetable() -> RaptorTimetable:
     """Default timetable"""
     df = get_default_data()
     stops, stop_times, trips = to_stops_and_trips(df)
@@ -19,7 +19,7 @@ def default_timetable() -> Timetable:
 
 
 @pytest.fixture(scope="session")
-def timetable_with_transfers_and_fares() -> Timetable:
+def timetable_with_transfers_and_fares() -> RaptorTimetable:
     """Timetable with fares"""
     stops, stop_times, trips = get_stop_times_with_transfers_and_fare()
     timetable_ = to_timetable(stops, stop_times, trips)
@@ -27,7 +27,7 @@ def timetable_with_transfers_and_fares() -> Timetable:
 
 
 @pytest.fixture(scope="session")
-def timetable_with_many_transfers() -> Timetable:
+def timetable_with_many_transfers() -> RaptorTimetable:
     """Timetable with fares"""
     stops, stop_times, trips = get_stop_times_with_many_transfers()
     timetable_ = to_timetable(stops, stop_times, trips)

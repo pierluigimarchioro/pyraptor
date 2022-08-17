@@ -5,11 +5,11 @@ from pathlib import Path
 from loguru import logger
 import joblib
 
-from pyraptor.model.timetable import Timetable
+from pyraptor.model.timetable import RaptorTimetable
 from pyraptor.util import mkdir_if_not_exists
 
 
-def read_timetable(input_folder: str) -> Timetable:
+def read_timetable(input_folder: str) -> RaptorTimetable:
     """
     Read the timetable data from the cache directory
     """
@@ -27,14 +27,14 @@ def read_timetable(input_folder: str) -> Timetable:
 
     logger.debug("Using cached datastructures")
 
-    timetable: Timetable = load_joblib("timetable")
+    timetable: RaptorTimetable = load_joblib("timetable")
 
     logger.debug(timetable.counts())
 
     return timetable
 
 
-def write_timetable(output_folder: str, timetable: Timetable) -> None:
+def write_timetable(output_folder: str, timetable: RaptorTimetable) -> None:
     """
     Write the timetable to output directory
     """

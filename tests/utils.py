@@ -5,7 +5,7 @@ import pandas as pd
 from loguru import logger
 
 from pyraptor.model.timetable import (
-    Timetable,
+    RaptorTimetable,
     Stop,
     Stops,
     Trip,
@@ -63,7 +63,7 @@ def to_stops_and_trips(df: pd.DataFrame):
     return stops, stop_times, trips
 
 
-def to_timetable(stops_df, stop_times_df, trips_df) -> Timetable:
+def to_timetable(stops_df, stop_times_df, trips_df) -> RaptorTimetable:
     """Convert a pandas timetable to Raptor algorithm datatypes"""
 
     # Stations and stops, i.e. platforms
@@ -141,7 +141,7 @@ def to_timetable(stops_df, stop_times_df, trips_df) -> Timetable:
         for st in station_transfers:
             transfers.add(st)
 
-    timetable_ = Timetable()
+    timetable_ = RaptorTimetable()
     timetable_.stations = stations
     timetable_.stops = stops
     timetable_.trips = trips

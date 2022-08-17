@@ -18,7 +18,7 @@ from loguru import logger
 from itertools import compress
 
 from pyraptor.model.timetable import (
-    Timetable,
+    RaptorTimetable,
     Stop,
     Route,
     TransferTrip,
@@ -263,7 +263,7 @@ def pareto_set(labels: List[Label], keep_equal=False):
 class McRaptorAlgorithm:
     """McRAPTOR Algorithm"""
 
-    def __init__(self, timetable: Timetable):
+    def __init__(self, timetable: RaptorTimetable):
         self.timetable = timetable
 
     def run(

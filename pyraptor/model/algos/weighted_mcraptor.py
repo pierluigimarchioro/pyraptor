@@ -19,7 +19,7 @@ from time import perf_counter
 
 from loguru import logger
 from pyraptor.model.timetable import (
-    Timetable,
+    RaptorTimetable,
     Stop,
     Route,
     TransferTrip,
@@ -44,7 +44,7 @@ from pyraptor.model.output import Leg, Journey
 class WeightedMcRaptorAlgorithm:
     """McRAPTOR Algorithm"""
 
-    timetable: Timetable
+    timetable: RaptorTimetable
     """Object containing the data that will be used by the algorithm"""
 
     criteria_file_path: str | bytes | os.PathLike
@@ -53,7 +53,7 @@ class WeightedMcRaptorAlgorithm:
     bag_star: Dict[Stop, MultiCriteriaLabel]
     """Dictionary pairing each stop which its best label, independently from the round number"""
 
-    def __init__(self, timetable: Timetable, criteria_file_path: str | bytes | os.PathLike):
+    def __init__(self, timetable: RaptorTimetable, criteria_file_path: str | bytes | os.PathLike):
         """
         :param timetable: object containing the data that will be used by the algorithm
         :param criteria_file_path: path to the criteria configuration file
