@@ -138,10 +138,6 @@ class Journey:
             leg
             for leg in self.legs
             if (leg.trip is not None)
-               # TODO might want to remove this part: I just want to remove empty legs,
-               #   and not transfer legs between parent and child stops
-               #   Also remember that removing this changes test outcomes
-               and (leg.from_stop.station != leg.to_stop.station)
         ]
         jrny = Journey(legs=legs)
 
