@@ -19,8 +19,8 @@ from pyraptor.util import mkdir_if_not_exists
 app = Flask(__name__)
 
 QUERY_DIR: str = "./../pyraptor"
-QUERY_RAPTOR: str = 'query_raptor.py'
-QUERY_RAPTOR_DIR: str = 'raptor'
+QUERY_BASE_RAPTOR: str = 'query_raptor.py'
+QUERY_BASE_RAPTOR_DIR: str = 'raptor'
 QUERY_RAPTOR_SHARED_MOB: str = 'query_raptor_sm.py'
 QUERY_RAPTOR_SHARED_MOB_DIR: str = 'raptor_sm'
 QUERY_MC_RAPTOR: str = 'query_mcraptor.py'
@@ -74,6 +74,9 @@ def home():
     return render_template('home.html')
 
 
+""" BASE RAPTOR """
+
+
 @app.route("/base_raptor")
 def base_raptor():
     return render_template('base_raptor.html', stop_names=NAMES)
@@ -87,12 +90,15 @@ def base_raptor_run():
         destination = request.form.get("destination")
         time = request.form.get("time")
         # query command line
-        file = path.join(QUERY_DIR, QUERY_RAPTOR_SHARED_MOB)
-        out = path.join(DEMO_OUTPUT, QUERY_RAPTOR_SHARED_MOB_DIR)
+        file = path.join(QUERY_DIR, QUERY_BASE_RAPTOR)
+        out = path.join(DEMO_OUTPUT, QUERY_BASE_RAPTOR_DIR)
         flags = f"-i {IN} -or \"{origin}\" -d \"{destination}\" -t {time} -o {out}"
         run_script(file_name=file, flags=flags)
         visualize(out)
         return journey_desc(out)
+
+
+""" SHARED MOBILITY RAPTOR """
 
 
 @app.route("/shared_mob_raptor")
@@ -116,6 +122,9 @@ def shared_mob_raptor_run():
         run_script(file_name=file, flags=flags)
         visualize(out)
         return journey_desc(out)
+
+
+""" WEIGHTED MULTICRITERIA RAPTOR """
 
 
 @app.route("/mc_raptor_weights")
