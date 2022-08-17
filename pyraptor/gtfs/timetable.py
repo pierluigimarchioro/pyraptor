@@ -423,20 +423,22 @@ def _process_stop_times_table(input_folder: str, trip_ids: Iterable) -> pd.DataF
         os.path.join(input_folder, "stop_times.txt"), dtype={"stop_id": str}
     )
     stop_times = stop_times[stop_times.trip_id.isin(trip_ids)]
-    stop_times = stop_times[
-        [
-            "trip_id",
-            "stop_sequence",
-            "stop_id",
-            "arrival_time",
-            "departure_time"
-        ]
+    col_selector = [
+        "trip_id",
+        "stop_sequence",
+        "stop_id",
+        "arrival_time",
+        "departure_time"
     ]
     # Convert times to seconds
     stop_times["arrival_time"] = stop_times["arrival_time"].apply(str2sec)
     stop_times["departure_time"] = stop_times["departure_time"].apply(str2sec)
 
-    return stop_times
+    # Contains distance data about the stop in its associated trip
+    if "shape_dist_traveled" in stop_times.columns:
+        col_selector.append("shape_dist_traveled")
+
+    return stop_times[col_selector]
 
 
 def _process_stops_table(input_folder: str, stop_times: pd.DataFrame) -> pd.DataFrame:
@@ -737,6 +739,7 @@ def trips_processor_job(
                 # Timestamps
                 dts_arr = stop_time.arrival_time
                 dts_dep = stop_time.departure_time
+                trav_dist = stop_time.shape_dist_traveled
 
                 # Trip Stop Times
                 stop = stops_info.get_stop(stop_time.stop_id)
@@ -746,7 +749,8 @@ def trips_processor_job(
                     stop_idx=stop_number,
                     stop=stop,
                     dts_arr=dts_arr,
-                    dts_dep=dts_dep
+                    dts_dep=dts_dep,
+                    travelled_distance=trav_dist
                 )
 
                 trip_stop_times.add(trip_stop_time)
