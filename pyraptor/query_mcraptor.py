@@ -8,7 +8,7 @@ from loguru import logger
 
 from pyraptor.dao.timetable import read_timetable
 from pyraptor.model.timetable import RaptorTimetable, Station, Stop
-from pyraptor.model.output import Journey
+from pyraptor.model.output import Journey, AlgorithmOutput
 from pyraptor.util import str2sec
 
 
@@ -62,12 +62,21 @@ def parse_arguments():
         help="Path to the criteria configuration file. "
              "This argument is ignored if argument -wmc is set to False.",
     )
+    parser.add_argument(
+        "-o",
+        "--output",
+        type=str,
+        default="data/output",
+        help="Output directory",
+    )
+
     arguments = parser.parse_args()
     return arguments
 
 
 def main(
         input_folder,
+        output_folder,
         origin_station,
         destination_station,
         departure_time,
@@ -78,6 +87,7 @@ def main(
     """Run RAPTOR algorithm"""
 
     logger.debug("Input directory     : {}", input_folder)
+    logger.debug("Output directory    : {}", output_folder)
     logger.debug("Origin station      : {}", origin_station)
     logger.debug("Destination station : {}", destination_station)
     logger.debug("Departure time      : {}", departure_time)
@@ -108,6 +118,17 @@ def main(
     if len(journeys) != 0:
         for jrny in journeys:
             jrny.print(dep_secs=dep_secs)
+
+        # Save the algorithm output
+        destination_journey = journeys[0]  # TODO make algo output accept list of journeys
+        algo_output = AlgorithmOutput(
+            journey=destination_journey,
+            date=timetable.date,
+            departure_time=departure_time,
+            original_gtfs_dir=timetable.original_gtfs_dir
+        )
+        AlgorithmOutput.save(output_dir=output_folder,
+                             algo_output=algo_output)
     else:
         logger.debug(f"No journeys found to {destination_station}")
 
@@ -188,6 +209,7 @@ if __name__ == "__main__":
     args = parse_arguments()
     main(
         input_folder=args.input,
+        output_folder=args.output,
         origin_station=args.origin,
         destination_station=args.destination,
         departure_time=args.time,

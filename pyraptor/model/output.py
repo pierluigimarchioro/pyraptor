@@ -374,17 +374,22 @@ class AlgorithmOutput(TimetableInfo):
         return algo_output
 
     @staticmethod
-    def save_to_dir(output_dir: str | bytes | os.PathLike,
-                    algo_output: AlgorithmOutput):
+    def save(output_dir: str | bytes | os.PathLike,
+             algo_output: AlgorithmOutput,
+             filename: str = _DEFAULT_FILENAME):
         """
         Write the algorithm output to the provided directory
+
+        :param output_dir: path to the directory to write the serialized output file
+        :param algo_output: instance to serialize
+        :param filename: name of the serialized output file
         """
 
-        def write_joblib(state, name):
-            with open(Path(output_dir, f"{name}.pcl"), "wb") as handle:
-                joblib.dump(state, handle)
+        def write_joblib(to_serialize: object, filename: str):
+            with open(Path(output_dir, f"{filename}.pcl"), "wb") as handle:
+                joblib.dump(to_serialize, handle)
 
         logger.info(f"Writing PyRaptor output to {output_dir}")
 
         mkdir_if_not_exists(output_dir)
-        write_joblib(algo_output, AlgorithmOutput._DEFAULT_FILENAME)
+        write_joblib(algo_output, filename)

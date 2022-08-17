@@ -64,15 +64,16 @@ def parse_arguments():
 
 def main(
     input_folder: str,
+    output_folder: str,
     origin_station: str,
     destination_station: str,
     departure_time: str,
-    rounds: int,
-    output_folder: str
+    rounds: int
 ):
     """Run RAPTOR algorithm"""
 
     logger.debug("Input directory       : {}", input_folder)
+    logger.debug("Output directory      : {}", output_folder)
     logger.debug("Origin station        : {}", origin_station)
     logger.debug("Destination station   : {}", destination_station)
     logger.debug("Departure time        : {}", departure_time)
@@ -109,8 +110,8 @@ def main(
         departure_time=departure_time,
         original_gtfs_dir=timetable.original_gtfs_dir
     )
-    AlgorithmOutput.save_to_dir(output_dir=output_folder,
-                                algo_output=algo_output)
+    AlgorithmOutput.save(output_dir=output_folder,
+                         algo_output=algo_output)
 
 
 def run_raptor(
@@ -159,9 +160,9 @@ if __name__ == "__main__":
     args = parse_arguments()
     main(
         input_folder=args.input,
+        output_folder=args.output,
         origin_station=args.origin,
         destination_station=args.destination,
         departure_time=args.time,
-        rounds=args.rounds,
-        output_folder=args.output
+        rounds=args.rounds
     )
