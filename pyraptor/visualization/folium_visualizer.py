@@ -50,8 +50,7 @@ class LineType(Enum):
         of a conjunction between two points on the map """
     PublicTransport = 'public_transport'
     ShareMobility = 'shared_mobility'
-    Walk = 'walk',
-    StationTransfer = 'station'
+    Walk = 'walk'
 
 
 """ Marker and Line Setting """
@@ -92,8 +91,7 @@ MARKER_SETTINGS: Mapping[MarkerType, Callable[[], MarkerSetting]] = {
 LINE_SETTINGS: Mapping[LineType, LineSetting] = {
     LineType.PublicTransport: LineSetting(color='red', weight=2.5, opacity=1, dash_array='1'),
     LineType.ShareMobility: LineSetting(color='green', weight=2, opacity=1, dash_array='8'),
-    LineType.Walk: LineSetting(color='blue', weight=2, opacity=0.8, dash_array='15'),
-    LineType.StationTransfer: LineSetting(color='darkgreen', weight=2, opacity=0.8, dash_array='10')
+    LineType.Walk: LineSetting(color='blue', weight=2, opacity=0.8, dash_array='15')
 }
 
 """ Visualizers """
@@ -249,13 +247,6 @@ class MapVisualizer:
         return list(set([l.from_stop for l in self.legs]).union([l.to_stop for l in self.legs]))
 
     @property
-    def same_station(self) -> List[Tuple[Stop, Stop]]:
-        """ Returns all journeys stops """
-        return [(self.legs[i].to_stop, self.legs[i + 1].from_stop)
-                for i in range(0, len(self.legs) - 1)
-                if self.legs[i].to_stop != self.legs[i + 1].from_stop]
-
-    @property
     def bounds(self) -> [[float, float], [float, float]]:
         """ Returns stops latitude and longitude bounds as [[min_lat, min_lon], [max_lat, max_lon]]"""
         geos = [(stop.geo.lat, stop.geo.lon) for stop in self.stops]
@@ -274,12 +265,6 @@ class MapVisualizer:
         for leg in self.legs:
             visualizers[leg.from_stop].dep = leg.dep
             visualizers[leg.to_stop].arr = leg.arr
-        for from_, to in self.same_station:
-            visualizers[from_].dep = hour_to_seconds(visualizers[from_].arr)
-            visualizers[to].arr = hour_to_seconds(visualizers[from_].dep) + TRANSFER_COST
-            # check
-            if visualizers[to].arr > visualizers[to].dep:
-                raise Exception(f"{to.name}: departure before arrival ")
         for vis in visualizers.values():
             vis.add_to(map_visualizer=self)
 
@@ -288,15 +273,6 @@ class MapVisualizer:
         visualizers: List[MovementVisualizer] = [MovementVisualizer(leg) for leg in self.legs]
         for vis in visualizers:
             vis.add_to(self)
-
-        """ Adds station movement"""
-        for from_, to in self.same_station:
-            self.draw_line(
-                coord1=from_.geo,
-                coord2=to.geo,
-                text="Internal Station",
-                line_setting=LINE_SETTINGS[LineType.StationTransfer]
-            )
 
     def put_marker(self, coord: Coordinates,
                    text: str | None = None, marker_setting: MarkerSetting = None):
