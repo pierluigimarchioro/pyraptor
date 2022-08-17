@@ -148,7 +148,8 @@ class RaptorAlgorithmSharedMobility:
         """
 
         # Downloading information about shared-mob stops availability
-        sm_feeds_info = [(f'{feed.system_id} ({feed.transport_type})' for feed in self.shared_mobility_feeds)]
+        self._update_availability_info()
+        sm_feeds_info = [f'{feed.system_id} ({[t.name for t in feed.transport_type]})' for feed in self.shared_mobility_feeds]
         logger.debug(f"Shared mobility feeds: {sm_feeds_info} ")
         logger.debug(f"{len(self.no_source)} shared-mob stops not available as source: {self.no_source} ")
         logger.debug(f"{len(self.no_dest)} shared-mob stops not available as destination: {self.no_dest} ")
