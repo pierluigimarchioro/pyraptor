@@ -119,7 +119,7 @@ def shared_mob_raptor_run():
         car = request.form.get("car") == 'on'
         # query command line
         file = path.join(QUERY_DIR, QUERY_RAPTOR_SHARED_MOB)
-        out = path.join(IN, QUERY_RAPTOR_SHARED_MOB_DIR)
+        out = path.join(DEMO_OUTPUT, QUERY_RAPTOR_SHARED_MOB_DIR)
         flags = (f"-i {IN} -f {FEED} -or \"{origin}\" -d \"{destination}\" -t \"{time}\" -p \"{preferred}\" "
                  f"{'-c True' if car else ''} -o {out}")
         run_script(file_name=file, flags=flags)
