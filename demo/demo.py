@@ -141,8 +141,13 @@ def mc_raptor_weights_save():
     if request.method == "POST":
         # form
         form = request.form
-        weights = {criteria: {"weight": form.get(f"{criteria}-weight"), "max": form.get(f"{criteria}-max")}
-                   for criteria in ['distance', 'arrival_time', 'transfers', 'co2']}
+        weights = {
+            criteria: {
+                "weight": float(form.get(f"{criteria}-weight")),
+                "max": float(form.get(f"{criteria}-max"))
+            }
+            for criteria in ['distance', 'arrival_time', 'transfers', 'co2']
+        }
         mc_dir = path.join(DEMO_OUTPUT, QUERY_MC_RAPTOR_DIR)
         mkdir_if_not_exists(mc_dir)
         with open(path.join(mc_dir, MC_CONFIG), 'w') as f:
