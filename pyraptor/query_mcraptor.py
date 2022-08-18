@@ -205,9 +205,10 @@ def run_mcraptor(
             for leg in destination_legs:
                 logger.debug(f"Leg: {leg}")
 
-
         journeys = reconstruct_journeys(
-            from_stops, destination_legs, bag_round_stop, k=rounds
+            from_stops=from_stops,
+            destination_legs=destination_legs,
+            best_labels=bag_round_stop[rounds]
         )
         journeys_to_destinations[destination_station_name] = journeys
 

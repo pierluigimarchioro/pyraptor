@@ -13,6 +13,7 @@ than L2 in any criterion.
 from __future__ import annotations
 
 import os.path
+from collections.abc import Mapping, Iterable
 from typing import List, Tuple, Dict
 from copy import copy
 from time import perf_counter
@@ -70,7 +71,11 @@ class WeightedMcRaptorAlgorithm:
         self.bag_star = {}
 
     def run(
-            self, from_stops: List[Stop], dep_secs: int, rounds: int, previous_run: Dict[Stop, Bag] = None
+        self,
+        from_stops: Iterable[Stop],
+        dep_secs: int,
+        rounds: int,
+        previous_run: Dict[Stop, Bag] = None
     ) -> Tuple[Dict[int, Dict[Stop, Bag]], int]:
         """Run Round-Based Algorithm"""
 
@@ -366,7 +371,7 @@ class WeightedMcRaptorAlgorithm:
 
 
 def best_legs_to_destination_station(
-        to_stops: List[Stop], last_round_bag: Dict[Stop, Bag]
+        to_stops: Iterable[Stop], last_round_bag: Mapping[Stop, Bag]
 ) -> List[Leg]:
     """
     Find the last legs to destination station that are reached by non-dominated labels.
@@ -398,24 +403,17 @@ def best_legs_to_destination_station(
 
 
 def reconstruct_journeys(
-        from_stops: List[Stop],
+        from_stops: Iterable[Stop],
         destination_legs: List[Leg],
-
-        # TODO instead of passing k, directly pass best_labels: Dict[Stop, Bag]
-        bag_round_stop: Dict[int, Dict[Stop, Bag]],
-        k: int,
+        best_labels: Mapping[Stop, Bag]
 ) -> List[Journey]:
     """
     Construct Journeys for destinations from bags by recursively
     looping from destination to origin.
     """
 
-    def loop(
-            bag_round_stop: Dict[int, Dict[Stop, Bag]], k: int, journeys: List[Journey]
-    ):
+    def loop(best_labels: Mapping[Stop, Bag], journeys: List[Journey]):
         """Create full journey by prepending legs recursively"""
-
-        last_round_bags = bag_round_stop[k]
 
         for jrny in journeys:
             current_leg = jrny[0]
@@ -430,7 +428,7 @@ def reconstruct_journeys(
                 continue
 
             # Loop trough each new leg. These are the legs that come before the current and that lead to from_stop
-            labels_to_from_stop = last_round_bags[current_leg.from_stop].labels
+            labels_to_from_stop = best_labels[current_leg.from_stop].labels
             for new_label in labels_to_from_stop:
                 new_leg = Leg(
                     from_stop=new_label.boarding_stop,
@@ -441,10 +439,10 @@ def reconstruct_journeys(
                 # Only prepend new_leg if compatible before current leg, e.g. earlier arrival time, etc.
                 if new_leg.is_compatible_before(current_leg):
                     new_jrny = jrny.prepend_leg(new_leg)
-                    for i in loop(bag_round_stop, k, [new_jrny]):
+                    for i in loop(best_labels, [new_jrny]):
                         yield i
 
     journeys = [Journey(legs=[leg]) for leg in destination_legs]
-    journeys = [jrny for jrny in loop(bag_round_stop, k, journeys)]
+    journeys = [jrny for jrny in loop(best_labels, journeys)]
 
     return journeys

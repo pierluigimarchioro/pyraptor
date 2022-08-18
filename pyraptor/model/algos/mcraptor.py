@@ -1,6 +1,8 @@
 """
 This is the original implementation of the McRAPTOR algorithm,
 which closely follows what is described in the Microsoft paper.
+Pareto sets of labels/journeys are based on strict-domination, i.e.
+label X dominates label Y if X is strictly better than Y in at least one criterion.
 TODO The old model classes have been locally copied to this file,
     since criteria.py now contains the new multi-criteria classes.
     Consider moving them to their own file (old_mc_structures.py?)
@@ -563,21 +565,15 @@ def best_legs_to_destination_station(
 def reconstruct_journeys(
         from_stops: List[Stop],
         destination_legs: List[Leg],
-        bag_round_stop: Dict[int, Dict[Stop, Bag]],
-        k: int,
+        best_labels: Dict[Stop, Bag]
 ) -> List[Journey]:
     """
     Construct Journeys for destinations from bags by recursively
     looping from destination to origin.
     """
 
-    def loop(
-            bag_round_stop: Dict[int, Dict[Stop, Bag]], k: int, journeys: List[Journey]
-    ):
+    def loop(best_labels: Dict[Stop, Bag], journeys: List[Journey]):
         """Create full journey by prepending legs recursively"""
-
-        last_round_bags = bag_round_stop[k]
-
         for jrny in journeys:
             current_leg = jrny[0]
 
@@ -591,7 +587,7 @@ def reconstruct_journeys(
                 continue
 
             # Loop trough each new leg. These are the legs that come before the current and that lead to from_stop
-            labels_to_from_stop = last_round_bags[current_leg.from_stop].labels
+            labels_to_from_stop = best_labels[current_leg.from_stop].labels
             for new_label in labels_to_from_stop:
                 new_leg = Leg(
                     new_label.from_stop,
@@ -604,10 +600,10 @@ def reconstruct_journeys(
                 # Only prepend new_leg if compatible before current leg, e.g. earlier arrival time, etc.
                 if new_leg.is_compatible_before(current_leg):
                     new_jrny = jrny.prepend_leg(new_leg)
-                    for i in loop(bag_round_stop, k, [new_jrny]):
+                    for i in loop(best_labels, [new_jrny]):
                         yield i
 
     journeys = [Journey(legs=[leg]) for leg in destination_legs]
-    journeys = [jrny for jrny in loop(bag_round_stop, k, journeys)]
+    journeys = [jrny for jrny in loop(best_labels, journeys)]
 
     return journeys
