@@ -31,7 +31,6 @@ from pyraptor.util import str2sec
 #   - use criteria.Label class in RaptorSMAlgorithm
 #   - make algorithms inherit from base algo class and from base SM algo class
 #   - implement shared mob in WMC and rename RaptorSM to just RAPTOR
-#   - make algo output accept list of journeys
 #   - delete old RAPTOR variants (i.e. base without SM and Mc)
 
 
@@ -230,8 +229,7 @@ def main(
         j.print()
 
     algo_output = AlgorithmOutput(
-        # TODO change AlgorithmOutput class
-        journey=destination_journeys[0],
+        journey=destination_journeys,
         date=timetable.date,
         departure_time=departure_time,
         original_gtfs_dir=timetable.original_gtfs_dir
