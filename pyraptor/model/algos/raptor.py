@@ -10,7 +10,7 @@ from loguru import logger
 
 from pyraptor.dao.timetable import RaptorTimetable
 from pyraptor.model.timetable import Stop, Route, TransferTrip, TransportType
-from pyraptor.model.criteria import Label, LabelUpdate, ArrivalTimeCriterion
+from pyraptor.model.criteria import BaseRaptorLabel, LabelUpdate, ArrivalTimeCriterion, MultiCriteriaLabel
 from pyraptor.model.output import Leg, Journey
 from pyraptor.util import LARGE_NUMBER
 
@@ -20,10 +20,10 @@ class RaptorAlgorithm:
 
     def __init__(self, timetable: RaptorTimetable):
         self.timetable: RaptorTimetable = timetable
-        self.bag_round_stop: Dict[int, Dict[Stop, Label]] = {}
-        self.bag_star: Dict[Stop, Label] = {}
+        self.bag_round_stop: Dict[int, Dict[Stop, BaseRaptorLabel]] = {}
+        self.bag_star: Dict[Stop, BaseRaptorLabel] = {}
 
-    def run(self, from_stops: Iterable[Stop], dep_secs: int, rounds: int) -> Dict[int, Dict[Stop, Label]]:
+    def run(self, from_stops: Iterable[Stop], dep_secs: int, rounds: int) -> Dict[int, Dict[Stop, BaseRaptorLabel]]:
         """
         Run Round-Based Algorithm
 
@@ -39,7 +39,7 @@ class RaptorAlgorithm:
         for k in range(0, rounds + 1):
             self.bag_round_stop[k] = {}
             for p in self.timetable.stops:
-                self.bag_round_stop[k][p] = Label()
+                self.bag_round_stop[k][p] = BaseRaptorLabel()
 
         # Initialize bag with the earliest arrival times
         # This bag is used as a side-collection to efficiently retrieve
@@ -47,14 +47,14 @@ class RaptorAlgorithm:
         # Look for "local pruning" in the Microsoft paper for a better description.
         self.bag_star = {}
         for p in self.timetable.stops:
-            self.bag_star[p] = Label()
+            self.bag_star[p] = BaseRaptorLabel()
 
         # Initialize bags with starting stops taking dep_secs to reach
         # Remember that dep_secs is the departure_time expressed in seconds
         logger.debug(f"Starting from Stop IDs: {str(from_stops)}")
         marked_stops = []
         for from_stop in from_stops:
-            departure_label = Label(earliest_arrival_time=dep_secs)
+            departure_label = BaseRaptorLabel(earliest_arrival_time=dep_secs)
 
             self.bag_round_stop[0][from_stop] = departure_label
             self.bag_star[from_stop] = departure_label
@@ -277,7 +277,7 @@ class RaptorAlgorithm:
         self.bag_star[update_data.arrival_stop] = arrival_label
 
 
-def best_stop_at_target_station(to_stops: List[Stop], bag: Dict[Stop, Label]) -> Stop:
+def best_stop_at_target_station(to_stops: List[Stop], bag: Dict[Stop, BaseRaptorLabel]) -> Stop:
     """
     Find the destination Stop with the shortest distance.
     Required in order to prevent adding travel time to the arrival time.
@@ -292,7 +292,7 @@ def best_stop_at_target_station(to_stops: List[Stop], bag: Dict[Stop, Label]) ->
     return final_stop
 
 
-def reconstruct_journey(destination: Stop, bag: Dict[Stop, Label]) -> Journey:
+def reconstruct_journey(destination: Stop, bag: Dict[Stop, BaseRaptorLabel]) -> Journey:
     """Construct journey for destination from values in bag."""
 
     # Create journey with list of legs
@@ -302,26 +302,13 @@ def reconstruct_journey(destination: Stop, bag: Dict[Stop, Label]) -> Journey:
         from_stop = bag[to_stop].boarding_stop
         to_stop_label = bag[to_stop]
 
-        # The following are all default values except the raw value.
-        # The important is giving the leg object information
-        #   about arrival time, which allows it to check if legs are
-        #   compatible and to store correct information about the journey
-        # TODO using Criterion classes here feels out of place. what to do?
-        # TODO could this function be refactored to be used with any type of label?
-        #   one way would be to make criteria and earliest_arrival_time base class attributes/properties
-        #   to correctly implement polymorphism. Downside is that there would be some kind of overlap
-        #   between Label and MultiCriteriaLabel
-        arrival_time_crit = ArrivalTimeCriterion(
-            name="arrival_time",
-            weight=1,
-            raw_value=to_stop_label.earliest_arrival_time,
-            upper_bound=LARGE_NUMBER
-        )
+        # Convert to multi-criteria label to create criteria instances from the base one
+        mc_label = MultiCriteriaLabel.from_base_raptor_label(label=to_stop_label)
         leg = Leg(
             from_stop=from_stop,
             to_stop=to_stop,
-            trip=to_stop_label.trip,
-            criteria=[arrival_time_crit]
+            trip=mc_label.trip,
+            criteria=mc_label.criteria
         )
         jrny = jrny.prepend_leg(leg)
         to_stop = from_stop

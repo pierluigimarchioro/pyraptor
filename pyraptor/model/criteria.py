@@ -101,7 +101,7 @@ class BaseLabel(ABC):
 
 
 @dataclass(frozen=True)
-class Label(BaseLabel):
+class BaseRaptorLabel(BaseLabel):
     """
     Class that represents a label used in the base RAPTOR version
     described in the RAPTOR paper
@@ -114,24 +114,24 @@ class Label(BaseLabel):
     def get_earliest_arrival_time(self):
         return self.earliest_arrival_time
 
-    def update(self, data: LabelUpdate) -> Label:
+    def update(self, data: LabelUpdate) -> BaseRaptorLabel:
         trip = data.new_trip if self.trip != data.new_trip else self.trip
         boarding_stop = data.boarding_stop if data.boarding_stop is not None else self.boarding_stop
 
         # Earliest arrival time to the arrival stop on the updated trip
         earliest_arrival_time = trip.get_stop_time(data.arrival_stop).dts_arr
 
-        return Label(
+        return BaseRaptorLabel(
             earliest_arrival_time=earliest_arrival_time,
             boarding_stop=boarding_stop,
             trip=trip
         )
 
-    def is_dominating(self, other: Label) -> bool:
+    def is_dominating(self, other: BaseRaptorLabel) -> bool:
         return self.earliest_arrival_time <= other.earliest_arrival_time
 
     def __repr__(self) -> str:
-        return f"{Label.__name__}(earliest_arrival_time={self.earliest_arrival_time}, " \
+        return f"{BaseRaptorLabel.__name__}(earliest_arrival_time={self.earliest_arrival_time}, " \
                f"trip={self.trip}, boarding_stop={self.boarding_stop})"
 
 
@@ -585,6 +585,32 @@ class MultiCriteriaLabel(BaseLabel):
 
     criteria: Sequence[Criterion] = attr.ib(default=list)
     """Collection of criteria used to compare labels"""
+
+    @staticmethod
+    def from_base_raptor_label(label: BaseRaptorLabel) -> MultiCriteriaLabel:
+        """
+        Creates a multi-criteria label from a base RAPTOR label instance.
+        The new multi-criteria label has a total cost of 1.
+
+        :param label: base RAPTOR label to convert to multi-criteria
+        :return: converted multi-criteria label
+        """
+
+        # Args except raw_value are not important
+        # TODO put default values in Criterion class and/or subclasses?
+        arr_criterion = ArrivalTimeCriterion(
+            name="arrival_time",
+            weight=1,
+            upper_bound=label.earliest_arrival_time,
+            raw_value=label.earliest_arrival_time
+        )
+        mc_lbl = MultiCriteriaLabel(
+            boarding_stop=label.boarding_stop,
+            trip=label.trip,
+            criteria=[arr_criterion]
+        )
+
+        return mc_lbl
 
     @property
     def total_cost(self) -> float:
