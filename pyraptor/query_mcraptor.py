@@ -1,5 +1,8 @@
 """Run query with RAPTOR algorithm"""
+from __future__ import annotations
+
 import argparse
+from os import PathLike
 from typing import List, Dict, Any
 from copy import copy
 from time import perf_counter
@@ -81,8 +84,8 @@ def main(
         destination_station,
         departure_time,
         rounds,
-        is_weighted_mc,
-        criteria_config
+        is_weighted_mc: bool,
+        criteria_config: str | bytes | PathLike
 ):
     """Run RAPTOR algorithm"""
 
@@ -140,7 +143,7 @@ def run_mcraptor(
         rounds: int,
         is_weighted_mc: bool,
         criteria_file_path: str
-) -> Dict[Station, List[Journey]]:
+) -> Dict[str, List[Journey]]:
     """
     Perform the McRaptor algorithm.
 
@@ -194,6 +197,14 @@ def run_mcraptor(
             logger.debug(f"Destination '{destination_station_name}' unreachable with given parameters."
                          f"Station stops: {to_stops}")
             continue
+
+        # TODO debug
+        if len(destination_legs) > 1:
+            logger.warning(f"More than one final leg for destination {destination_station_name}")
+
+            for leg in destination_legs:
+                logger.debug(f"Leg: {leg}")
+
 
         journeys = reconstruct_journeys(
             from_stops, destination_legs, bag_round_stop, k=rounds

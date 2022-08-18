@@ -400,6 +400,8 @@ def best_legs_to_destination_station(
 def reconstruct_journeys(
         from_stops: List[Stop],
         destination_legs: List[Leg],
+
+        # TODO instead of passing k, directly pass best_labels: Dict[Stop, Bag]
         bag_round_stop: Dict[int, Dict[Stop, Bag]],
         k: int,
 ) -> List[Journey]:
