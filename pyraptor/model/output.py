@@ -126,7 +126,7 @@ class Journey:
         jrny = Journey(legs=legs)
         return jrny
 
-    def remove_empty_and_same_station_legs(self) -> Journey:
+    def remove_empty_legs(self) -> Journey:
         """
         Removes all empty legs (where the trip is not set)
         and transfer legs between stops of the same station.
@@ -338,11 +338,11 @@ class AlgorithmOutput(TimetableInfo):
 
     _DEFAULT_FILENAME = "algo-output"
 
-    # Best journey found by the algorithm
-    journey: Journey = None
+    journey: Iterable[Journey] = None
+    """Best journey found by the algorithm"""
 
-    # string in the format %H:%M:%S
     departure_time: str = None
+    """string in the format %H:%M:%S"""
 
     @staticmethod
     def read_from_file(filepath: str | bytes | os.PathLike) -> AlgorithmOutput:

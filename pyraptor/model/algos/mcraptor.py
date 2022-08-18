@@ -238,7 +238,7 @@ def pareto_set(labels: List[Label], keep_equal=False):
 
     is_efficient = np.ones(len(labels), dtype=bool)
     labels_criteria = np.array([label.criteria for label in labels])
-    for i, label in enumerate(labels_criteria):
+    for i, current_criteria in enumerate(labels_criteria):
         if is_efficient[i]:
             # Keep any point with a lower cost
             if keep_equal:
@@ -247,12 +247,12 @@ def pareto_set(labels: List[Label], keep_equal=False):
                 #   based on lexicographic ordering
                 #   (i.e. the smaller list is the one with the smaller leftmost element)
                 is_efficient[is_efficient] = np.any(
-                    labels_criteria[is_efficient] < label, axis=1
-                ) + np.all(labels_criteria[is_efficient] == label, axis=1)
+                    labels_criteria[is_efficient] < current_criteria, axis=1
+                ) + np.all(labels_criteria[is_efficient] == current_criteria, axis=1)
 
             else:
                 is_efficient[is_efficient] = np.any(
-                    labels_criteria[is_efficient] < label, axis=1
+                    labels_criteria[is_efficient] < current_criteria, axis=1
                 )
 
             is_efficient[i] = True  # And keep self
@@ -585,7 +585,7 @@ def reconstruct_journeys(
 
             # End of journey if we are at origin stop or journey is not feasible
             if current_leg.trip is None or current_leg.from_stop in from_stops:
-                jrny = jrny.remove_empty_and_same_station_legs()
+                jrny = jrny.remove_empty_legs()
 
                 # Journey is valid if leg k ends before the start of leg k+1
                 if jrny.is_valid() is True:

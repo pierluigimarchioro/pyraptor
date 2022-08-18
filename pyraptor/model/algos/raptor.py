@@ -282,12 +282,13 @@ def best_stop_at_target_station(to_stops: List[Stop], bag: Dict[Stop, Label]) ->
     Find the destination Stop with the shortest distance.
     Required in order to prevent adding travel time to the arrival time.
     """
-    final_stop = 0
+    final_stop = None
     distance = LARGE_NUMBER
     for stop in to_stops:
         if bag[stop].earliest_arrival_time < distance:
             distance = bag[stop].earliest_arrival_time
             final_stop = stop
+
     return final_stop
 
 
@@ -325,7 +326,7 @@ def reconstruct_journey(destination: Stop, bag: Dict[Stop, Label]) -> Journey:
         jrny = jrny.prepend_leg(leg)
         to_stop = from_stop
 
-    jrny = jrny.remove_empty_and_same_station_legs()
+    jrny = jrny.remove_empty_legs()
 
     return jrny
 
