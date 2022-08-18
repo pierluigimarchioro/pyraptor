@@ -1,6 +1,7 @@
 """RAPTOR algorithm"""
 from __future__ import annotations
 
+from collections.abc import Iterable
 from copy import deepcopy
 from dataclasses import dataclass
 from typing import List, Tuple, Dict
@@ -22,7 +23,9 @@ from pyraptor.model.output import Leg, Journey
 from pyraptor.util import LARGE_NUMBER
 
 
-# TODO inherit from BaseLabel or use criteria.Label class
+# TODO use Label from criteria.py module
+#   fast way might be to just move the required code from here to the base RAPTOR class
+#   that already uses criteria.py data structures, and then delete this module
 @dataclass
 class Label:
     """Label"""
@@ -51,10 +54,13 @@ class Label:
 class RaptorAlgorithmSharedMobility:
     """RAPTOR Algorithm Shared Mobility"""
 
-    def __init__(self, timetable: RaptorTimetable, shared_mobility_feeds: List[SharedMobilityFeed],
-                 preferred_vehicle: TransportType, use_car: bool):
+    def __init__(self,
+                 timetable: RaptorTimetable,
+                 shared_mobility_feeds: Iterable[SharedMobilityFeed],
+                 preferred_vehicle: TransportType,
+                 use_car: bool):
         self.timetable: RaptorTimetable = timetable
-        self.shared_mobility_feeds: List[SharedMobilityFeed] = shared_mobility_feeds
+        self.shared_mobility_feeds: Iterable[SharedMobilityFeed] = shared_mobility_feeds
         self.preferred_vehicle: TransportType = preferred_vehicle
         self.use_car = use_car
 
@@ -138,7 +144,7 @@ class RaptorAlgorithmSharedMobility:
 
         return earliest_transfer
 
-    def run(self, from_stops: List[Stop], dep_secs: int, rounds: int) -> Dict[int, Dict[Stop, Label]]:
+    def run(self, from_stops: Iterable[Stop], dep_secs: int, rounds: int) -> Dict[int, Dict[Stop, Label]]:
         """
         Run Round-Based Algorithm with 2 optimization for shared-mobility integration
         :param from_stops: collection of stops to depart from
@@ -488,12 +494,14 @@ def best_stop_at_target_station(to_stops: List[Stop], bag: Dict[Stop, Label]) ->
     Required in order to prevent adding travel time to the arrival time.
     """
 
+    # TODO use BaseRaptorLabel
     return raptor.best_stop_at_target_station(to_stops=to_stops, bag=bag)
 
 
 def reconstruct_journey(destination: Stop, bag: Dict[Stop, Label]) -> Journey:
     """Construct journey for destination from values in bag."""
 
+    # TODO use BaseRaptorLabel
     return raptor.reconstruct_journey(destination=destination, bag=bag)
 
 
