@@ -16,6 +16,8 @@ from pyraptor.model.algos.mcraptor import (
 )
 from pyraptor.util import str2sec, sec2str
 
+# TODO implement with WeightedMcRaptor?
+
 
 def parse_arguments():
     """Parse arguments"""
@@ -168,7 +170,7 @@ def run_range_mcraptor(
 
             if len(destination_legs) != 0:
                 journeys = reconstruct_journeys(
-                    from_stops, destination_legs, bag_round_stop, k=actual_rounds
+                    from_stops, destination_legs, bag_round_stop[actual_rounds]
                 )
                 journeys_to_destinations[destination_station_name].extend(journeys)
 
