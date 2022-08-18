@@ -442,7 +442,8 @@ class Trip:
         return same_type_and_id(self, trip)
 
     def __repr__(self):
-        return "Trip(hint={hint}, stop_times={stop_times})".format(
+        return "Trip(id={trip_id}, hint={hint}, stop_times={stop_times})".format(
+            trip_id=self.id,
             hint=self.hint if self.hint is not None else self.id,
             stop_times=len(self.stop_times),
         )
