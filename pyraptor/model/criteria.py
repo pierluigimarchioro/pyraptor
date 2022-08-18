@@ -69,6 +69,15 @@ class BaseLabel(ABC):
     """Stop at which the trip is boarded"""
 
     @abstractmethod
+    def get_earliest_arrival_time(self):
+        """
+        Returns the earliest arrival time associated to this label
+
+        :return: arrival time in seconds past the midnight of the departure day
+        """
+        pass
+
+    @abstractmethod
     def update(self, data: LabelUpdate) -> BaseLabel:
         """
         Returns a new label with updated attributes.
@@ -101,6 +110,9 @@ class Label(BaseLabel):
 
     earliest_arrival_time: int = LARGE_NUMBER
     """Earliest time to get to the destination stop by boarding the current trip"""
+
+    def get_earliest_arrival_time(self):
+        return self.earliest_arrival_time
 
     def update(self, data: LabelUpdate) -> Label:
         trip = data.new_trip if self.trip != data.new_trip else self.trip
@@ -587,8 +599,7 @@ class MultiCriteriaLabel(BaseLabel):
 
         return sum(self.criteria, start=0.0)
 
-    @property
-    def earliest_arrival_time(self) -> int:
+    def get_earliest_arrival_time(self) -> int:
         """
         Returns the earliest arrival time associated to this label
 

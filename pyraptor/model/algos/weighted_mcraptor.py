@@ -250,7 +250,7 @@ class WeightedMcRaptorAlgorithm:
                 updated_labels = []
                 for label in route_bag.labels:
                     earliest_trip = marked_route.earliest_trip(
-                        label.earliest_arrival_time, current_stop  # TODO earliest_arrival_time is a needed attr
+                        label.get_earliest_arrival_time(), current_stop  # TODO earliest_arrival_time is a needed attr
                     )
                     if earliest_trip is not None:
                         # Update label with the earliest trip in route leaving from this station
@@ -261,10 +261,10 @@ class WeightedMcRaptorAlgorithm:
                         else:
                             boarding_stop = label.boarding_stop
 
-                        # TODO how to update distance here? should I pass an `old_boarding_stop` attr to update data?
-                        #   I don't think it's needed. This update is just "temporary", meaning that we board the
-                        #   current trip at the current stop and also arrive at the current_stop,
-                        #   but then the actual arrival stop of the label is assigned at Step 1 of the next iteration
+                        # This update is just "temporary", meaning that we board the
+                        # current trip at the current stop and also arrive at the current_stop,
+                        # but then the actual arrival stop of the label is assigned
+                        # at Step 1 of the next iteration
                         update_data = LabelUpdate(
                             boarding_stop=boarding_stop,
                             arrival_stop=current_stop,
@@ -315,13 +315,13 @@ class WeightedMcRaptorAlgorithm:
                     #   with k legs by boarding the trip at from_stop, along with the criteria
                     #   (i.e. boarding time, fares, number of legs)
                     transfer_arrival_time = (
-                            label.earliest_arrival_time
+                            label.get_earliest_arrival_time()
                             + self.get_transfer_time(current_stop, other_stop)
                     )
                     transfer_trip = TransferTrip(
                         from_stop=current_stop,
                         to_stop=other_stop,
-                        dep_time=label.earliest_arrival_time,
+                        dep_time=label.get_earliest_arrival_time(),
                         arr_time=transfer_arrival_time,
 
                         # TODO add method or field `transfer_type` to Transfer class
