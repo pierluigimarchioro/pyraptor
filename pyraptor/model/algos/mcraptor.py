@@ -241,11 +241,9 @@ def pareto_set(labels: List[Label], keep_equal=False):
     for i, current_criteria in enumerate(labels_criteria):
         if is_efficient[i]:
             # Keep any point with a lower cost
+            # This is the strict-domination approach: label A dominates label B
+            #   if it is strictly better in at least one criterion
             if keep_equal:
-                # keep point with all labels equal or one lower
-                # Note: list1 < list2 determines if list1 is smaller than list2
-                #   based on lexicographic ordering
-                #   (i.e. the smaller list is the one with the smaller leftmost element)
                 is_efficient[is_efficient] = np.any(
                     labels_criteria[is_efficient] < current_criteria, axis=1
                 ) + np.all(labels_criteria[is_efficient] == current_criteria, axis=1)
@@ -257,7 +255,7 @@ def pareto_set(labels: List[Label], keep_equal=False):
 
             is_efficient[i] = True  # And keep self
 
-    return list(compress(labels, is_efficient))
+    return list(set(compress(labels, is_efficient)))
 
 
 class McRaptorAlgorithm:
