@@ -616,7 +616,8 @@ def _get_trips_and_stop_times(
             end = (start + interval_length) - 1  # -1 because the interval_length-th trip belongs to the next round
 
         job = _trips_processor_job(
-            trips_row_iterator=itertools.islice(gtfs_timetable.trips.itertuples(), start, end),
+            # +1 because end would not be included
+            trips_row_iterator=itertools.islice(gtfs_timetable.trips.itertuples(), start, end+1),
             stops_info=stops,
             trip_route_info=trip_route_info,
             stop_times_by_trip_id=stop_times,
@@ -802,7 +803,8 @@ def add_shared_mobility_to_pyraptor_timetable(timetable: RaptorTimetable, feeds_
             end = (start + interval_length) - 1  # -1 because the interval_length-th stop belongs to the next round
 
         job = _shared_mob_processor_job(
-            shared_mob_stops=list(itertools.islice(shared_mob_stops, start, end)),
+            # +1 because end would not be included
+            shared_mob_stops=list(itertools.islice(shared_mob_stops, start, end+1)),
             public_stops=public_stops,
             job_id=f"#{i}"
         )
