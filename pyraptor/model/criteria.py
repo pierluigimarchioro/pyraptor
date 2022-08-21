@@ -738,12 +738,12 @@ def pareto_set(labels: List[MultiCriteriaLabel], keep_equal=False):
                 #   based on lexicographic ordering
                 #   (i.e. the smaller list is the one with the smaller leftmost element)
                 is_efficient[is_efficient] = np.any(
-                    label_costs[is_efficient] <= cost, axis=0
+                    label_costs[is_efficient] < cost, axis=0
                 ) + np.all(label_costs[is_efficient] == cost, axis=0)
 
             else:
                 is_efficient[is_efficient] = np.any(
-                    label_costs[is_efficient] <= cost, axis=0
+                    label_costs[is_efficient] < cost, axis=0
                 )
 
             is_efficient[i] = True  # And keep self
