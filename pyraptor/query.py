@@ -14,9 +14,10 @@ from typing import Dict, Any, List, Tuple, Callable
 from loguru import logger
 
 from pyraptor.dao.timetable import read_timetable
-from pyraptor.model.algos.raptor_sm import RaptorAlgorithmSharedMobility
+from pyraptor.model.algos.base import SharedMobilityConfig
+from pyraptor.model.algos.raptor import RaptorAlgorithm
 from pyraptor.model.algos.weighted_mcraptor import WeightedMcRaptorAlgorithm
-from pyraptor.model.criteria import Bag, MultiCriteriaLabel, pareto_set, BasicRaptorLabel
+from pyraptor.model.criteria import Bag, MultiCriteriaLabel, pareto_set
 from pyraptor.model.shared_mobility import SharedMobilityFeed
 from pyraptor.model.timetable import RaptorTimetable, Stop, TransportType
 from pyraptor.model.output import Journey, AlgorithmOutput, Leg
@@ -40,7 +41,7 @@ class RaptorVariants(Enum):
     variants for which querying is supported
     """
 
-    Base = "base"
+    Basic = "basic"
     WeightedMc = "wmc"
 
 
@@ -93,11 +94,11 @@ def _parse_arguments():
     parser.add_argument(
         "-var",
         "--variant",
-        type=bool,
-        default=False,
+        type=str,
+        default=RaptorVariants.Basic.value,
         help="""
         Variant of the RAPTOR algorithm to execute. Possible values:\n
-            - `base`: base RAPTOR
+            - `basic`: base RAPTOR
             - `wmc`: Weighted More Criteria RAPTOR
         """,
     )
@@ -111,10 +112,10 @@ def _parse_arguments():
     )
     parser.add_argument(
         "-sm",
-        "--shared_mob",
+        "--enable_sm",
         type=bool,
-        default=True,
-        help="Enable use of shared mobility data (default True)",
+        default=False,
+        help="Enable use of shared mobility data (default False)",
     )
     parser.add_argument(
         "-f",
@@ -154,6 +155,7 @@ def main(
         rounds: int,
         variant: str,
         criteria_config: str | bytes | os.PathLike,
+        enable_sm: bool,
         sm_feeds_path: str | bytes | os.PathLike,
         preferred_vehicle: str,
         enable_car: bool
@@ -167,6 +169,8 @@ def main(
     :param departure_time: departure time in the format %H:%M:%S
     :param rounds: number of iterations to perform
     :param criteria_config: path to the criteria configuration file
+    :param enable_sm: if True, shared mobility data is included in the itinerary computation.
+        If False, provided shared mob data is ignored
     :param sm_feeds_path: path to the shared mob configuration file
     :param preferred_vehicle: type of preferred vehicle
     :param enable_car: car-sharing transfer enabled
@@ -200,6 +204,7 @@ def main(
     destination_stops.pop(origin_station, None)
 
     preferred_transport_type, sm_feeds = _process_shared_mob_args(
+        enable_sm=enable_sm,
         preferred_vehicle=preferred_vehicle,
         enable_car=enable_car,
         feeds_path=sm_feeds_path
@@ -211,6 +216,7 @@ def main(
         origin_stops=origin_stops,
         dep_secs=dep_secs,
         criteria_file_path=criteria_config,
+        enable_sm=enable_sm,
         feeds=sm_feeds,
         preferred_vehicle=preferred_transport_type,
         enable_car=enable_car,
@@ -241,31 +247,35 @@ def main(
 
 
 def _process_shared_mob_args(
+        enable_sm: bool,
         preferred_vehicle: str,
         enable_car: bool,
         feeds_path: str
-) -> Tuple[TransportType, Iterable[SharedMobilityFeed]]:
-    # Reading shared mobility feed
-    feed_infos: List[Dict] = json.load(open(feeds_path))['feeds']
-    feeds: List[SharedMobilityFeed] = ([SharedMobilityFeed(feed_info['url'], feed_info['lang'])
-                                        for feed_info in feed_infos])
-    logger.debug(f"{', '.join([feed.system_id for feed in feeds])} feeds retrieved successfully")
+) -> Tuple[TransportType, Iterable[SharedMobilityFeed]] | Tuple[None, None]:
+    if enable_sm:
+        # Reading shared mobility feed
+        feed_infos: List[Dict] = json.load(open(feeds_path))['feeds']
+        feeds: List[SharedMobilityFeed] = ([SharedMobilityFeed(feed_info['url'], feed_info['lang'])
+                                            for feed_info in feed_infos])
+        logger.debug(f"{', '.join([feed.system_id for feed in feeds])} feeds retrieved successfully")
 
-    # Preferred bike type
-    if preferred_vehicle == 'car':
-        preferred_vehicle_type = TransportType.Car
-    elif preferred_vehicle == 'regular':
-        preferred_vehicle_type = TransportType.Bike
-    elif preferred_vehicle == 'electric':
-        preferred_vehicle_type = TransportType.ElectricBike
+        # Preferred bike type
+        if preferred_vehicle == 'car':
+            preferred_vehicle_type = TransportType.Car
+        elif preferred_vehicle == 'regular':
+            preferred_vehicle_type = TransportType.Bike
+        elif preferred_vehicle == 'electric':
+            preferred_vehicle_type = TransportType.ElectricBike
+        else:
+            raise ValueError(f"Unhandled vehicle for value `{preferred_vehicle}`")
+
+        # Car check
+        if preferred_vehicle == TransportType.Car and not enable_car:
+            raise Exception("Preferred vehicle is car, but car-sharing transfers are disabled")
+
+        return preferred_vehicle_type, feeds
     else:
-        raise ValueError(f"Unhandled vehicle for value `{preferred_vehicle}`")
-
-    # Car check
-    if preferred_vehicle == TransportType.Car and not enable_car:
-        raise Exception("Preferred vehicle is car, but car-sharing transfers are disabled")
-
-    return preferred_vehicle_type, feeds
+        return None, None
 
 
 def _handle_raptor_variant(
@@ -275,6 +285,7 @@ def _handle_raptor_variant(
         dep_secs: int,
         rounds: int,
         criteria_file_path: str,
+        enable_sm: bool,
         feeds: Iterable[SharedMobilityFeed],
         preferred_vehicle: TransportType,
         enable_car: bool
@@ -289,28 +300,36 @@ def _handle_raptor_variant(
     :param dep_secs: time of departure in seconds
     :param rounds: number of iterations to perform
     :param criteria_file_path: path to the criteria configuration file
+    :param enable_sm: if True, shared mobility data is included in the itinerary computation.
+        If False, provided shared mob data is ignored
     :param feeds: share mobility feeds to include in the timetable
     :param preferred_vehicle: type of preferred vehicle
     :param enable_car: car-sharing transfer enabled
     :return: mapping that pairs each stop with its bag of best labels
     """
 
+    sm_config = SharedMobilityConfig(
+        feeds=feeds,
+        preferred_vehicle=preferred_vehicle,
+        enable_car=enable_car
+    )
+
     def run_weighted_mc_raptor() -> Mapping[Stop, Bag]:
-        # TODO implement shared mob in WeightedMcRaptor too
         raptor = WeightedMcRaptorAlgorithm(
             timetable=timetable,
+            enable_sm=enable_sm,
+            sm_config=sm_config,
             criteria_file_path=criteria_file_path
         )
-        bag_round_stop, actual_rounds = raptor.run(origin_stops, dep_secs, rounds)
+        bag_round_stop = raptor.run(origin_stops, dep_secs, rounds)
 
-        return bag_round_stop[actual_rounds]
+        return bag_round_stop[rounds]
 
     def run_base_raptor() -> Mapping[Stop, Bag]:
-        raptor = RaptorAlgorithmSharedMobility(
-            timetable,
-            shared_mobility_feeds=feeds,
-            preferred_vehicle=preferred_vehicle,
-            use_car=enable_car
+        raptor = RaptorAlgorithm(
+            timetable=timetable,
+            enable_sm=enable_sm,
+            sm_config=sm_config
         )
         bag_round_stop = raptor.run(origin_stops, dep_secs, rounds)
         best_labels = bag_round_stop[rounds]
@@ -318,19 +337,13 @@ def _handle_raptor_variant(
         # Convert best labels from Dict[Stop, Label] to Dict[Stop, Bag]
         best_bags: Dict[Stop, Bag] = {}
         for stop, label in best_labels.items():
-            # TODO remove once RaptorSM uses BaseRaptorLabel instead of old Label classes
-            base_label = BasicRaptorLabel(
-                boarding_stop=label.boarding_stop,
-                trip=label.trip,
-                earliest_arrival_time=label.earliest_arrival_time
-            )
-            mc_label = MultiCriteriaLabel.from_base_raptor_label(base_label)
+            mc_label = MultiCriteriaLabel.from_base_raptor_label(label)
             best_bags[stop] = Bag(labels=[mc_label])
 
         return best_bags
 
     variant_switch: Dict[RaptorVariants, Callable[[], Mapping[Stop, Bag]]] = {
-        RaptorVariants.Base: run_base_raptor,
+        RaptorVariants.Basic: run_base_raptor,
         RaptorVariants.WeightedMc: run_weighted_mc_raptor
     }
 
@@ -466,6 +479,7 @@ if __name__ == "__main__":
         departure_time=args.time,
         rounds=args.rounds,
         criteria_config=args.mc_config,
+        enable_sm=args.enable_sm,
         sm_feeds_path=args.feeds,
         preferred_vehicle=args.preferred,
         enable_car=args.car
