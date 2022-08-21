@@ -18,8 +18,11 @@ class RentingStation(Stop):
     Interface representing a Renting Station used
     This class represents a Physical Renting Station used in urban network for shared mobility
     """
-    system_id: str = attr.ib(default=None)  # Shared mobility system identifier
-    transport_type: List[TransportType] = attr.ib(default=None)  # Types of vehicle rentable in the station
+    system_id: str = attr.ib(default=None)
+    """Shared mobility system identifier"""
+
+    rentable_vehicles: List[TransportType] = attr.ib(default=None)
+    """Types of vehicle rentable in the station"""
 
     @property
     # @abstractmethod TODO check AttributeError
