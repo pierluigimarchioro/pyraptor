@@ -41,7 +41,7 @@ from pyraptor.model.timetable import (
     TransportType,
 )
 from pyraptor.model.shared_mobility import SharedMobilityFeed, public_transport_stop, shared_mobility_stops
-from pyraptor.util import mkdir_if_not_exists, str2sec, TRANSFER_COST, MIN_DIST
+from pyraptor.util import mkdir_if_not_exists, str2sec, MIN_DIST
 
 
 @dataclass
