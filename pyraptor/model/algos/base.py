@@ -1,13 +1,14 @@
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
-from collections.abc import Iterable
+from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
-from typing import List, Tuple
+from typing import List, Tuple, Any
 
 import numpy as np
 from loguru import logger
 
+from pyraptor.model.criteria import BaseLabel
 from pyraptor.model.shared_mobility import (
     SharedMobilityFeed,
     RentingStation,
@@ -28,8 +29,16 @@ class BaseRaptorAlgorithm(ABC):
     def __init__(self, timetable: RaptorTimetable):
         self.timetable = timetable
 
-    @abstractmethod
-    def run(self):
+    @abstractmethod  # TODO use class generics to defined label type (i.e. Bag, BasicLabel, etc.)
+    def run(self, from_stops: Iterable[Stop], dep_secs: int, rounds: int) -> Mapping[int, Mapping[Stop, Any]]:
+        """
+        Executes the round-based algorithm and returns the stop-label mappings, keyed by round.
+
+        :param from_stops: collection of stops to depart from
+        :param dep_secs: departure time in seconds from midnight
+        :param rounds: total number of rounds to execute
+        :return: stop-label mappings, keyed by round.
+        """
         pass
 
     def _accumulate_routes(self, marked_stops: List[Stop]) -> List[Tuple[Route, Stop]]:
