@@ -147,11 +147,13 @@ class PhysicalRentingStations(RentingStations):
             station.is_returning = state['is_returning']
             station.docks_available = state['num_docks_available']
 
-            # TODO check for possible vehicles names
-            v_name = 'bike' if \
-                TransportType.Bike in self.system_transport_types or \
-                TransportType.ElectricBike in self.system_transport_types \
+            # TODO check for other possible vehicles names
+            v_name = (
+                'bike' if
+                TransportType.Bike in self.system_transport_types or
+                TransportType.ElectricBike in self.system_transport_types
                 else 'other'
+            )
 
             station.vehicles_available = state[f'num_{v_name}s_available']
 

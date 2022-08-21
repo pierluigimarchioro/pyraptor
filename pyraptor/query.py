@@ -25,14 +25,8 @@ from pyraptor.util import str2sec
 
 # TODO
 #   - make McRAPTOR return journeys with intermediate legs too
-#   - one single script file for all algorithms
 #   - make demo call script method and not the whole script, so we have control
 #       over the generation of the timetable.
-#       Also make timetable a parameter of the run_algorithm method for each variant
-#   - use criteria.Label class in RaptorSMAlgorithm
-#   - make algorithms inherit from base algo class and from base SM algo class
-#   - implement shared mob in WMC and rename RaptorSM to just RAPTOR
-#   - delete old RAPTOR variants (i.e. base without SM and Mc)
 
 
 class RaptorVariants(Enum):
