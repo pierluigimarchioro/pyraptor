@@ -2,12 +2,14 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 from collections.abc import Iterable, Mapping, Sequence
+from copy import deepcopy
 from dataclasses import dataclass
-from typing import List, Tuple, Any
+from typing import List, Tuple, TypeVar, Generic, Dict
 
 import numpy as np
 from loguru import logger
 
+from pyraptor.model.criteria import BaseLabel
 from pyraptor.model.shared_mobility import (
     SharedMobilityFeed,
     RentingStation,
@@ -17,19 +19,46 @@ from pyraptor.model.shared_mobility import (
     VEHICLE_SPEED)
 from pyraptor.model.timetable import RaptorTimetable, Route, Stop, TransportType, Transfer
 
+_B = TypeVar("_B")
+"""Type of the bag assigned to each stop by the RAPTOR algorithm"""
 
-class BaseRaptorAlgorithm(ABC):
+_L = TypeVar("_L", bound=BaseLabel)
+"""Type of the label used by the RAPTOR algorithm"""
+
+
+class BaseRaptorAlgorithm(ABC, Generic[_B, _L]):
     """
-    Base class that defines the structure of RAPTOR algorithm implementations
+    Base class that defines the structure of RAPTOR algorithm implementations.
+
+    It also provides some improvements over the original algorithm
+    described in the RAPTOR paper:
+    - transfers from the origin stops are evaluated immediately to widen
+        the set of reachable stops before the first round is executed
     """
 
     timetable: RaptorTimetable
+    """RAPTOR timetable, containing stops, routes, trips and transfers data"""
+
+    bag_round_stop: Dict[int, Dict[Stop, _B]]
+    """Dictionary that keeps the stop-bag associations 
+    created in each round of the algorithm"""
+
+    best_bag: Dict[Stop, _L]
+    """Dictionary that keeps the best stop-label associations 
+    created by the algorithm, independently by the round number"""
 
     def __init__(self, timetable: RaptorTimetable):
         self.timetable = timetable
+        self.bag_round_stop = {}
+        self.best_bag = {}
 
-    @abstractmethod  # TODO use class generics to defined label type (i.e. Bag, BasicLabel, etc.)
-    def run(self, from_stops: Iterable[Stop], dep_secs: int, rounds: int) -> Mapping[int, Mapping[Stop, Any]]:
+    @abstractmethod
+    def run(
+            self,
+            from_stops: Iterable[Stop],
+            dep_secs: int,
+            rounds: int
+    ) -> Mapping[int, Mapping[Stop, _B]]:
         """
         Executes the round-based algorithm and returns the stop-label mappings, keyed by round.
 
@@ -38,10 +67,86 @@ class BaseRaptorAlgorithm(ABC):
         :param rounds: total number of rounds to execute
         :return: stop-label mappings, keyed by round.
         """
+
+        initial_marked_stops = self._initialization(
+            from_stops=from_stops,
+            dep_secs=dep_secs,
+            rounds=rounds
+        )
+
+        # Get stops immediately reachable with a transfer
+        # and add them to the marked stops list
+        # TODO in raptor_sm.py there is another implementation for this step. Is mine good?
+        logger.debug("Computing immediate transfers from origin stops")
+        immediately_reachable_stops = self._improve_with_transfers(
+            k=0,  # still initialization round
+            marked_stops=initial_marked_stops,
+            transfers=self.timetable.transfers
+        )
+
+        n_stops_1 = len(initial_marked_stops)  # debugging
+
+        marked_stops = list(
+            set(initial_marked_stops).union(immediately_reachable_stops)
+        )
+
+        n_stops_2 = len(marked_stops)  # debugging
+        logger.debug(f"Added {n_stops_2 - n_stops_1} immediate stops")
+
+        # Run rounds
+        for k in range(1, rounds + 1):
+            logger.info(f"Analyzing possibilities at round {k}")
+
+            # Initialize round k (current) with the labels of round k-1 (previous)
+            self.bag_round_stop[k] = deepcopy(self.bag_round_stop[k - 1])
+
+            # Get list of stops to evaluate in the process
+            logger.debug(f"Stops to evaluate: {len(marked_stops)}")
+
+            # Get (route, marked stop) pairs, where marked stop
+            # is the first reachable stop of the route
+            route_marked_stops = self._accumulate_routes(marked_stops)
+
+            # Update stop arrival times calculated basing on reachable stops
+            marked_trip_stops = self._traverse_routes(
+                k, route_marked_stops
+            )
+            logger.debug(f"{len(marked_trip_stops)} reachable stops added")
+
+            # Add footpath transfers and update
+            marked_transfer_stops = self._improve_with_transfers(
+                k=k,
+                marked_stops=marked_trip_stops,
+                transfers=self.timetable.transfers
+            )
+            logger.debug(f"{len(marked_transfer_stops)} transferable stops added")
+
+            marked_stops = set(marked_trip_stops).union(marked_transfer_stops)
+
+            logger.debug(f"{len(marked_stops)} stops to evaluate in next round")
+
+        return self.bag_round_stop
+
+    @abstractmethod
+    def _initialization(self, from_stops: Iterable[Stop], dep_secs: int, rounds: int) -> List[Stop]:
+        """
+        Initialization phase of the algorithm.
+
+        This basically corresponds to the first section of the pseudocode described in the
+        RAPTOR paper, where bags are initialized and the departure stops are marked.
+
+        :param from_stops: departure stops
+        :param dep_secs: departure time in seconds from midnight
+        :param rounds: number of rounds to execute
+        :return: list of marked stops, which should contain the departure stops
+        """
         pass
 
     def _accumulate_routes(self, marked_stops: List[Stop]) -> List[Tuple[Route, Stop]]:
-        """Accumulate routes serving marked stops from previous round, i.e. Q"""
+        """
+        # TODO document better
+        Accumulate routes serving marked stops from previous round, i.e. Q
+        """
 
         route_marked_stops = {}  # i.e. Q
         for marked_stop in marked_stops:
@@ -65,8 +170,11 @@ class BaseRaptorAlgorithm(ABC):
             route_marked_stops: List[Tuple[Route, Stop]],
     ) -> List[Stop]:
         """
-        Traverses through all the marked route-stops pairs
-        and updates the labels accordingly.
+        Traverses through all the marked route-stops pairs and updates the labels accordingly.
+
+        This basically corresponds to the second section of the pseudocode that can be found
+        in the RAPTOR paper, where the algorithm tries to improve the label of each marked stop
+        by boarding the earliest trip on its associated route.
 
         :param k: current round
         :param route_marked_stops: list of marked (route, stop) pairs
@@ -84,8 +192,12 @@ class BaseRaptorAlgorithm(ABC):
             transfers: Iterable[Transfer]
     ) -> List[Stop]:
         """
-        Tries to use to improve the criteria values for the provided marked stops
-        by applying the provided transfers.
+        Tries to use to improve the labels of each marked stop by factoring in
+        the use of (foot) transfer paths.
+
+        This basically corresponds to the third section of the pseudocode that can
+        be found in the RAPTOR paper, where the algorithm tries to improve each label
+        by seeing if it is better to use a transfer than boarding the associated trip.
 
         :param k: current round
         :param marked_stops: currently marked stops,
@@ -118,9 +230,12 @@ class SharedMobilityConfig:
     """If True, car transport is enabled"""
 
 
-class BaseSMRaptor(BaseRaptorAlgorithm, ABC):
+class BaseSMRaptor(BaseRaptorAlgorithm[_B, _L], ABC):
     """
     Base class for RAPTOR implementations that use shared mobility data.
+
+    It improves on basic RAPTOR implementations by making it possible to include
+    shared mobility, real-time data in the itinerary computation.
 
     # TODO explain how shared mob is used in RAPTOR
     """
@@ -167,9 +282,90 @@ class BaseSMRaptor(BaseRaptorAlgorithm, ABC):
         self.no_dest = []
         self.vehicle_transfers = VehicleTransfers()
 
+    def run(
+            self,
+            from_stops: Iterable[Stop],
+            dep_secs: int,
+            rounds: int
+    ) -> Mapping[int, Mapping[Stop, _B]]:
+        initial_marked_stops = self._initialization(
+            from_stops=from_stops,
+            dep_secs=dep_secs,
+            rounds=rounds
+        )
+
+        # Get stops immediately reachable with a transfer
+        # and add them to the marked stops list
+        # TODO in raptor_sm.py there is another implementation for this step. Is mine good?
+        logger.debug("Computing immediate transfers from origin stops")
+        immediately_reachable_stops = self._improve_with_transfers(
+            k=0,  # still initialization round
+            marked_stops=initial_marked_stops,
+            transfers=self.timetable.transfers
+        )
+
+        n_stops_1 = len(initial_marked_stops)  # debugging
+
+        marked_stops = list(
+            set(initial_marked_stops).union(immediately_reachable_stops)
+        )
+
+        n_stops_2 = len(marked_stops)  # debugging
+        logger.debug(f"Added {n_stops_2 - n_stops_1} immediate stops")
+
+        # Setup shared mob data only if enabled
+        if self.enable_sm:
+            self._initialize_shared_mob(origin_stops=marked_stops)
+
+        # Run rounds
+        for k in range(1, rounds + 1):
+            logger.info(f"Analyzing possibilities at round {k}")
+
+            # Initialize round k (current) with the labels of round k-1 (previous)
+            self.bag_round_stop[k] = deepcopy(self.bag_round_stop[k - 1])
+
+            # Get list of stops to evaluate in the process
+            logger.debug(f"Stops to evaluate: {len(marked_stops)}")
+
+            # Get (route, marked stop) pairs, where marked stop
+            # is the first reachable stop of the route
+            route_marked_stops = self._accumulate_routes(marked_stops)
+
+            # Update stop arrival times calculated basing on reachable stops
+            marked_trip_stops = self._traverse_routes(
+                k, route_marked_stops
+            )
+            logger.debug(f"{len(marked_trip_stops)} reachable stops added")
+
+            # Add footpath transfers and update
+            marked_transfer_stops = self._improve_with_transfers(
+                k=k,
+                marked_stops=marked_trip_stops,
+                transfers=self.timetable.transfers
+            )
+            logger.debug(f"{len(marked_transfer_stops)} transferable stops added")
+
+            marked_stops = set(marked_trip_stops).union(marked_transfer_stops)
+
+            if self.enable_sm:
+                # Mark stops that were improved with shared mob data
+                shared_mob_marked_stops = self._improve_with_shared_mob(
+                    k=k,
+
+                    # Only transfer stops can be passed because shared mob stations
+                    # are reachable just by foot transfers
+                    # TODO is this right?
+                    marked_stops=marked_transfer_stops
+                )
+                marked_stops = set(marked_stops).union(shared_mob_marked_stops)
+
+            logger.debug(f"{len(marked_stops)} stops to evaluate in next round")
+
+        return self.bag_round_stop
+
     def _initialize_shared_mob(self, origin_stops: Sequence[Stop]):
         """
-        Executes shared mob data initialization phase.
+        Executes shared mobility data initialization phase.
 
         :param origin_stops: stops to depart from
         """
@@ -201,6 +397,8 @@ class BaseSMRaptor(BaseRaptorAlgorithm, ABC):
         """
         Tries to improve the criteria values for the provided marked stops
         with shared mob data.
+
+        # TODO explain better and refactor commenting below
 
         :param k: current round
         :param marked_stops: currently marked stops,

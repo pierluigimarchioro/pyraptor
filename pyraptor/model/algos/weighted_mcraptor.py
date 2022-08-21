@@ -15,16 +15,16 @@ from __future__ import annotations
 import os.path
 from collections.abc import Mapping, Iterable
 from typing import List, Tuple, Dict
-from copy import copy
-from time import perf_counter
 
 from loguru import logger
+
+from pyraptor.model.algos.base import BaseSMRaptor, SharedMobilityConfig
 from pyraptor.model.timetable import (
     RaptorTimetable,
     Stop,
     Route,
     TransferTrip,
-    TransportType,
+    Transfer
 )
 from pyraptor.model.criteria import (
     Bag,
@@ -37,30 +37,41 @@ from pyraptor.model.criteria import (
 )
 from pyraptor.model.output import Leg, Journey
 
+
 # TODO setting transfers weight to 0 breaks the query script
 #   because it says "max recursion depth exceeded". Maybe too many journeys?
 #   UPDATE: this error doesn't come up anymore, but it would be better to investigate further
 
 
-class WeightedMcRaptorAlgorithm:
-    """McRAPTOR Algorithm"""
-
-    timetable: RaptorTimetable
-    """Object containing the data that will be used by the algorithm"""
+class WeightedMcRaptorAlgorithm(BaseSMRaptor[Bag, MultiCriteriaLabel]):
+    """
+    Implementation of the More Criteria RAPTOR Algorithm discussed in the original RAPTOR paper,
+    with some modifications and improvements:
+    - each criterion is weighted and each label has a generalized cost that is used
+        to make comparison and determine domination
+    - transfers from the origin stops are evaluated immediately to widen
+        the set of reachable stops before the first round is executed
+    - it is possible to use shared mobility, real-time data
+    """
 
     criteria_file_path: str | bytes | os.PathLike
     """Path to the criteria configuration file"""
 
-    bag_star: Dict[Stop, MultiCriteriaLabel]
-    """Dictionary pairing each stop which its best label, independently from the round number"""
-
-    def __init__(self, timetable: RaptorTimetable, criteria_file_path: str | bytes | os.PathLike):
+    def __init__(self,
+                 timetable: RaptorTimetable,
+                 enable_sm: bool,
+                 sm_config: SharedMobilityConfig,
+                 criteria_file_path: str | bytes | os.PathLike):
         """
         :param timetable: object containing the data that will be used by the algorithm
         :param criteria_file_path: path to the criteria configuration file
         """
 
-        self.timetable = timetable
+        super(WeightedMcRaptorAlgorithm, self).__init__(
+            timetable=timetable,
+            enable_sm=enable_sm,
+            sm_config=sm_config
+        )
 
         if not os.path.exists(criteria_file_path):
             raise FileNotFoundError(f"'{criteria_file_path}' is not a valid path to a criteria configuration file.")
@@ -68,32 +79,16 @@ class WeightedMcRaptorAlgorithm:
         self.criteria_file_path: str | bytes | os.PathLike = criteria_file_path
         """Path to the criteria configuration file"""
 
-        self.bag_star = {}
-
-    def run(
-        self,
-        from_stops: Iterable[Stop],
-        dep_secs: int,
-        rounds: int,
-        previous_run: Dict[Stop, Bag] = None
-    ) -> Tuple[Dict[int, Dict[Stop, Bag]], int]:
-        """Run Round-Based Algorithm"""
-
-        s = perf_counter()
-
+    def _initialization(self, from_stops: Iterable[Stop], dep_secs: int, rounds: int) -> List[Stop]:
         # Initialize empty bag, i.e. B_k(p) = [] for every k and p
-        bag_round_stop: Dict[int, Dict[Stop, Bag]] = {}
+        self.bag_round_stop: Dict[int, Dict[Stop, Bag]] = {}
         for k in range(0, rounds + 1):
-            bag_round_stop[k] = {}
+            self.bag_round_stop[k] = {}
+
             for p in self.timetable.stops:
-                bag_round_stop[k][p] = Bag()
+                self.bag_round_stop[k][p] = Bag()
 
         logger.debug(f"Starting from Stop IDs: {str(from_stops)}")
-
-        # Initialize bag for round 0, i.e. add Labels with criterion 0 for all from stops
-        if previous_run is not None:
-            # For the range query
-            bag_round_stop[0] = copy(previous_run)
 
         criteria_provider = CriteriaProvider(criteria_config_path=self.criteria_file_path)
 
@@ -111,84 +106,17 @@ class WeightedMcRaptorAlgorithm:
                 criteria=with_departure_time
             )
 
-            bag_round_stop[0][from_stop].add(mc_label)
-            self.bag_star[from_stop] = mc_label
+            self.bag_round_stop[0][from_stop].add(mc_label)
+            self.best_bag[from_stop] = mc_label
 
-        marked_stops = from_stops
+        marked_stops = [s for s in from_stops]
+        return marked_stops
 
-        # Run rounds
-        actual_rounds = 0
-        for k in range(1, rounds + 1):
-            logger.info(f"Analyzing possibilities round {k}")
-            logger.debug(f"Stops to evaluate count: {len(marked_stops)}")
-
-            # Copy bag from previous round
-            bag_round_stop[k] = copy(bag_round_stop[k - 1])
-
-            if len(marked_stops) > 0:
-                actual_rounds = k
-
-                # Accumulate routes serving marked stops from previous round
-                # i.e. get the best (r,p) pairs where p is the first stop reachable in route r
-                route_marked_stops = self.accumulate_routes(marked_stops)
-
-                # Traverse each route
-                # i.e. update the labels of each marked stop, assigning to each stop
-                #   the earliest trip that can be caught and the earliest arrival
-                #   time of that trip at that stop
-                bag_round_stop, marked_stops_trips = self.traverse_route(
-                    bag_round_stop, k, route_marked_stops
-                )
-
-                # Now add (footpath) transfers between stops and update
-                # i.e. update the arrival time to each stop by considering (foot) transfers
-                bag_round_stop, marked_stops_transfers = self.add_transfer_time(
-                    bag_round_stop, k, marked_stops_trips
-                )
-
-                marked_stops = set(marked_stops_trips).union(marked_stops_transfers)
-            else:
-                break
-
-        logger.info("Finish round-based algorithm to create bag with best labels")
-        logger.info(f"Running time: {perf_counter() - s}")
-
-        return bag_round_stop, actual_rounds
-
-    def accumulate_routes(self, marked_stops) -> List[Tuple[Route, Stop]]:
-        """Accumulate routes serving marked stops from previous round, i.e. Q"""
-
-        route_marked_stops = {}  # i.e. Q
-        for marked_stop in marked_stops:
-            routes_serving_stop = self.timetable.routes.get_routes_of_stop(marked_stop)
-
-            for route in routes_serving_stop:
-                # Check if new_stop is before existing stop in Q
-                current_stop_for_route = route_marked_stops.get(route, None)  # p'
-                if (current_stop_for_route is None) or (
-                        route.stop_index(current_stop_for_route) > route.stop_index(marked_stop)
-                ):
-                    route_marked_stops[route] = marked_stop
-        route_marked_stops = [(r, p) for r, p in route_marked_stops.items()]
-
-        logger.debug(f"Found {len(route_marked_stops)} routes serving marked stops")
-
-        return route_marked_stops
-
-    def traverse_route(
+    def _traverse_routes(
             self,
-            bag_round_stop: Dict[int, Dict[Stop, Bag]],
             k: int,
             route_marked_stops: List[Tuple[Route, Stop]],
-    ) -> Tuple[Dict[int, Dict[Stop, Bag]], List[Stop]]:  # TODO no need to return round bag: use field
-        """
-        Traverse through all marked route-stops and update labels accordingly.
-
-        :param bag_round_stop: Bag per round per stop
-        :param k: current round
-        :param route_marked_stops: list of marked (route, stop) for evaluation
-        """
-
+    ) -> List[Stop]:
         new_marked_stops = set()
 
         for marked_route, marked_stop in route_marked_stops:
@@ -217,7 +145,7 @@ class WeightedMcRaptorAlgorithm:
                         arrival_stop=current_stop,
                         old_trip=label.trip,
                         new_trip=label.trip,  # Trip stays the same
-                        best_labels=self.bag_star
+                        best_labels=self.best_bag
                     )
                     label = label.update(data=update_data)
 
@@ -232,21 +160,21 @@ class WeightedMcRaptorAlgorithm:
                 # Step 2: merge bag_route into bag_round_stop and remove dominated labels
                 # NOTE: merging the current stop bag with route bag basically means to keep
                 #   the labels that allow to get to the current stop in the most efficient way
-                bag_round_stop[k][current_stop] = bag_round_stop[k][current_stop].merge(
+                self.bag_round_stop[k][current_stop] = self.bag_round_stop[k][current_stop].merge(
                     route_bag
                 )
-                bag_update = bag_round_stop[k][current_stop].updated
+                bag_update = self.bag_round_stop[k][current_stop].updated
 
                 # Mark the stop if bag is updated and update the best label(s) for that stop
                 # Updated bag means that the current stop brought some improvements
                 if bag_update:
-                    self.bag_star[current_stop] = bag_round_stop[k][current_stop].get_best_label()
+                    self.best_bag[current_stop] = self.bag_round_stop[k][current_stop].get_best_label()
                     new_marked_stops.add(current_stop)
 
                 # Step 3: merge B_{k-1}(p) into B_r
                 # Merging here creates a bag where the best labels from the previous round,
                 #   for the current stop, and the best from the current route are kept
-                route_bag = route_bag.merge(bag_round_stop[k - 1][current_stop])
+                route_bag = route_bag.merge(self.bag_round_stop[k - 1][current_stop])
 
                 # Assign trips to all newly added labels in route_bag
                 # This is the trip on which we board
@@ -255,7 +183,7 @@ class WeightedMcRaptorAlgorithm:
                 updated_labels = []
                 for label in route_bag.labels:
                     earliest_trip = marked_route.earliest_trip(
-                        label.get_earliest_arrival_time(), current_stop  # TODO earliest_arrival_time is a needed attr
+                        label.get_earliest_arrival_time(), current_stop
                     )
                     if earliest_trip is not None:
                         # Update label with the earliest trip in route leaving from this station
@@ -275,7 +203,7 @@ class WeightedMcRaptorAlgorithm:
                             arrival_stop=current_stop,
                             old_trip=label.trip,
                             new_trip=earliest_trip,
-                            best_labels=self.bag_star
+                            best_labels=self.best_bag
                         )
                         label = label.update(data=update_data)
 
@@ -285,54 +213,40 @@ class WeightedMcRaptorAlgorithm:
 
         logger.debug(f"{len(new_marked_stops)} reachable stops added")
 
-        return bag_round_stop, list(new_marked_stops)
+        return list(new_marked_stops)
 
-    def add_transfer_time(
+    def _improve_with_transfers(
             self,
-            bag_round_stop: Dict[int, Dict[Stop, Bag]],
             k: int,
-            marked_stops: List[Stop],
-    ) -> Tuple[Dict[int, Dict[Stop, Bag]], List[Stop]]:
-        """
-        Updates each stop (label) earliest arrival time by also considering (footpath) transfers between stops.
-
-        :param bag_round_stop: dictionary of stop bags keyed by round
-        :param k: current round
-        :param marked_stops: list of the currently marked stops
-        :return:
-        """
-
+            marked_stops: Iterable[Stop],
+            transfers: Iterable[Transfer]
+    ) -> List[Stop]:
         marked_stops_transfers = set()
 
         # Add in transfers to other platforms (same station) and stops
         for current_stop in marked_stops:
             # Note: transfers are transitive, which means that for each reachable stops (a, b) there
             # is transfer (a, b) as well as (b, a)
-            other_station_stops = [t.to_stop for t in self.timetable.transfers if t.from_stop == current_stop]
+            other_station_stops = [t.to_stop for t in transfers if t.from_stop == current_stop]
 
             for other_stop in other_station_stops:
                 # Create temp copy of B_k(p_i)
                 temp_bag = Bag()
-                for label in bag_round_stop[k][current_stop].labels:
+                for label in self.bag_round_stop[k][current_stop].labels:
+                    transfer = self._get_transfer(current_stop, other_stop)
+
                     # Update label with new transfer trip, because the arrival time
                     # at other_stop is better with said trip
                     # NOTE: Each label contains the trip with which one arrives at the current stop
                     #   with k legs by boarding the trip at from_stop, along with the criteria
                     #   (i.e. boarding time, fares, number of legs)
-                    transfer_arrival_time = (
-                            label.get_earliest_arrival_time()
-                            + self.get_transfer_time(current_stop, other_stop)
-                    )
+                    transfer_arrival_time = label.get_earliest_arrival_time() + transfer.transfer_time
                     transfer_trip = TransferTrip(
                         from_stop=current_stop,
                         to_stop=other_stop,
                         dep_time=label.get_earliest_arrival_time(),
                         arr_time=transfer_arrival_time,
-
-                        # TODO add method or field `transfer_type` to Transfer class
-                        #  such accesser is then overrode by shared mobility Transfer sub-classes
-                        #  As of now, default transfer mode is Walk
-                        transport_type=TransportType.Walk
+                        transport_type=transfer.transport_type
                     )
 
                     update_data = LabelUpdate(
@@ -340,34 +254,27 @@ class WeightedMcRaptorAlgorithm:
                         arrival_stop=other_stop,
                         old_trip=label.trip,
                         new_trip=transfer_trip,
-                        best_labels=self.bag_star
+                        best_labels=self.best_bag
                     )
                     label = label.update(data=update_data)
 
                     temp_bag.add(label)
 
                 # Merge temp bag into B_k(p_j)
-                bag_round_stop[k][other_stop] = bag_round_stop[k][other_stop].merge(
+                self.bag_round_stop[k][other_stop] = self.bag_round_stop[k][other_stop].merge(
                     temp_bag
                 )
-                bag_update = bag_round_stop[k][other_stop].updated
+                bag_update = self.bag_round_stop[k][other_stop].updated
 
                 # Mark the stop and update the best label collection
                 # if there were improvements (bag is updated)
                 if bag_update:
-                    self.bag_star[other_stop] = bag_round_stop[k][other_stop].get_best_label()
+                    self.best_bag[other_stop] = self.bag_round_stop[k][other_stop].get_best_label()
                     marked_stops_transfers.add(other_stop)
 
         logger.debug(f"{len(marked_stops_transfers)} transferable stops added")
 
-        return bag_round_stop, list(marked_stops_transfers)
-
-    def get_transfer_time(self, stop_from: Stop, stop_to: Stop) -> int:
-        """
-        Calculate the transfer time from a stop to another stop (usually at one station)
-        """
-        transfers = self.timetable.transfers
-        return transfers.stop_to_stop_idx[(stop_from, stop_to)].transfer_time
+        return list(marked_stops_transfers)
 
 
 def best_legs_to_destination_station(
