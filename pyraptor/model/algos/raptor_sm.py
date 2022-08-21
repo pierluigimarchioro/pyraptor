@@ -3,14 +3,14 @@ from __future__ import annotations
 
 from copy import deepcopy
 from dataclasses import dataclass
-from typing import List, Tuple, Dict
+from typing import List, Tuple, Dict, Iterable
 
 from loguru import logger
 from numpy import argmin
 
 import pyraptor.model.algos.raptor as raptor
 from pyraptor.dao.timetable import RaptorTimetable
-from pyraptor.model.timetable import Stop, Trip, Route, Transfer, TransferTrip, TransportType
+from pyraptor.model.timetable import Stop, Trip, Route, Transfer, TransferTrip, TransportType, Transfers
 from pyraptor.model.shared_mobility import (
     SharedMobilityFeed,
     RentingStation,
@@ -69,7 +69,7 @@ class RaptorAlgorithmSharedMobility:
         self.v_transfers: VehicleTransfers = VehicleTransfers()
         """list of vehicle transfers build while computing"""
 
-    def _add_vehicle_transfer(self, stop_a: RentingStation, stop_b: RentingStation):
+    def _add_vehicle_transfer(self, stop_a: RentingStation, stop_b: RentingStation) -> VehicleTransfer:
         """ Given two stop adds associated outdoor vehicle-transfer
             to a vehicles transfers depending on availability and system belongings
 
@@ -91,7 +91,7 @@ class RaptorAlgorithmSharedMobility:
                 # 3.a) if preferred vehicle is present, transfer is generated
                 if self.preferred_vehicle in common_ttypes:
                     ttype = self.preferred_vehicle
-                # 3.b) other fatest one is choshen # TODO different possible criteria
+                # 3.b) other fastest one is chosen # TODO different possible criteria
                 else:
                     ind = argmin([VEHICLE_SPEED[ttype] for ttype in common_ttypes])
                     ttype = common_ttypes[ind]
@@ -100,7 +100,7 @@ class RaptorAlgorithmSharedMobility:
 
                 # 5) compatibility to real-time availability
                 if stop_a not in self.no_source and stop_b not in self.no_dest:
-                    self.v_transfers.add(t_out)
+                    return t_out
 
     def _update_availability_info(self):
         """ Updates stops availability based on real-time query
@@ -251,41 +251,22 @@ class RaptorAlgorithmSharedMobility:
             renting_stations_from_trip: List[RentingStation] = filter_shared_mobility(marked_transfer_stops)
             logger.debug(f"{len(renting_stations_from_trip)} renting stations reachable ")
 
-            # then we keep only new renting stations
-            renting_stations_from_trip: List[RentingStation] = list(
-                set(renting_stations_from_trip).difference(renting_stations_known)
-            )
-            logger.debug(f"New {len(renting_stations_from_trip)} renting station reachable ")
-
             # We add a VehicleTransfer foreach (old, new) renting station
             # (according to system_id and availability)
-            t1 = len(self.v_transfers)  # debugging
+            self.v_transfers: VehicleTransfers()
 
             for old in renting_stations_known:
                 for new in renting_stations_from_trip:
-                    self._add_vehicle_transfer(old, new)
+                    if old != new:
+                        new_vt = self._add_vehicle_transfer(old, new)
+                        if new_vt is not None:
+                            self.v_transfers.add(new_vt)
 
-            t2 = len(self.v_transfers)  # debugging
-
-            logger.debug(f"New {t2 - t1} vehicle transfers created")
-
-            # We can try to improve the best arrival-time taking advantage of shared-mobility network:
-            #
-            # We consider only:
-            #     - vehicle-transfers
-            #     - just Transfers which to_stop is in `renting_stations_from_trip`
-            #     -
-            # List of vehicle-transfers arriving to reachable renting stations
-            vtransfers_sub: List[List[VehicleTransfer]] = [self.v_transfers.with_to_stop(s) for s in
-                                                           renting_stations_from_trip]
-            vtransfers_sub: List[VehicleTransfer] = [i for sub in vtransfers_sub for i in sub]  # flatten
-
-            # List of departing renting stations from previous filtered vehicle-transfers
-            renting_stations_known_sub: List[RentingStation] = list(set([t.from_stop for t in vtransfers_sub]))
+            logger.debug(f"New {len(self.v_transfers)} vehicle transfers created")
 
             # We can get compute transfer-time from these selected renting stations using only filtered transfers
             bag_round_stop, renting_stations_from_trip_improved = self.add_transfer_time(
-                bag_round_stop, k, renting_stations_known_sub, vtransfers_sub
+                bag_round_stop, k, renting_stations_known, self.v_transfers
             )
             logger.debug(f"{len(renting_stations_from_trip_improved)} transferable renting stations upgraded")
 
@@ -412,7 +393,7 @@ class RaptorAlgorithmSharedMobility:
             bag_round_stop: Dict[int, Dict[Stop, Label]],
             k: int,
             marked_stops: List[Stop],
-            transfer_sub: List[Transfer] | None = None
+            transfer_sub: Iterable[Transfer] | None = None
     ) -> Tuple:
         """
         Add transfers between platforms.
