@@ -8,7 +8,7 @@ from loguru import logger
 
 from pyraptor.model.algos.base import BaseSMRaptor, SharedMobilityConfig
 from pyraptor.model.timetable import RaptorTimetable, Transfer
-from pyraptor.model.timetable import Stop, Route, TransferTrip, TransportType
+from pyraptor.model.timetable import Stop, Route, TransferTrip
 from pyraptor.model.criteria import BasicRaptorLabel, LabelUpdate, MultiCriteriaLabel
 from pyraptor.model.output import Leg, Journey
 from pyraptor.util import LARGE_NUMBER
@@ -249,24 +249,21 @@ class RaptorAlgorithm(BaseSMRaptor):
 
             time_sofar = self.bag_round_stop[k][current_stop].earliest_arrival_time
             for arrival_stop in other_station_stops:
-                arrival_time_with_transfer = time_sofar + self._get_transfer_time(
-                    current_stop, arrival_stop
-                )
+                transfer = self._get_transfer(current_stop, arrival_stop)
+
+                arrival_time_with_transfer = time_sofar + transfer.transfer_time
                 previous_earliest_arrival = self.bag_star[
                     arrival_stop
                 ].earliest_arrival_time
 
-                # Domination criteria
+                # Domination criteria: update only if arrival time is improved
                 if arrival_time_with_transfer < previous_earliest_arrival:
                     transfer_trip = TransferTrip(
                         from_stop=current_stop,
                         to_stop=arrival_stop,
                         dep_time=time_sofar,
                         arr_time=arrival_time_with_transfer,
-
-                        # TODO add method or field `transfer_type` to Transfer class
-                        #  such accesser is then overrode by shared mobility Transfer sub-classes
-                        transport_type=TransportType.Walk
+                        transport_type=transfer.transport_type
                     )
 
                     # Update the label

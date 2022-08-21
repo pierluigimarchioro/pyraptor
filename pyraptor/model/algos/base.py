@@ -97,13 +97,13 @@ class BaseRaptorAlgorithm(ABC):
 
         pass
 
-    def _get_transfer_time(self, stop_from: Stop, stop_to: Stop) -> int:
+    def _get_transfer(self, stop_from: Stop, stop_to: Stop) -> Transfer:
         """
-        Calculate the transfer time from a stop to another stop (usually at one station)
+        Retrieves the transfer from a stop to another stop
         """
 
         transfers = self.timetable.transfers
-        return transfers.stop_to_stop_idx[(stop_from, stop_to)].transfer_time
+        return transfers.stop_to_stop_idx[(stop_from, stop_to)]
 
 
 @dataclass(frozen=True)
@@ -121,6 +121,8 @@ class SharedMobilityConfig:
 class BaseSMRaptor(BaseRaptorAlgorithm, ABC):
     """
     Base class for RAPTOR implementations that use shared mobility data.
+
+    # TODO explain how shared mob is used in RAPTOR
     """
 
     enable_sm: bool
@@ -175,7 +177,7 @@ class BaseSMRaptor(BaseRaptorAlgorithm, ABC):
         # Download information about shared-mob stops availability
         self._update_availability_info()
         sm_feeds_info = [
-            f'{feed.system_id} ({[t.name for t in feed.transport_type]})'
+            f'{feed.system_id} ({[t.name for t in feed.transport_types]})'
             for feed in self.sm_config.feeds
         ]
         logger.debug(f"Shared mobility feeds: {sm_feeds_info} ")
@@ -291,7 +293,7 @@ class BaseSMRaptor(BaseRaptorAlgorithm, ABC):
         if stop_a.system_id == stop_b.system_id:
             # 2.1. evaluate common transport type
             common_t_types: List[TransportType] = list(
-                set(stop_a.rentable_vehicles).intersection(stop_b.rentable_vehicles)
+                set(stop_a.transport_types).intersection(stop_b.transport_types)
             )
 
             # 2.2. remove car transfer if disabled

@@ -5,7 +5,7 @@ import os
 
 import numpy as np
 
-TRANSFER_COST: int = 2 * 60  # Default transfer between stop in same station time is 2 minutes
+DEFAULT_TRANSFER_COST: int = 2 * 60  # Default transfer between stop in same station time is 2 minutes
 LARGE_NUMBER: int = 2147483647  # Earliest arrival time at start of algorithm
 
 MIN_DIST: float = 0.3  # Minimum distance in kilometers to consider transfer

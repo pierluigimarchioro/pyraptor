@@ -87,7 +87,7 @@ class RaptorAlgorithmSharedMobility:
         # 1) they are part of same system
         if stop_a.system_id == stop_b.system_id:
             # 2.a) evaluating common transport type
-            common_ttypes: List[TransportType] = list(set(stop_a.rentable_vehicles).intersection(stop_b.rentable_vehicles))
+            common_ttypes: List[TransportType] = list(set(stop_a.transport_types).intersection(stop_b.transport_types))
             # 2.b) removed car transfer if disabled
             if not self.use_car:
                 car_ttype: TransportType.Car = TransportType(9001)  # Car
@@ -155,7 +155,7 @@ class RaptorAlgorithmSharedMobility:
 
         # Downloading information about shared-mob stops availability
         self._update_availability_info()
-        sm_feeds_info = [f'{feed.system_id} ({[t.name for t in feed.transport_type]})' for feed in self.shared_mobility_feeds]
+        sm_feeds_info = [f'{feed.system_id} ({[t.name for t in feed.transport_types]})' for feed in self.shared_mobility_feeds]
         logger.debug(f"Shared mobility feeds: {sm_feeds_info} ")
         logger.debug(f"{len(self.no_source)} shared-mob stops not available as source: {self.no_source} ")
         logger.debug(f"{len(self.no_dest)} shared-mob stops not available as destination: {self.no_dest} ")

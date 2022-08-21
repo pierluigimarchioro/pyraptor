@@ -16,7 +16,7 @@ from os import path
 from pyraptor.dao import read_timetable
 from pyraptor.model.timetable import Stop, Coordinates, TransportType, SHARED_MOBILITY_TYPES, PUBLIC_TRANSPORT_TYPES
 from pyraptor.model.output import AlgorithmOutput, Leg
-from pyraptor.util import TRANSFER_COST
+from pyraptor.util import DEFAULT_TRANSFER_COST
 
 FILE_NAME = 'algo_output.html'
 

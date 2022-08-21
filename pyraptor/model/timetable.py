@@ -13,7 +13,7 @@ import numpy as np
 from geopy.distance import geodesic
 from loguru import logger
 
-from pyraptor.util import TRANSFER_COST, MEAN_FOOT_SPEED
+from pyraptor.util import DEFAULT_TRANSFER_COST, MEAN_FOOT_SPEED
 
 
 def same_type_and_id(first, second):
@@ -686,8 +686,11 @@ class Transfer:
     from_stop: Stop | None = attr.ib(default=None)
     to_stop: Stop | None = attr.ib(default=None)
 
-    # Time in seconds that the transfer takes to complete
-    transfer_time = attr.ib(default=TRANSFER_COST)
+    transfer_time: int = attr.ib(default=DEFAULT_TRANSFER_COST)
+    """Time in seconds that the transfer takes to complete"""
+
+    transport_type: TransportType = attr.ib(default=TransportType.Walk)
+    """Transport type that the transfer is carried out with"""
 
     def __hash__(self):
         return hash(self.id)
