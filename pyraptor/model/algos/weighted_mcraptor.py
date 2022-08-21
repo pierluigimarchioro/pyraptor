@@ -180,7 +180,7 @@ class WeightedMcRaptorAlgorithm:
             bag_round_stop: Dict[int, Dict[Stop, Bag]],
             k: int,
             route_marked_stops: List[Tuple[Route, Stop]],
-    ) -> Tuple[Dict[int, Dict[Stop, Bag]], List[Stop]]:
+    ) -> Tuple[Dict[int, Dict[Stop, Bag]], List[Stop]]:  # TODO no need to return round bag: use field
         """
         Traverse through all marked route-stops and update labels accordingly.
 
