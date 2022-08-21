@@ -10,7 +10,7 @@ from loguru import logger
 
 from pyraptor.dao.timetable import RaptorTimetable
 from pyraptor.model.timetable import Stop, Route, TransferTrip, TransportType
-from pyraptor.model.criteria import BaseRaptorLabel, LabelUpdate, ArrivalTimeCriterion, MultiCriteriaLabel
+from pyraptor.model.criteria import BasicRaptorLabel, LabelUpdate, ArrivalTimeCriterion, MultiCriteriaLabel
 from pyraptor.model.output import Leg, Journey
 from pyraptor.util import LARGE_NUMBER
 
@@ -20,10 +20,10 @@ class RaptorAlgorithm:
 
     def __init__(self, timetable: RaptorTimetable):
         self.timetable: RaptorTimetable = timetable
-        self.bag_round_stop: Dict[int, Dict[Stop, BaseRaptorLabel]] = {}
-        self.bag_star: Dict[Stop, BaseRaptorLabel] = {}
+        self.bag_round_stop: Dict[int, Dict[Stop, BasicRaptorLabel]] = {}
+        self.bag_star: Dict[Stop, BasicRaptorLabel] = {}
 
-    def run(self, from_stops: Iterable[Stop], dep_secs: int, rounds: int) -> Dict[int, Dict[Stop, BaseRaptorLabel]]:
+    def run(self, from_stops: Iterable[Stop], dep_secs: int, rounds: int) -> Dict[int, Dict[Stop, BasicRaptorLabel]]:
         """
         Run Round-Based Algorithm
 
@@ -39,7 +39,7 @@ class RaptorAlgorithm:
         for k in range(0, rounds + 1):
             self.bag_round_stop[k] = {}
             for p in self.timetable.stops:
-                self.bag_round_stop[k][p] = BaseRaptorLabel()
+                self.bag_round_stop[k][p] = BasicRaptorLabel()
 
         # Initialize bag with the earliest arrival times
         # This bag is used as a side-collection to efficiently retrieve
@@ -47,14 +47,14 @@ class RaptorAlgorithm:
         # Look for "local pruning" in the Microsoft paper for a better description.
         self.bag_star = {}
         for p in self.timetable.stops:
-            self.bag_star[p] = BaseRaptorLabel()
+            self.bag_star[p] = BasicRaptorLabel()
 
         # Initialize bags with starting stops taking dep_secs to reach
         # Remember that dep_secs is the departure_time expressed in seconds
         logger.debug(f"Starting from Stop IDs: {str(from_stops)}")
         marked_stops = []
         for from_stop in from_stops:
-            departure_label = BaseRaptorLabel(earliest_arrival_time=dep_secs)
+            departure_label = BasicRaptorLabel(earliest_arrival_time=dep_secs)
 
             self.bag_round_stop[0][from_stop] = departure_label
             self.bag_star[from_stop] = departure_label
@@ -277,7 +277,7 @@ class RaptorAlgorithm:
         self.bag_star[update_data.arrival_stop] = arrival_label
 
 
-def best_stop_at_target_station(to_stops: List[Stop], bag: Dict[Stop, BaseRaptorLabel]) -> Stop:
+def best_stop_at_target_station(to_stops: List[Stop], bag: Dict[Stop, BasicRaptorLabel]) -> Stop:
     """
     Find the destination Stop with the shortest distance.
     Required in order to prevent adding travel time to the arrival time.
@@ -292,7 +292,7 @@ def best_stop_at_target_station(to_stops: List[Stop], bag: Dict[Stop, BaseRaptor
     return final_stop
 
 
-def reconstruct_journey(destination: Stop, bag: Dict[Stop, BaseRaptorLabel]) -> Journey:
+def reconstruct_journey(destination: Stop, bag: Dict[Stop, BasicRaptorLabel]) -> Journey:
     """Construct journey for destination from values in bag."""
 
     # Create journey with list of legs

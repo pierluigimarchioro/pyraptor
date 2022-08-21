@@ -101,9 +101,9 @@ class BaseLabel(ABC):
 
 
 @dataclass(frozen=True)
-class BaseRaptorLabel(BaseLabel):
+class BasicRaptorLabel(BaseLabel):
     """
-    Class that represents a label used in the base RAPTOR version
+    Class that represents a label used in the basic RAPTOR variant
     described in the RAPTOR paper
     (https://www.microsoft.com/en-us/research/wp-content/uploads/2012/01/raptor_alenex.pdf).
     """
@@ -114,24 +114,24 @@ class BaseRaptorLabel(BaseLabel):
     def get_earliest_arrival_time(self):
         return self.earliest_arrival_time
 
-    def update(self, data: LabelUpdate) -> BaseRaptorLabel:
+    def update(self, data: LabelUpdate) -> BasicRaptorLabel:
         trip = data.new_trip if self.trip != data.new_trip else self.trip
         boarding_stop = data.boarding_stop if data.boarding_stop is not None else self.boarding_stop
 
         # Earliest arrival time to the arrival stop on the updated trip
         earliest_arrival_time = trip.get_stop_time(data.arrival_stop).dts_arr
 
-        return BaseRaptorLabel(
+        return BasicRaptorLabel(
             earliest_arrival_time=earliest_arrival_time,
             boarding_stop=boarding_stop,
             trip=trip
         )
 
-    def is_dominating(self, other: BaseRaptorLabel) -> bool:
+    def is_dominating(self, other: BasicRaptorLabel) -> bool:
         return self.earliest_arrival_time <= other.earliest_arrival_time
 
     def __repr__(self) -> str:
-        return f"{BaseRaptorLabel.__name__}(earliest_arrival_time={self.earliest_arrival_time}, " \
+        return f"{BasicRaptorLabel.__name__}(earliest_arrival_time={self.earliest_arrival_time}, " \
                f"trip={self.trip}, boarding_stop={self.boarding_stop})"
 
 
@@ -590,7 +590,7 @@ class MultiCriteriaLabel(BaseLabel):
     """Collection of criteria used to compare labels"""
 
     @staticmethod
-    def from_base_raptor_label(label: BaseRaptorLabel) -> MultiCriteriaLabel:
+    def from_base_raptor_label(label: BasicRaptorLabel) -> MultiCriteriaLabel:
         """
         Creates a multi-criteria label from a base RAPTOR label instance.
         The new multi-criteria label has a total cost of 1.

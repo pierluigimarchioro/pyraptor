@@ -16,7 +16,7 @@ from loguru import logger
 from pyraptor.dao.timetable import read_timetable
 from pyraptor.model.algos.raptor_sm import RaptorAlgorithmSharedMobility
 from pyraptor.model.algos.weighted_mcraptor import WeightedMcRaptorAlgorithm
-from pyraptor.model.criteria import Bag, MultiCriteriaLabel, pareto_set, BaseRaptorLabel
+from pyraptor.model.criteria import Bag, MultiCriteriaLabel, pareto_set, BasicRaptorLabel
 from pyraptor.model.shared_mobility import SharedMobilityFeed
 from pyraptor.model.timetable import RaptorTimetable, Stop, TransportType
 from pyraptor.model.output import Journey, AlgorithmOutput, Leg
@@ -319,7 +319,7 @@ def _handle_raptor_variant(
         best_bags: Dict[Stop, Bag] = {}
         for stop, label in best_labels.items():
             # TODO remove once RaptorSM uses BaseRaptorLabel instead of old Label classes
-            base_label = BaseRaptorLabel(
+            base_label = BasicRaptorLabel(
                 boarding_stop=label.boarding_stop,
                 trip=label.trip,
                 earliest_arrival_time=label.earliest_arrival_time
