@@ -1,116 +1,147 @@
-"""RAPTOR algorithm"""
-
 from __future__ import annotations
 
-from collections.abc import Iterable
+from collections.abc import Iterable, Mapping
 from typing import List, Tuple, Dict
 from copy import deepcopy
 
 from loguru import logger
 
-from pyraptor.dao.timetable import RaptorTimetable
+from pyraptor.model.algos.base import BaseSMRaptor, SharedMobilityConfig
+from pyraptor.model.timetable import RaptorTimetable, Transfer
 from pyraptor.model.timetable import Stop, Route, TransferTrip, TransportType
-from pyraptor.model.criteria import BasicRaptorLabel, LabelUpdate, ArrivalTimeCriterion, MultiCriteriaLabel
+from pyraptor.model.criteria import BasicRaptorLabel, LabelUpdate, MultiCriteriaLabel
 from pyraptor.model.output import Leg, Journey
 from pyraptor.util import LARGE_NUMBER
 
 
-class RaptorAlgorithm:
-    """RAPTOR Algorithm"""
+class RaptorAlgorithm(BaseSMRaptor):
+    """
+    Implementation of the basic RAPTOR algorithm, with some improvements:
+    - transfers from the origin stops are evaluated immediately to widen
+        the set of reachable stops before the first round is executed
+    - it is possible to include shared mobility, real-time data in the computation
+    """
 
-    def __init__(self, timetable: RaptorTimetable):
-        self.timetable: RaptorTimetable = timetable
+    def __init__(
+            self,
+            timetable: RaptorTimetable,
+            enable_sm: bool = False,
+            sm_config: SharedMobilityConfig = None
+    ):
+        """
+        :param timetable: RAPTOR timetable
+        :param enable_sm: if True, shared mobility data is included in the itinerary computation.
+            If False, any provided shared mobility data is ignored.
+        :param sm_config: shared mobility configuration data. Ignored if `enable_sm` is False.
+        """
+
+        super().__init__(timetable=timetable, enable_sm=enable_sm, sm_config=sm_config)
+
         self.bag_round_stop: Dict[int, Dict[Stop, BasicRaptorLabel]] = {}
         self.bag_star: Dict[Stop, BasicRaptorLabel] = {}
 
-    def run(self, from_stops: Iterable[Stop], dep_secs: int, rounds: int) -> Dict[int, Dict[Stop, BasicRaptorLabel]]:
-        """
-        Run Round-Based Algorithm
-
-        :param from_stops: collection of stops to depart from
-        :param dep_secs: departure time in seconds from midnight
-        :param rounds: total number of rounds to execute
-        :return:
-        """
-
-        # Initialize empty bag of labels, i.e. B_k(p) = Label() for every k and p
-        # Dictionary is keyed by round and contains another dictionary, where, for each stop, there
-        # is a label representing the earliest arrival time (initialized at +inf)
+    def run(
+            self,
+            from_stops: Iterable[Stop],
+            dep_secs: int,
+            rounds: int
+    ) -> Mapping[int, Mapping[Stop, BasicRaptorLabel]]:
+        # Initialize empty bag of labels for each stop
         for k in range(0, rounds + 1):
             self.bag_round_stop[k] = {}
-            for p in self.timetable.stops:
-                self.bag_round_stop[k][p] = BasicRaptorLabel()
+            for s in self.timetable.stops:
+                self.bag_round_stop[k][s] = BasicRaptorLabel()
 
         # Initialize bag with the earliest arrival times
         # This bag is used as a side-collection to efficiently retrieve
         # the earliest arrival time for each reachable stop at round k.
         # Look for "local pruning" in the Microsoft paper for a better description.
         self.bag_star = {}
-        for p in self.timetable.stops:
-            self.bag_star[p] = BasicRaptorLabel()
+        for s in self.timetable.stops:
+            self.bag_star[s] = BasicRaptorLabel()
 
         # Initialize bags with starting stops taking dep_secs to reach
         # Remember that dep_secs is the departure_time expressed in seconds
         logger.debug(f"Starting from Stop IDs: {str(from_stops)}")
         marked_stops = []
-        for from_stop in from_stops:
+        for s in from_stops:
             departure_label = BasicRaptorLabel(earliest_arrival_time=dep_secs)
 
-            self.bag_round_stop[0][from_stop] = departure_label
-            self.bag_star[from_stop] = departure_label
+            self.bag_round_stop[0][s] = departure_label
+            self.bag_star[s] = departure_label
 
-            marked_stops.append(from_stop)
+            marked_stops.append(s)
+
+        # Get stops immediately reachable with a transfer
+        # and add them to the marked stops list
+        # TODO in raptor_sm.py there is another implementation for this step. Is mine good?
+        logger.debug("Computing immediate transfers from origin stops")
+        immediately_reachable_stops = self._improve_with_transfers(
+            k=0,  # still initialization round
+            marked_stops=from_stops,
+            transfers=self.timetable.transfers
+        )
+
+        n_stops_1 = len(marked_stops)  # debugging
+
+        marked_stops = list(
+            set(marked_stops).union(immediately_reachable_stops)
+        )
+
+        n_stops_2 = len(marked_stops)  # debugging
+        logger.debug(f"Added {n_stops_2 - n_stops_1} immediate stops")
+
+        # Setup shared mob data only if enabled
+        if self.enable_sm:
+            self._initialize_shared_mob(origin_stops=marked_stops)
 
         # Run rounds
         for k in range(1, rounds + 1):
-            logger.info(f"Analyzing possibilities round {k}")
+            logger.info(f"Analyzing possibilities at round {k}")
 
             # Initialize round k (current) with the labels of round k-1 (previous)
             self.bag_round_stop[k] = deepcopy(self.bag_round_stop[k - 1])
 
             # Get list of stops to evaluate in the process
-            logger.debug(f"Stops to evaluate count: {len(marked_stops)}")
+            logger.debug(f"# Stops to evaluate: {len(marked_stops)}")
 
             # Get (route, marked stop) pairs, where marked stop
             # is the first reachable stop of the route
-            route_marked_stops = self.accumulate_routes(marked_stops)
+            route_marked_stops = self._accumulate_routes(marked_stops)
 
             # Update stop arrival times calculated basing on reachable stops
-            marked_trip_stops = self.traverse_routes(
+            marked_trip_stops = self._traverse_routes(
                 k, route_marked_stops
             )
             logger.debug(f"{len(marked_trip_stops)} reachable stops added")
 
             # Add footpath transfers and update
-            marked_transfer_stops = self.add_transfer_time(
-                k, marked_trip_stops
+            marked_transfer_stops = self._improve_with_transfers(
+                k=k,
+                marked_stops=marked_trip_stops,
+                transfers=self.timetable.transfers
             )
             logger.debug(f"{len(marked_transfer_stops)} transferable stops added")
 
             marked_stops = set(marked_trip_stops).union(marked_transfer_stops)
+
+            if self.enable_sm:
+                # Mark stops that were improved with shared mob data
+                shared_mob_marked_stops = self._improve_with_shared_mob(
+                    k=k,
+
+                    # Only transfer stops can be passed because shared mob stations
+                    # are reachable just by foot transfers
+                    # TODO is this right?
+                    marked_stops=marked_transfer_stops
+                )
+                marked_stops = set(marked_stops).union(shared_mob_marked_stops)
+
             logger.debug(f"{len(marked_stops)} stops to evaluate in next round")
 
         return self.bag_round_stop
 
-    def accumulate_routes(self, marked_stops: List[Stop]) -> List[Tuple[Route, Stop]]:
-        """Accumulate routes serving marked stops from previous round, i.e. Q"""
-
-        route_marked_stops = {}  # i.e. Q
-        for marked_stop in marked_stops:
-            routes_serving_stop = self.timetable.routes.get_routes_of_stop(marked_stop)
-            for route in routes_serving_stop:
-                # Check if new_stop is before existing stop in Q
-                current_stop_for_route = route_marked_stops.get(route, None)  # p'
-                if (current_stop_for_route is None) or (
-                        route.stop_index(current_stop_for_route)
-                        > route.stop_index(marked_stop)
-                ):
-                    route_marked_stops[route] = marked_stop
-        route_marked_stops = [(r, p) for r, p in route_marked_stops.items()]
-
-        return route_marked_stops
-
-    def traverse_routes(
+    def _traverse_routes(
             self,
             k: int,
             route_marked_stops: List[Tuple[Route, Stop]],
@@ -165,7 +196,7 @@ class RaptorAlgorithm:
                             new_trip=current_trip,
                             best_labels=self.bag_star
                         )
-                        self.update_arrival_label(update_data=update_data, k=k)
+                        self._update_arrival_label(update_data=update_data, k=k)
 
                         # Logging
                         n_improvements += 1
@@ -193,10 +224,11 @@ class RaptorAlgorithm:
 
         return new_stops
 
-    def add_transfer_time(
+    def _improve_with_transfers(
             self,
             k: int,
-            marked_stops: List[Stop],
+            marked_stops: Iterable[Stop],
+            transfers: Iterable[Transfer]
     ) -> List[Stop]:
         """
         Add transfers between platforms.
@@ -217,7 +249,7 @@ class RaptorAlgorithm:
 
             time_sofar = self.bag_round_stop[k][current_stop].earliest_arrival_time
             for arrival_stop in other_station_stops:
-                arrival_time_with_transfer = time_sofar + self.get_transfer_time(
+                arrival_time_with_transfer = time_sofar + self._get_transfer_time(
                     current_stop, arrival_stop
                 )
                 previous_earliest_arrival = self.bag_star[
@@ -246,20 +278,13 @@ class RaptorAlgorithm:
                         new_trip=transfer_trip,
                         best_labels=self.bag_star
                     )
-                    self.update_arrival_label(update_data=update_data, k=k)
+                    self._update_arrival_label(update_data=update_data, k=k)
 
                     new_stops.append(arrival_stop)
 
         return new_stops
 
-    def get_transfer_time(self, stop_from: Stop, stop_to: Stop) -> int:
-        """
-        Calculate the transfer time from a stop to another stop (usually at one station)
-        """
-        transfers = self.timetable.transfers
-        return transfers.stop_to_stop_idx[(stop_from, stop_to)].transfer_time
-
-    def update_arrival_label(self, update_data: LabelUpdate, k: int):
+    def _update_arrival_label(self, update_data: LabelUpdate, k: int):
         """
         Updates the label, along with the bag that store it, for the provided arrival stop
         :param update_data: data to update the label with
@@ -277,7 +302,8 @@ class RaptorAlgorithm:
         self.bag_star[update_data.arrival_stop] = arrival_label
 
 
-def best_stop_at_target_station(to_stops: List[Stop], bag: Dict[Stop, BasicRaptorLabel]) -> Stop:
+# TODO remove because already in query.py or move to output.py?
+def best_stop_at_target_station(to_stops: List[Stop], bag: Mapping[Stop, BasicRaptorLabel]) -> Stop:
     """
     Find the destination Stop with the shortest distance.
     Required in order to prevent adding travel time to the arrival time.
@@ -292,7 +318,8 @@ def best_stop_at_target_station(to_stops: List[Stop], bag: Dict[Stop, BasicRapto
     return final_stop
 
 
-def reconstruct_journey(destination: Stop, bag: Dict[Stop, BasicRaptorLabel]) -> Journey:
+# TODO remove because already in query.py or move to output.py?
+def reconstruct_journey(destination: Stop, bag: Mapping[Stop, BasicRaptorLabel]) -> Journey:
     """Construct journey for destination from values in bag."""
 
     # Create journey with list of legs
@@ -318,6 +345,7 @@ def reconstruct_journey(destination: Stop, bag: Dict[Stop, BasicRaptorLabel]) ->
     return jrny
 
 
+# TODO move to output.py?
 def is_dominated(original_journey: List[Leg], new_journey: List[Leg]) -> bool:
     """Check if new journey is dominated by another journey"""
     # None if first journey

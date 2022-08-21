@@ -1,14 +1,13 @@
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
-from collections.abc import Iterable, Mapping
+from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass
 from typing import List, Tuple, Any
 
 import numpy as np
 from loguru import logger
 
-from pyraptor.model.criteria import BaseLabel
 from pyraptor.model.shared_mobility import (
     SharedMobilityFeed,
     RentingStation,
@@ -81,7 +80,7 @@ class BaseRaptorAlgorithm(ABC):
     def _improve_with_transfers(
             self,
             k: int,
-            marked_stops: List[Stop],
+            marked_stops: Iterable[Stop],
             transfers: Iterable[Transfer]
     ) -> List[Stop]:
         """
@@ -109,7 +108,7 @@ class BaseRaptorAlgorithm(ABC):
 
 @dataclass(frozen=True)
 class SharedMobilityConfig:
-    shared_mobility_feeds: Iterable[SharedMobilityFeed]
+    feeds: Iterable[SharedMobilityFeed]
     """Shared mobility data to include in the itinerary calculation"""
 
     preferred_vehicle: TransportType
@@ -154,7 +153,6 @@ class BaseSMRaptor(BaseRaptorAlgorithm, ABC):
         :param enable_sm: if True, shared mobility data is included in the itinerary computation.
             If False, any provided shared mobility data is ignored.
         :param sm_config: shared mobility configuration data. Ignored if `enable_sm` is False.
-
         """
 
         super(BaseSMRaptor, self).__init__(timetable=timetable)
@@ -166,6 +164,32 @@ class BaseSMRaptor(BaseRaptorAlgorithm, ABC):
         self.no_source = []
         self.no_dest = []
         self.vehicle_transfers = VehicleTransfers()
+
+    def _initialize_shared_mob(self, origin_stops: Sequence[Stop]):
+        """
+        Executes shared mob data initialization phase.
+
+        :param origin_stops: stops to depart from
+        """
+
+        # Download information about shared-mob stops availability
+        self._update_availability_info()
+        sm_feeds_info = [
+            f'{feed.system_id} ({[t.name for t in feed.transport_type]})'
+            for feed in self.sm_config.feeds
+        ]
+        logger.debug(f"Shared mobility feeds: {sm_feeds_info} ")
+        logger.debug(f"{len(self.no_source)} shared-mob stops not available as source: {self.no_source} ")
+        logger.debug(f"{len(self.no_dest)} shared-mob stops not available as destination: {self.no_dest} ")
+
+        # Mark any renting station to depart from as visited
+        for s in origin_stops:
+            if (isinstance(s, RentingStation)
+                    and s not in self.visited_renting_stations):
+                self.visited_renting_stations.append(s)
+
+        logger.debug(f"Starting from {len(origin_stops)} stops "
+                     f"({len(self.visited_renting_stations)} are renting stations)")
 
     def _improve_with_shared_mob(
             self,
@@ -296,13 +320,13 @@ class BaseSMRaptor(BaseRaptorAlgorithm, ABC):
         """ Updates stops availability based on real-time query
             Also clears all vehicle transfers computed """
 
-        for feed in self.sm_config.shared_mobility_feeds:
+        for feed in self.sm_config.feeds:
             feed.renting_stations.update()
 
         no_source_: List[List[RentingStation]] = [feed.renting_stations.no_source for feed in
-                                                  self.sm_config.shared_mobility_feeds]
+                                                  self.sm_config.feeds]
         no_dest_: List[List[RentingStation]] = [feed.renting_stations.no_destination for feed in
-                                                self.sm_config.shared_mobility_feeds]
+                                                self.sm_config.feeds]
 
         self.no_source: List[RentingStation] = [i for sub in no_source_ for i in sub]  # flatten
         self.no_dest: List[RentingStation] = [i for sub in no_dest_ for i in sub]  # flatten
