@@ -364,7 +364,7 @@ def _get_journeys_to_destinations(
     #   maybe include intermediate stop to help with debug and visualization
     journeys_to_destinations = {}
     for destination_station_name, to_stops in destination_stops.items():
-        destination_legs = _best_legs_to_destination_station(origin_stops, best_labels)
+        destination_legs = _best_legs_to_destination_station(to_stops, best_labels)
 
         if len(destination_legs) == 0:
             logger.debug(f"Destination '{destination_station_name}' unreachable with given parameters."
