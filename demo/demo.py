@@ -32,6 +32,7 @@ FEED_CONFIG_PATH: str = "./../data/input/gbfs.json"
 STATION_NAMES: List[str] = []
 TIMETABLE: RaptorTimetable | None = None
 DEBUG: bool = True
+ENABLE_SM: bool = False
 RAPTOR_ROUNDS = 5
 
 
@@ -71,7 +72,7 @@ def shared_mob_raptor_run():
             departure_time=departure_time,
             rounds=RAPTOR_ROUNDS,
             variant=RaptorVariants.Basic.value,
-            enable_sm=True,
+            enable_sm=ENABLE_SM,
             sm_feeds_path=FEED_CONFIG_PATH,
             preferred_vehicle=preferred_vehicle,
             enable_car=enable_car
@@ -130,7 +131,13 @@ def mc_raptor_run():
             departure_time=departure_time,
             rounds=RAPTOR_ROUNDS,
             variant=RaptorVariants.WeightedMc.value,
-            criteria_config=MC_CONFIG_FILEPATH
+            criteria_config=MC_CONFIG_FILEPATH,
+            enable_sm=ENABLE_SM,
+            sm_feeds_path=FEED_CONFIG_PATH,
+
+            # TODO define input in form
+            preferred_vehicle="bike",
+            enable_car=True
         )
 
         visualize(MC_RAPTOR_OUT_DIR)
@@ -167,6 +174,8 @@ def show_journey_descriptions(algo_output_dir: str) -> flask.templating:
 
 
 def parse_arguments():
+    # TODO fix bool args: type=bool does not work as expected. use argparse.BooleanOptionalAction
+
     parser = argparse.ArgumentParser()
     parser.add_argument(
         "-i",
@@ -183,6 +192,14 @@ def parse_arguments():
         help="Path to .json key specifying list of feeds and langs"
     )
     parser.add_argument(
+        "-sm",
+        "--enable_sm",
+        type=bool,
+        default=ENABLE_SM,
+        action=argparse.BooleanOptionalAction,
+        help="Enable use of shared mobility data"
+    )
+    parser.add_argument(
         "-d",
         "--debug",
         type=bool,
@@ -194,9 +211,10 @@ def parse_arguments():
     return arguments
 
 
-def run_demo(input_folder: str, sm_feed_config_path: str, debug: bool):
+def run_demo(input_folder: str, sm_feed_config_path: str, enable_sm: bool, debug: bool):
     logger.debug("Input folder            : {}", input_folder)
     logger.debug("Input feed config path  : {}", sm_feed_config_path)
+    logger.debug("Enable shared mob       : {}", enable_sm)
     logger.debug("Debug mode              : {}", debug)
 
     global INPUT_FOLDER
@@ -207,6 +225,9 @@ def run_demo(input_folder: str, sm_feed_config_path: str, debug: bool):
 
     global DEBUG
     DEBUG = debug
+
+    global ENABLE_SM
+    ENABLE_SM = enable_sm
 
     global TIMETABLE
     TIMETABLE = read_timetable(input_folder=input_folder)
@@ -227,13 +248,17 @@ def _get_station_names(timetable: RaptorTimetable):
 
 # TODO bugs/stuff to investigate further:
 #   - query from ABBADIA LARIANA to ANZANO DEL PARCO @16:33 generates KeyError: ANZANO DEL PARCO not found
-#       -> it seems that with Trenord station names as destination, errors occur
+#       -> it seems that with Trenord station names as destination, errors occur.
+#       POSSIBLE SOLUTION: this is because Trenord actually does not have available trips,
+#           so raptor can't find anything. This edge case, however, is not handled by the demo
 
 
 if __name__ == "__main__":
     args = parse_arguments()
+    print(args)
     run_demo(
         input_folder=args.input,
         sm_feed_config_path=args.feed,
+        enable_sm=args.enable_sm,
         debug=args.debug
     )
