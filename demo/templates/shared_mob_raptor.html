@@ -55,7 +55,7 @@
     let curr_time = String(date.getHours()).padStart(2, '0') + ":" + String(date.getMinutes()).padStart(2, '0');
     let els = document.getElementsByTagName('input')
     els = [].slice.call(els) // cast to array
-    let times = els.filter(el => el.type == 'time')
+    let times = els.filter(el => el.type === 'time')
     for(let time of times) {
         time.value = curr_time
     }

@@ -161,7 +161,7 @@ class Criterion(ABC):
 
     # TODO If the raw value surpasses this threshold, the associated label should be discarded
     #   How to enforce maximum values? set a high cost? add a `upper_bound_surpassed` flag to discard the label?
-    #   Or just filter the itineraries in post processing (this I don't like)
+    #   Or just filter the itineraries in post-processing (this I don't like)
 
     @property
     def cost(self) -> float:

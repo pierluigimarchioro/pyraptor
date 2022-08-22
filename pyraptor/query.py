@@ -229,7 +229,7 @@ def main(
         j.print()
 
     algo_output = AlgorithmOutput(
-        journey=destination_journeys,
+        journeys=destination_journeys,
         date=timetable.date,
         departure_time=departure_time,
         original_gtfs_dir=timetable.original_gtfs_dir

@@ -199,7 +199,7 @@ class Journey:
         return (
             True
             if (self.total_cost() <= jrny.total_cost())
-               and (self != jrny)
+            and (self != jrny)
             else False
         )
 
