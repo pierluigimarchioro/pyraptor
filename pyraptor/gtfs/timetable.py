@@ -130,7 +130,7 @@ def generate_timetable(
     logger.debug("Using shared-mobility             : {}", shared_mobility)
 
     if shared_mobility:
-        logger.debug("Path to shared-mobility feeds : {}", feeds_path)
+        logger.debug("Path to shared-mobility feeds     : {}", feeds_path)
 
     logger.debug("jobs                              : {}", n_jobs)
 
