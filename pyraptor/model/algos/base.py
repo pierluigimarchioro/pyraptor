@@ -469,7 +469,7 @@ class BaseSMRaptor(BaseRaptorAlgorithm[_B, _L], ABC):
         # `renting_stations_from_trip_improved` contains all improved renting-stations
         # These improvements must reflect to public-transport network, so we compute footpaths (Transfers)
         # between improved renting stations and associated transferable public stops
-        bag_round_stop, marked_shared_mob_stops = self._improve_with_transfers(
+        marked_shared_mob_stops = self._improve_with_transfers(
             k=k,
             marked_stops=improved_new_renting_stations,
             transfers=self.timetable.transfers
