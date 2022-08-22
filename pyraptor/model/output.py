@@ -257,64 +257,6 @@ class Journey:
             else False
         )
 
-
-    # TODO old method with only log
-    """
-    def print(self, dep_secs=None):
-        \"""Print the given journey to logger info\"""
-
-        logger.info("Journey:")
-
-        if len(self) == 0:
-            logger.info("No journey available")
-            return
-
-        # Print all legs in journey
-        first_trip = self.legs[0].trip
-        prev_trip = first_trip if first_trip is not None else None
-        n_changes = 1
-        for leg in self:
-            current_trip = leg.trip
-            if current_trip is not None:
-                hint = current_trip.hint
-
-                if current_trip != prev_trip:
-                    logger.info(f"-- Trip Change #{n_changes} --")
-                    n_changes += 1
-
-                prev_trip = current_trip
-            else:
-                raise Exception(f"Leg trip cannot be {None}. Value: {current_trip}")
-
-            msg = (
-                    str(sec2str(leg.dep))
-                    + " "
-                    + leg.from_stop.station.name.ljust(20)
-                    + " (p. "
-                    + str(leg.from_stop.platform_code).rjust(3)
-                    + ") TO "
-                    + str(sec2str(leg.arr))
-                    + " "
-                    + leg.to_stop.station.name.ljust(20)
-                    + " (p. "
-                    + str(leg.to_stop.platform_code).rjust(3)
-                    + ") WITH "
-                    + str(hint)
-            )
-            logger.info(msg)
-
-        logger.info("")
-        for c in self.criteria():
-            logger.info(str(c))
-
-        msg = f"Duration: {sec2str(self.travel_time())}"
-        if dep_secs:
-            msg += f" ({sec2str(self.arr() - dep_secs)} from request time {sec2str(dep_secs)})"
-
-        logger.info(msg)
-        logger.info("")
-        """
-
     def print(self, dep_secs: int = None, logger_: Callable[[str], None] = logger.info):
         """Prints the current journey instance on the provided logger"""
 
