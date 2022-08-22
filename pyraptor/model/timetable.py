@@ -6,7 +6,7 @@ from collections import defaultdict
 from dataclasses import dataclass
 from enum import Enum
 from operator import attrgetter
-from typing import Tuple, Dict, Any, List
+from typing import Tuple, Dict, Any, List, TypeVar, Generic
 
 import attr
 import numpy as np
@@ -118,7 +118,10 @@ class Stop:
         return Stop.stop_distance(self, s)
 
 
-class Stops:
+_Stop = TypeVar("_Stop", bound=Stop)
+
+
+class Stops(Generic[_Stop]):
     """Stops"""
 
     def __init__(self):
@@ -138,18 +141,18 @@ class Stops:
     def __iter__(self):
         return iter(self.set_idx.values())
 
-    def get_stop(self, stop_id) -> Stop:
+    def get_stop(self, stop_id) -> _Stop:
         """Get stop"""
         if stop_id not in self.set_idx:
             raise ValueError(f"Stop ID {stop_id} not present in Stops")
-        stop: Stop = self.set_idx[stop_id]
+        stop: _Stop = self.set_idx[stop_id]
         return stop
 
-    def get_by_index(self, stop_index) -> Stop:
+    def get_by_index(self, stop_index) -> _Stop:
         """Get stop by index"""
         return self.set_index[stop_index]
 
-    def add_stop(self, stop: Stop) -> Stop:
+    def add_stop(self, stop: _Stop) -> _Stop:
         """Add stop"""
         if stop.id in self.set_idx:
             stop = self.set_idx[stop.id]
@@ -484,12 +487,14 @@ class TransferTrip(Trip):
     Class that represents a transfer trip made between to stops
     """
 
-    def __init__(self,
-                 from_stop: Stop,
-                 to_stop: Stop,
-                 dep_time: int,
-                 arr_time: int,
-                 transport_type: TransportType):
+    def __init__(
+            self,
+            from_stop: Stop,
+            to_stop: Stop,
+            dep_time: int,
+            arr_time: int,
+            transport_type: TransportType
+    ):
         """
         :param from_stop: stop that the transfer starts from
         :param to_stop: stop that the transfer ends at
@@ -671,12 +676,12 @@ class Routes:
 
 
 @attr.s(repr=False, cmp=False)
-class Transfer:
+class Transfer(Generic[_Stop]):
     """Transfer"""
 
     id: str | None = attr.ib(default=None)
-    from_stop: Stop | None = attr.ib(default=None)
-    to_stop: Stop | None = attr.ib(default=None)
+    from_stop: _Stop | None = attr.ib(default=None)
+    to_stop: _Stop | None = attr.ib(default=None)
 
     transfer_time: int = attr.ib(default=DEFAULT_TRANSFER_COST)
     """Time in seconds that the transfer takes to complete"""
@@ -691,10 +696,12 @@ class Transfer:
         return same_type_and_id(self, trip)
 
     def __repr__(self):
-        return f"Transfer(from_stop={self.from_stop}, to_stop={self.to_stop}, transfer_time={self.transfer_time})"
+        return (f"Transfer(from_stop={self.from_stop}, "
+                f"to_stop={self.to_stop}, "
+                f"transfer_time={self.transfer_time})")
 
     @staticmethod
-    def get_transfer(sa: Stop, sb: Stop) -> Tuple[Transfer, Transfer]:
+    def get_transfer(sa: _Stop, sb: _Stop) -> Tuple[Transfer, Transfer]:
         """
         Given two stops compute both inbound and outbound transfers
         Transfer time is approximated dividing computed distance by a constant speed
@@ -708,16 +715,19 @@ class Transfer:
         )
 
 
-class Transfers:
+_Transfer = TypeVar("_Transfer", bound=Transfer)
+
+
+class Transfers(Generic[_Transfer]):
     """
     Class that represents a transfer collection with some additional easier to use access methods.
     """
 
     def __init__(self):
-        self.set_idx: Dict[Any, Transfer] = dict()
+        self.set_idx: Dict[Any, _Transfer] = dict()
         """Dictionary that maps transfer ids with the corresponding transfer instance"""
 
-        self.stop_to_stop_idx: Dict[Tuple[Stop, Stop], Transfer] = dict()
+        self.stop_to_stop_idx: Dict[Tuple[Stop, Stop], _Transfer] = dict()
         """Dictionary that maps (from_stop, to_stop) pairs with the corresponding transfer instance"""
 
         self.last_id: int = 1
@@ -738,25 +748,25 @@ class Transfers:
     def __iter__(self):
         return iter(self.set_idx.values())
 
-    def add(self, transfer: Transfer):
+    def add(self, transfer: _Transfer):
         """Add trip"""
         transfer.id = self.last_id
         self.set_idx[transfer.id] = transfer
         self.stop_to_stop_idx[(transfer.from_stop, transfer.to_stop)] = transfer
         self.last_id += 1
 
-    def with_from_stop(self, from_: Stop) -> List[Transfer]:
+    def with_from_stop(self, from_: Stop) -> List[_Transfer]:
         """ Returns all transfers with given departing stop  """
         return [
             self.stop_to_stop_idx[(f, t)] for f, t in self.stop_to_stop_idx.keys() if f == from_
         ]
 
-    def with_to_stop(self, to: Stop) -> List[Transfer]:
+    def with_to_stop(self, to: Stop) -> List[_Transfer]:
         """ Returns all transfers with given arrival stop  """
         return [
             self.stop_to_stop_idx[(f, t)] for f, t in self.stop_to_stop_idx.keys() if t == to
         ]
 
-    def with_stop(self, s) -> List[Transfer]:
+    def with_stop(self, s) -> List[_Transfer]:
         """ Returns all transfers with given stop as departing or arrival  """
         return self.with_from_stop(s) + self.with_to_stop(s)

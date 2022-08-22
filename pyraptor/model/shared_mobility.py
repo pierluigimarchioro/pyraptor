@@ -110,7 +110,7 @@ class PhysicalRentingStations(RentingStations):
 
     def get_by_index(self, stop_index) -> PhysicalRentingStation:
         """Get stop by index"""
-        return self.set_index[stop_index]
+        return super(PhysicalRentingStations, self).get_by_index(stop_index)
 
     def add_stop(self, stop: PhysicalRentingStation) -> PhysicalRentingStation:
         return super(PhysicalRentingStations, self).add_stop(stop)
@@ -185,7 +185,7 @@ class GeofenceAreas(RentingStations):
     """ Override superclass methods with stub, subsuming to RentingStations """
 
     def get_stop(self, stop_id) -> GeofenceArea:
-        return super(GeofenceAreas, self).get_stop(stop_id)
+        return self.set_idx[stop_id]
 
     def get_by_index(self, stop_index) -> GeofenceArea:
         """Get stop by index"""
@@ -256,7 +256,8 @@ class VehicleTransfers(Transfers):
     def with_from_stop(self, from_: RentingStation) -> List[VehicleTransfer]:
         """ Returns all transfers with given departing stop  """
 
-        return super(VehicleTransfers, self).with_from_stop(from_)
+        x = super(VehicleTransfers, self).with_from_stop(from_)
+        return x
 
     def with_to_stop(self, to: Stop) -> List[VehicleTransfer]:
         """ Returns all transfers with given arrival stop  """
