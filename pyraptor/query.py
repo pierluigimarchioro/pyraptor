@@ -25,8 +25,6 @@ from pyraptor.util import str2sec
 
 # TODO
 #   - make McRAPTOR return journeys with intermediate legs too
-#   - make demo call script method and not the whole script, so we have control
-#       over the generation of the timetable.
 
 
 class RaptorVariants(Enum):
@@ -41,8 +39,6 @@ class RaptorVariants(Enum):
 
 def _parse_arguments():
     """Parse arguments"""
-
-    # TODO fix bool args: type=bool does not work as expected. use argparse.BooleanOptionalAction
 
     parser = argparse.ArgumentParser()
     parser.add_argument(
@@ -110,6 +106,7 @@ def _parse_arguments():
         "-sm",
         "--enable_sm",
         type=bool,
+        action=argparse.BooleanOptionalAction,
         default=False,
         help="Enable use of shared mobility data (default False)",
     )
@@ -133,6 +130,7 @@ def _parse_arguments():
         "-c",
         "--car",
         type=bool,
+        action=argparse.BooleanOptionalAction,
         default=False,
         help="Enable car-sharing transfers"
              "Ignored if argument -sm is set to False"

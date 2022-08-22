@@ -174,8 +174,6 @@ def show_journey_descriptions(algo_output_dir: str) -> flask.templating:
 
 
 def parse_arguments():
-    # TODO fix bool args: type=bool does not work as expected. use argparse.BooleanOptionalAction
-
     parser = argparse.ArgumentParser()
     parser.add_argument(
         "-i",
@@ -203,6 +201,7 @@ def parse_arguments():
         "-d",
         "--debug",
         type=bool,
+        action=argparse.BooleanOptionalAction,
         default=DEBUG,
         help="Debug mode"
     )
