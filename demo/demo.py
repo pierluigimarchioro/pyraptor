@@ -162,7 +162,7 @@ def show_journey_descriptions(algo_output_dir: str) -> flask.templating:
 
     descriptions: List[str] = []
     for jrny in algo_output.journeys:
-        desc: str = jrny.print()  # TODO implement __str__ to return just the string: print() side-effects to console
+        desc: str = str(jrny)
         desc += "\n\n\n--------------------------------------------------------------\n\n\n"
 
         descriptions.append(desc)

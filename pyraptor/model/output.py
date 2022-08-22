@@ -4,7 +4,7 @@ import os
 from collections.abc import Iterable
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Dict, List
+from typing import Dict, List, Callable
 
 import joblib
 import numpy as np
@@ -113,6 +113,60 @@ class Journey:
 
     def __lt__(self, other):
         return self.dep() < other.dep()
+
+    def __str__(self):
+        def update_(s: str):
+            nonlocal out_str
+            out_str += f"{s}\n"
+
+        out_str = ''
+
+        update_("Journey")
+
+        if len(self) == 0:
+            update_("No journey available ")
+            return out_str
+
+        # Print all legs in journey
+        first_trip = self.legs[0].trip
+        prev_trip = first_trip if first_trip is not None else None
+        n_changes = 1
+        for leg in self:
+            current_trip = leg.trip
+            if current_trip is not None:
+                hint = current_trip.hint
+
+                if current_trip != prev_trip:
+                    trip_change = f"-- Trip Change #{n_changes} -- "
+                    update_(trip_change)
+                    n_changes += 1
+
+                prev_trip = current_trip
+            else:
+                raise Exception(f"Leg trip cannot be {None}. Value: {current_trip}")
+
+            msg = (
+                    str(sec2str(leg.dep))
+                    + " "
+                    + leg.from_stop.station.name.ljust(20)
+                    + " TO "
+                    + str(sec2str(leg.arr))
+                    + " "
+                    + leg.to_stop.station.name.ljust(20)
+                    + " WITH "
+                    + str(hint)
+            )
+            update_(msg)
+
+        update_("")
+        for c in self.criteria():
+            update_(str(c))
+
+        msg = f"Duration: {sec2str(self.travel_time())}"
+        update_(msg)
+        update_("")
+
+        return out_str
 
     def number_of_trips(self):
         """Return number of distinct trips"""
@@ -261,66 +315,13 @@ class Journey:
         logger.info("")
         """
 
-    # TODO new method with logging and string building
-    def print(self, dep_secs=None) -> str:
-        """Print the given journey to logger info"""
+    def print(self, dep_secs: int = None, logger_: Callable[[str], None] = logger.info):
+        """Prints the current journey instance on the provided logger"""
 
-        def update_(s: str):
-            nonlocal out_str
-            logger.info(s)
-            out_str += f"{s}\n"
+        logger_(str(self))
 
-        out_str = ''
-
-        update_("Journey")
-
-        if len(self) == 0:
-            update_("No journey available ")
-            return out_str
-
-        # Print all legs in journey
-        first_trip = self.legs[0].trip
-        prev_trip = first_trip if first_trip is not None else None
-        n_changes = 1
-        for leg in self:
-            current_trip = leg.trip
-            if current_trip is not None:
-                hint = current_trip.hint
-
-                if current_trip != prev_trip:
-                    trip_change = f"-- Trip Change #{n_changes} -- "
-                    update_(trip_change)
-                    n_changes += 1
-
-                prev_trip = current_trip
-            else:
-                raise Exception(f"Leg trip cannot be {None}. Value: {current_trip}")
-
-            msg = (
-                    str(sec2str(leg.dep))
-                    + " "
-                    + leg.from_stop.station.name.ljust(20)
-                    + " TO "
-                    + str(sec2str(leg.arr))
-                    + " "
-                    + leg.to_stop.station.name.ljust(20)
-                    + " WITH "
-                    + str(hint)
-            )
-            update_(msg)
-
-        update_("")
-        for c in self.criteria():
-            update_(str(c))
-
-        msg = f"Duration: {sec2str(self.travel_time())}"
         if dep_secs:
-            msg += f" ({sec2str(self.arr() - dep_secs)} from request time {sec2str(dep_secs)})"
-
-        update_(msg)
-        update_("")
-
-        return out_str
+            logger_(f" ({sec2str(self.arr() - dep_secs)} from request time {sec2str(dep_secs)})")
 
     def to_list(self) -> List[Dict]:
         """Convert journey to list of legs as dict"""
