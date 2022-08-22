@@ -9,7 +9,7 @@ from pyraptor.dao import read_timetable
 from pyraptor.model.criteria import Criterion, DistanceCriterion
 from pyraptor.model.output import Leg
 from pyraptor.model.timetable import Stop, Trip, Coordinates
-from pyraptor.visualization.folium_visualizer import StopVisualizer, MapVisualizer
+from pyraptor.visualization.folium_visualizer import StopVisualization, TripVisualization
 
 OUT_FILE = "all_stops.html"
 
@@ -54,7 +54,7 @@ def main(
 
     timetable = read_timetable('data/output/milan')
 
-    visualizer = MapVisualizer(legs=[
+    visualizer = TripVisualization(legs=[
         Leg(
             from_stop=Stop(geo=Coordinates(0, 0)),
             to_stop=Stop(geo=Coordinates(0, 0)),
@@ -63,7 +63,7 @@ def main(
         )
     ])
 
-    viss = [StopVisualizer(stop) for stop in timetable.stops]
+    viss = [StopVisualization(stop) for stop in timetable.stops]
 
     for vis in viss:
         visualizer.put_marker(
@@ -73,7 +73,7 @@ def main(
         )
 
     out_file_path = path.join(output, OUT_FILE)
-    visualizer.save(path_=out_file_path, open_=open_)
+    visualizer.save(path_=out_file_path, open_browser=open_)
 
 
 if __name__ == "__main__":
