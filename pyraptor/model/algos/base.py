@@ -19,14 +19,14 @@ from pyraptor.model.shared_mobility import (
     VEHICLE_SPEED)
 from pyraptor.model.timetable import RaptorTimetable, Route, Stop, TransportType, Transfer
 
-_B = TypeVar("_B")
-"""Type of the bag assigned to each stop by the RAPTOR algorithm"""
+_BagType = TypeVar("_BagType")
+"""Type of the bag of labels assigned to each stop by the RAPTOR algorithm"""
 
-_L = TypeVar("_L", bound=BaseLabel)
+_LabelType = TypeVar("_LabelType", bound=BaseLabel)
 """Type of the label used by the RAPTOR algorithm"""
 
 
-class BaseRaptorAlgorithm(ABC, Generic[_B, _L]):
+class BaseRaptorAlgorithm(ABC, Generic[_BagType, _LabelType]):
     """
     Base class that defines the structure of RAPTOR algorithm implementations.
 
@@ -39,11 +39,11 @@ class BaseRaptorAlgorithm(ABC, Generic[_B, _L]):
     timetable: RaptorTimetable
     """RAPTOR timetable, containing stops, routes, trips and transfers data"""
 
-    bag_round_stop: Dict[int, Dict[Stop, _B]]
+    bag_round_stop: Dict[int, Dict[Stop, _BagType]]
     """Dictionary that keeps the stop-bag associations 
     created in each round of the algorithm"""
 
-    best_bag: Dict[Stop, _L]
+    best_bag: Dict[Stop, _LabelType]
     """Dictionary that keeps the best stop-label associations 
     created by the algorithm, independently by the round number"""
 
@@ -58,7 +58,7 @@ class BaseRaptorAlgorithm(ABC, Generic[_B, _L]):
             from_stops: Iterable[Stop],
             dep_secs: int,
             rounds: int
-    ) -> Mapping[int, Mapping[Stop, _B]]:
+    ) -> Mapping[int, Mapping[Stop, _BagType]]:
         """
         Executes the round-based algorithm and returns the stop-label mappings, keyed by round.
 
@@ -230,7 +230,7 @@ class SharedMobilityConfig:
     """If True, car transport is enabled"""
 
 
-class BaseSMRaptor(BaseRaptorAlgorithm[_B, _L], ABC):
+class BaseSMRaptor(BaseRaptorAlgorithm[_BagType, _LabelType], ABC):
     """
     Base class for RAPTOR implementations that use shared mobility data.
 
@@ -287,7 +287,7 @@ class BaseSMRaptor(BaseRaptorAlgorithm[_B, _L], ABC):
             from_stops: Iterable[Stop],
             dep_secs: int,
             rounds: int
-    ) -> Mapping[int, Mapping[Stop, _B]]:
+    ) -> Mapping[int, Mapping[Stop, _BagType]]:
         initial_marked_stops = self._initialization(
             from_stops=from_stops,
             dep_secs=dep_secs,
