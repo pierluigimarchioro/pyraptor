@@ -371,7 +371,7 @@ def visualize_output(
     for i, jrny in enumerate(output.journeys):
         visualization = TripVisualization(legs=jrny.legs)
         dep = jrny.legs[0].from_stop.name
-        arr = jrny.legs[-1].from_stop.name
+        arr = jrny.legs[-1].to_stop.name
 
         out_file_path = path.join(visualization_dir, f"{dep}-{arr}_{i}.html")
         visualization.save(path_=out_file_path, open_browser=open_browser)
