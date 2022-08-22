@@ -66,7 +66,7 @@ def save_gtfs(gtfs_tables: Dict[str, pd.DataFrame],
                    out_dir=out_dir, gtfs_filename=gtfs_filename)
 
 
-def tables_to_gtfs(tables_dir: str, gtfs_filename: str, out_dir: str=None):
+def tables_to_gtfs(tables_dir: str, gtfs_filename: str, out_dir: str = None):
     """
     Given a path to a directory containing gtfs .txt tables, saves them into a .gtfs file.
     Such file is created inside the provided directory.

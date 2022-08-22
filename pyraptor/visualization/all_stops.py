@@ -13,6 +13,7 @@ from pyraptor.visualization.folium_visualizer import StopVisualizer, MapVisualiz
 
 OUT_FILE = "all_stops.html"
 
+
 def parse_arguments():
     """Parse arguments"""
     parser = argparse.ArgumentParser()
@@ -54,11 +55,13 @@ def main(
     timetable = read_timetable('data/output/milan')
 
     visualizer = MapVisualizer(legs=[
-        Leg(from_stop=Stop(geo=Coordinates(0, 0)),
+        Leg(
+            from_stop=Stop(geo=Coordinates(0, 0)),
             to_stop=Stop(geo=Coordinates(0, 0)),
             trip=Trip(),
             criteria=[DistanceCriterion(name='', weight=0, raw_value=0, upper_bound=0)]
-        )])
+        )
+    ])
 
     viss = [StopVisualizer(stop) for stop in timetable.stops]
 
