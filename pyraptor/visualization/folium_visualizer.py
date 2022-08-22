@@ -116,14 +116,14 @@ class StopVisualizer(object):
     @property
     def is_start(self) -> bool:
         """ Is the stop the first stop of the journey """
-        return self.arr is None and \
-               self.dep is not None
+        return (self.arr is None and
+                self.dep is not None)
 
     @property
     def is_end(self) -> bool:
         """ Is the stop the last stop of the journey """
-        return self.arr is not None and \
-               self.dep is None
+        return (self.arr is not None and
+                self.dep is None)
 
     @property
     def arrival_departure_info(self) -> str:
@@ -244,7 +244,7 @@ class MapVisualizer:
     @property
     def stops(self) -> List[Stop]:
         """ Returns all journeys stops """
-        return list(set([l.from_stop for l in self.legs]).union([l.to_stop for l in self.legs]))
+        return list(set([leg.from_stop for leg in self.legs]).union([leg.to_stop for leg in self.legs]))
 
     @property
     def bounds(self) -> [[float, float], [float, float]]:
@@ -355,7 +355,8 @@ def main(
     except:
         raise Exception(f"No algo_output.pcl found in {algo_output}")
 
-    visualizer = MapVisualizer(legs=output.journey.legs)
+    # TODO fix: now output contains journeys
+    visualizer = MapVisualizer(legs=output.journeys.legs)
 
     visualizer.add_stops()
     visualizer.add_moves()

@@ -79,7 +79,7 @@ class OTPVisualizer:
         # Extract all the stop ids included in the journey
         # Convert them to string to make sure comparison work as intended
         journey_stops = []
-        for leg in self._algo_output.journey.legs:
+        for leg in self._algo_output.journeys.legs:
             journey_stops.append(leg.from_stop)
             journey_stops.append(leg.to_stop)
         journey_stop_ids: List[str] = list(set([str(s.id) for s in journey_stops]))
@@ -152,13 +152,13 @@ class OTPVisualizer:
 
     def _get_journey_time_interval(self) -> Tuple[time, time]:
         departure_datetime = self._get_departure_datetime()
-        travel_time = self._algo_output.journey.travel_time()
+        travel_time = self._algo_output.journeys.travel_time()
         arrival_datetime = departure_datetime + timedelta(seconds=travel_time)
 
         return departure_datetime.time(), arrival_datetime.time()
 
     def _get_journey_info(self, stops_table: pd.DataFrame) -> JourneyInfo:
-        journey_legs = self._algo_output.journey.legs
+        journey_legs = self._algo_output.journeys.legs
         first_stop = journey_legs[0].from_stop
         last_stop = journey_legs[len(journey_legs) - 1].to_stop
 
@@ -218,7 +218,7 @@ class OTPVisualizer:
 
     def _get_departure_datetime(self) -> datetime:
         dep_date = self._algo_output.date
-        dep_time = sec2str(self._algo_output.journey.legs[0].dep, True)
+        dep_time = sec2str(self._algo_output.journeys.legs[0].dep, True)
 
         return datetime.strptime(f"{dep_date} {dep_time}", "%Y%m%d %H:%M:%S")
 

@@ -61,7 +61,7 @@ def visualize(dir_: str):
 
 def journey_desc(dir_: str) -> flask.templating:
     algo_file: str = path.join(dir_, ALGO_OUTPUT_NAME)
-    desc: str = AlgorithmOutput.read_from_file(filepath=algo_file).journey.print()
+    desc: str = AlgorithmOutput.read_from_file(filepath=algo_file).journeys.print()
     descs: List[str] = desc.split('\n')
     return render_template("journey_desc.html", descs=descs)
 
