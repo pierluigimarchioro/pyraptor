@@ -42,6 +42,8 @@ class RaptorVariants(Enum):
 def _parse_arguments():
     """Parse arguments"""
 
+    # TODO fix bool args: type=bool does not work as expected. use argparse.BooleanOptionalAction
+
     parser = argparse.ArgumentParser()
     parser.add_argument(
         "-i",
@@ -174,16 +176,17 @@ def query_raptor(
     :param enable_car: car-sharing transfer enabled
     """
 
-    logger.debug("Output directory      : {}", output_folder)
-    logger.debug("Origin station        : {}", origin_station)
-    logger.debug("Destination station   : {}", destination_station)
-    logger.debug("Departure time        : {}", departure_time)
-    logger.debug("Rounds                : {}", str(rounds))
-    logger.debug("Algorithm Variant     : {}", variant)
-    logger.debug("Criteria Config       : {}", criteria_config)
-    logger.debug("Input shared-mob      : {}", sm_feeds_path)
-    logger.debug("Preferred vehicle     : {}", preferred_vehicle)
-    logger.debug("Enable car            : {}", enable_car)
+    logger.debug("Output directory         : {}", output_folder)
+    logger.debug("Origin station           : {}", origin_station)
+    logger.debug("Destination station      : {}", destination_station)
+    logger.debug("Departure time           : {}", departure_time)
+    logger.debug("Rounds                   : {}", str(rounds))
+    logger.debug("Algorithm Variant        : {}", variant)
+    logger.debug("Criteria Config          : {}", criteria_config)
+    logger.debug("Enable use of shared-mob : {}", enable_sm)
+    logger.debug("Input shared-mob         : {}", sm_feeds_path)
+    logger.debug("Preferred vehicle        : {}", preferred_vehicle)
+    logger.debug("Enable car               : {}", enable_car)
 
     # Input check
     if origin_station == destination_station:
