@@ -148,12 +148,12 @@ class StopVisualization(object):
     @arr.setter
     def arr(self, seconds: int):
         """ Convert seconds number to hour """
-        self._arr = sec2str(seconds)
+        self._arr = sec2str(seconds) if seconds is not None else None
 
     @dep.setter
     def dep(self, seconds: int):
         """ Convert seconds number to hour """
-        self._dep = sec2str(seconds)
+        self._dep = sec2str(seconds) if seconds is not None else None
 
     def add_to(self, trip_visualization: TripVisualization):
         trip_visualization.put_marker(
@@ -228,6 +228,8 @@ class TripVisualization:
         self.legs: List[Leg] = legs
         self.map_: Map = Map(location=list(self._mean_point))
         self.map_.fit_bounds(self.bounds)  # to visualize
+        self._add_stops()
+        self._add_moves()
 
     @property
     def stops(self) -> List[Stop]:
@@ -251,9 +253,11 @@ class TripVisualization:
         """ Adds journey stops to map """
         visualizers: Mapping[Stop, StopVisualization] = {stop: StopVisualization(stop) for stop in self.stops}
 
+
         for leg in self.legs:
             visualizers[leg.from_stop].dep = leg.dep
             visualizers[leg.to_stop].arr = leg.arr
+        
 
         for vis in visualizers.values():
             vis.add_to(trip_visualization=self)
