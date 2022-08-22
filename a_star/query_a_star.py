@@ -11,6 +11,8 @@ import os
 import uuid
 import argparse
 from typing import Dict
+from preprocessing import get_heuristic
+from preprocessing import read_adjacency
 
 import a_star
 
@@ -33,7 +35,7 @@ def parse_arguments():
         "-i",
         "--input",
         type=str,
-        default="data/output",
+        default="data/output/milan",
         help="Input directory",
     )
     parser.add_argument(
@@ -57,7 +59,7 @@ def parse_arguments():
         "-o",
         "--output",
         type=str,
-        default="data/output",
+        default="data/output/milan/a_star",
         help="Output directory",
     )
 
@@ -86,17 +88,21 @@ def main(
 
     timetable = read_timetable(input_folder)
 
+    heuristic = get_heuristic(destination_station, timetable)
+    adjacency_list = read_adjacency(output_folder) # todo non ho ancora capito se funziona
+
     logger.info(f"Calculating network from: {origin_station}")
 
-    # Departure time seconds
+    # Departure time in seconds
     dep_secs = str2sec(departure_time)
     logger.debug("Departure time (s.)  : " + str(dep_secs))
 
     # Find route between two stations
-    # qua tira raptor
+    graph = a_star.Graph(adjacency_list, heuristic)
+    graph.a_star_algorithm(origin_station, destination_station)
 
     # Print journey to destination
-    # qua stampa il viaggio trovato scritto
+        # qua stampa il viaggio trovato scritto
 
     # Save the algorithm output
     # algo_output = AlgorithmOutput(
@@ -108,9 +114,8 @@ def main(
     # AlgorithmOutput.save(output_dir=output_folder,
     #                      algo_output=algo_output)
 
-    heu = a_star.get_heuristic(destination_station, timetable)
-    for key, value in heu.items():
-        print(key, ' : ', value)
+    # Todo visualizzazione in folium penso di doverlo adattare
+
 
 if __name__ == "__main__":
     args = parse_arguments()
@@ -121,3 +126,12 @@ if __name__ == "__main__":
         destination_station=args.destination,
         departure_time=args.time
     )
+
+
+    # todo adattare l'algoritmo
+    # uso il tempo come peso, bisogna calcolare i tempi "buchi" di attesa
+    # todo fargli stampare il percorso trovato
+    # todo stampare su folium
+    # raptor normale non tiene conto del numero di cambi --> ottimizza solo il tempo, puo fare anche tanti cambi
+    # transfers ci sta il tempo di percorrenza in secondi --> devo dire all'algoritmo di considerare i transfers a piedi
+    # euristica e peso non stessa scala --> calcolo tempo di percorrenza in linea d'aria (considero una velocita media)
