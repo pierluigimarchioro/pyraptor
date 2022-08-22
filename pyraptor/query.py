@@ -140,7 +140,7 @@ def _parse_arguments():
     return arguments
 
 
-def main(
+def query_raptor(
         timetable: RaptorTimetable,
         output_folder: str | bytes | os.PathLike,
         origin_station: str,
@@ -155,6 +155,9 @@ def main(
         enable_car: bool
 ):
     """
+    Queries the RAPTOR algorithm with the provided parameters and saves its output in the
+    specified output folder.
+
     :param timetable: timetable
     :param output_folder: folder where the algorithm output is saved
     :param variant: variant of the algorithm to run
@@ -162,7 +165,8 @@ def main(
     :param destination_station: name of the station to arrive at
     :param departure_time: departure time in the format %H:%M:%S
     :param rounds: number of iterations to perform
-    :param criteria_config: path to the criteria configuration file
+    :param criteria_config: path to the criteria configuration file.
+        Ignored if variant is not multi-criteria.
     :param enable_sm: if True, shared mobility data is included in the itinerary computation.
         If False, provided shared mob data is ignored
     :param sm_feeds_path: path to the shared mob configuration file
@@ -293,7 +297,8 @@ def _handle_raptor_variant(
     :param origin_stops: collection of stops to depart from
     :param dep_secs: time of departure in seconds
     :param rounds: number of iterations to perform
-    :param criteria_file_path: path to the criteria configuration file
+    :param criteria_file_path: path to the criteria configuration file.
+        Ignored if variant is not multi-criteria
     :param enable_sm: if True, shared mobility data is included in the itinerary computation.
         If False, provided shared mob data is ignored
     :param feeds: share mobility feeds to include in the timetable
@@ -464,7 +469,7 @@ if __name__ == "__main__":
 
     timetable = _load_timetable(args.input)
 
-    main(
+    query_raptor(
         variant=args.variant,
         timetable=timetable,
         output_folder=args.output,
