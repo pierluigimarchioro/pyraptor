@@ -160,12 +160,12 @@ def show_journey_descriptions(algo_output_dir: str) -> flask.templating:
     algo_file: str = path.join(algo_output_dir, ALGO_OUTPUT_FILENAME)
     algo_output = AlgorithmOutput.read_from_file(filepath=algo_file)
 
-    descriptions: List[str] = []
+    descriptions: List[List[str]] = []
     for jrny in algo_output.journeys:
         desc: str = str(jrny)
         desc += "\n\n\n--------------------------------------------------------------\n\n\n"
 
-        descriptions.append(desc)
+        descriptions.append(desc.split("\n"))
 
     return render_template("journey_desc.html", descs=descriptions)
 
