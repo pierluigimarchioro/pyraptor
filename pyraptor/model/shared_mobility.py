@@ -219,7 +219,7 @@ class VehicleTransfer(Transfer):
     This class represents a generic Transfer between two
     """
 
-    # TODO can we override Transfer.get_vehicle?
+    # TODO can we override Transfer.get_vehicle? chiedere a Seba
     @staticmethod
     def get_vehicle_transfer(
             sa: RentingStation,
