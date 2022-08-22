@@ -209,14 +209,6 @@ class BaseRaptorAlgorithm(ABC, Generic[_BagType, _LabelType]):
 
         pass
 
-    def _get_transfer(self, stop_from: Stop, stop_to: Stop) -> Transfer:
-        """
-        Retrieves the transfer from a stop to another stop
-        """
-
-        transfers = self.timetable.transfers
-        return transfers.stop_to_stop_idx[(stop_from, stop_to)]
-
 
 @dataclass(frozen=True)
 class SharedMobilityConfig:
@@ -230,7 +222,7 @@ class SharedMobilityConfig:
     """If True, car transport is enabled"""
 
 
-class BaseSMRaptor(BaseRaptorAlgorithm[_BagType, _LabelType], ABC):
+class BaseSharedMobRaptor(BaseRaptorAlgorithm[_BagType, _LabelType], ABC):
     """
     Base class for RAPTOR implementations that use shared mobility data.
 
@@ -272,7 +264,7 @@ class BaseSMRaptor(BaseRaptorAlgorithm[_BagType, _LabelType], ABC):
         :param sm_config: shared mobility configuration data. Ignored if `enable_sm` is False.
         """
 
-        super(BaseSMRaptor, self).__init__(timetable=timetable)
+        super(BaseSharedMobRaptor, self).__init__(timetable=timetable)
 
         self.enable_sm = enable_sm
         self.sm_config = sm_config
@@ -294,6 +286,12 @@ class BaseSMRaptor(BaseRaptorAlgorithm[_BagType, _LabelType], ABC):
             rounds=rounds
         )
 
+        # Setup shared mob data only if enabled
+        # Important to do this BEFORE calculating immediate transfers,
+        # else there is a possibility that available shared mob station won't be included
+        if self.enable_sm:
+            self._initialize_shared_mob(origin_stops=initial_marked_stops)
+
         # Get stops immediately reachable with a transfer
         # and add them to the marked stops list
         # TODO in raptor_sm.py there is another implementation for this step. Is mine good?
@@ -304,6 +302,10 @@ class BaseSMRaptor(BaseRaptorAlgorithm[_BagType, _LabelType], ABC):
             transfers=self.timetable.transfers
         )
 
+        # Add any immediately reachable via transfer
+        if self.enable_sm:
+            self._update_visited_renting_stations(stops=immediately_reachable_stops)
+
         n_stops_1 = len(initial_marked_stops)  # debugging
 
         marked_stops = list(
@@ -311,11 +313,8 @@ class BaseSMRaptor(BaseRaptorAlgorithm[_BagType, _LabelType], ABC):
         )
 
         n_stops_2 = len(marked_stops)  # debugging
-        logger.debug(f"Added {n_stops_2 - n_stops_1} immediate stops")
-
-        # Setup shared mob data only if enabled
-        if self.enable_sm:
-            self._initialize_shared_mob(origin_stops=marked_stops)
+        logger.debug(f"Added {n_stops_2 - n_stops_1} immediate stops:\n"
+                     f"{immediately_reachable_stops}")
 
         # Run rounds
         for k in range(1, rounds + 1):
@@ -381,13 +380,16 @@ class BaseSMRaptor(BaseRaptorAlgorithm[_BagType, _LabelType], ABC):
         logger.debug(f"{len(self.no_dest)} shared-mob stops not available as destination: {self.no_dest} ")
 
         # Mark any renting station to depart from as visited
-        for s in origin_stops:
-            if (isinstance(s, RentingStation)
-                    and s not in self.visited_renting_stations):
-                self.visited_renting_stations.append(s)
+        self._update_visited_renting_stations(stops=origin_stops)
 
         logger.debug(f"Starting from {len(origin_stops)} stops "
                      f"({len(self.visited_renting_stations)} are renting stations)")
+
+    def _update_visited_renting_stations(self, stops: Iterable[Stop]):
+        for s in stops:
+            if (isinstance(s, RentingStation)
+                    and s not in self.visited_renting_stations):
+                self.visited_renting_stations.append(s)
 
     def _improve_with_shared_mob(
             self,
@@ -444,12 +446,11 @@ class BaseSMRaptor(BaseRaptorAlgorithm[_BagType, _LabelType], ABC):
         #     - just Transfers which to_stop is in `marked_renting_stations`
         #
         # List of vehicle-transfers arriving to reachable renting stations
-        t_to_new_renting_stations: List[List[VehicleTransfer]] = [
-            self.vehicle_transfers.with_to_stop(s) for s in new_renting_stations
-        ]
-        t_to_new_renting_stations: List[VehicleTransfer] = [
-            i for sub in t_to_new_renting_stations for i in sub
-        ]  # flatten
+        t_to_new_renting_stations = VehicleTransfers()
+        for r_station in new_renting_stations:
+            for v_transfer in self.vehicle_transfers.with_to_stop(r_station):
+                t_to_new_renting_stations.add(v_transfer)
+
 
         # List of departing renting stations from previous filtered vehicle-transfers
         # NOTE: vehicle transfers are generated only between known renting stations
@@ -514,7 +515,7 @@ class BaseSMRaptor(BaseRaptorAlgorithm[_BagType, _LabelType], ABC):
 
                 # 5. Validate transfer against real-time availability
                 if stop_a not in self.no_source and stop_b not in self.no_dest:
-                    self.v_transfers.add(t_ab)
+                    self.vehicle_transfers.add(t_ab)
 
     def _update_availability_info(self):
         """ Updates stops availability based on real-time query

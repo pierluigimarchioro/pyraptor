@@ -18,7 +18,7 @@ from typing import List, Tuple, Dict
 
 from loguru import logger
 
-from pyraptor.model.algos.base import BaseSMRaptor, SharedMobilityConfig
+from pyraptor.model.algos.base import BaseSharedMobRaptor, SharedMobilityConfig
 from pyraptor.model.timetable import (
     RaptorTimetable,
     Stop,
@@ -43,7 +43,7 @@ from pyraptor.model.output import Leg, Journey
 #   UPDATE: this error doesn't come up anymore, but it would be better to investigate further
 
 
-class WeightedMcRaptorAlgorithm(BaseSMRaptor[Bag, MultiCriteriaLabel]):
+class WeightedMcRaptorAlgorithm(BaseSharedMobRaptor[Bag, MultiCriteriaLabel]):
     """
     Implementation of the More Criteria RAPTOR Algorithm discussed in the original RAPTOR paper,
     with some modifications and improvements:

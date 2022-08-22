@@ -5,15 +5,15 @@ from typing import List, Tuple
 
 from loguru import logger
 
-from pyraptor.model.algos.base import BaseSMRaptor
-from pyraptor.model.timetable import Transfer
+from pyraptor.model.algos.base import BaseSharedMobRaptor
+from pyraptor.model.timetable import Transfers
 from pyraptor.model.timetable import Stop, Route, TransferTrip
 from pyraptor.model.criteria import BasicRaptorLabel, LabelUpdate, MultiCriteriaLabel
 from pyraptor.model.output import Leg, Journey
 from pyraptor.util import LARGE_NUMBER
 
 
-class RaptorAlgorithm(BaseSMRaptor[BasicRaptorLabel, BasicRaptorLabel]):
+class RaptorAlgorithm(BaseSharedMobRaptor[BasicRaptorLabel, BasicRaptorLabel]):
     """
     Implementation of the basic RAPTOR algorithm, with some improvements:
     - transfers from the origin stops are evaluated immediately to widen
@@ -137,7 +137,7 @@ class RaptorAlgorithm(BaseSMRaptor[BasicRaptorLabel, BasicRaptorLabel]):
             self,
             k: int,
             marked_stops: Iterable[Stop],
-            transfers: Iterable[Transfer]
+            transfers: Transfers
     ) -> List[Stop]:
         """
         Add transfers between platforms.
@@ -158,7 +158,7 @@ class RaptorAlgorithm(BaseSMRaptor[BasicRaptorLabel, BasicRaptorLabel]):
 
             time_sofar = self.bag_round_stop[k][current_stop].earliest_arrival_time
             for arrival_stop in other_station_stops:
-                transfer = self._get_transfer(current_stop, arrival_stop)
+                transfer = transfers.stop_to_stop_idx[(current_stop, arrival_stop)]
 
                 arrival_time_with_transfer = time_sofar + transfer.transfer_time
                 previous_earliest_arrival = self.bag_star[
