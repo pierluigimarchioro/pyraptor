@@ -241,10 +241,6 @@ class TripStopTime:
     dts_dep: int = attr.ib(default=attr.NOTHING)
     """Time of departure in seconds past midnight"""
 
-    # TODO remove since it is never set; also remove from Leg and Trip.get_fare()
-    #   Substitute with co2 and distance related attributes/getters
-    fare: float = attr.ib(default=0.0)
-
     travelled_distance: float = attr.ib(default=0.0)
     """Distance in km covered by the trip from its beginning"""
 
@@ -254,7 +250,8 @@ class TripStopTime:
     def __repr__(self):
         return (
             "TripStopTime(trip_id={hint}{trip_id}, stop_idx={0.stop_idx},"
-            " stop_id={0.stop.id}, dts_arr={0.dts_arr}, dts_dep={0.dts_dep}, fare={0.fare})"
+            " stop_id={0.stop.id}, dts_arr={0.dts_arr}, dts_dep={0.dts_dep},"
+            "travelled_distance={0.travelled_distance})"
         ).format(
             self,
             trip_id=self.trip.id if self.trip else None,
@@ -480,11 +477,6 @@ class Trip:
     def get_stop_time(self, stop: Stop) -> TripStopTime:
         """Get stop"""
         return self.stop_times[self.stop_times_index[stop]]
-
-    def get_fare(self, depart_stop: Stop) -> float:
-        """Get fare from depart_stop"""
-        stop_time = self.get_stop_time(depart_stop)
-        return 0 if stop_time is None else stop_time.fare
 
 
 class TransferTrip(Trip):
