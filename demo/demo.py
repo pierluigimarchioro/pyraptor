@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import argparse
 import json
-import subprocess
+import os.path
 import webbrowser
 from os import path
 from typing import List
@@ -11,59 +11,28 @@ import flask
 from flask import Flask, render_template, redirect, url_for, request
 from loguru import logger
 
-from generate_station_names import NAMES_FILE
+from pyraptor.dao.timetable import read_timetable
+from pyraptor.model.timetable import RaptorTimetable
+from pyraptor.query import query_raptor, RaptorVariants
+from pyraptor.visualization.folium_visualizer import visualize_output
 from pyraptor.model.output import AlgorithmOutput
-from pyraptor.util import mkdir_if_not_exists
 
 app = Flask(__name__)
 
-QUERY_DIR: str = "./../pyraptor"
-QUERY_BASE_RAPTOR: str = 'query_raptor.py'
-QUERY_BASE_RAPTOR_DIR: str = 'raptor'
-QUERY_RAPTOR_SHARED_MOB: str = 'query_raptor_sm.py'
-QUERY_RAPTOR_SHARED_MOB_DIR: str = 'raptor_sm'
-QUERY_MC_RAPTOR: str = 'query_mcraptor.py'
-QUERY_MC_RAPTOR_DIR: str = 'mc_raptor'
+DEMO_OUTPUT_DIR = './../data/output/demo'
+BASIC_RAPTOR_OUT_DIR = os.path.join(DEMO_OUTPUT_DIR, "basic")
+MC_RAPTOR_OUT_DIR = os.path.join(DEMO_OUTPUT_DIR, "mc_raptor")
 
-VISUALIZER_PATH = './../pyraptor/visualization/folium_visualizer.py'
-ALGO_OUTPUT_NAME = 'algo-output.pcl'
-DEMO_OUTPUT = './../data/output/demo'
-MC_CONFIG = 'mc_demo_config.json'
+ALGO_OUTPUT_FILENAME = 'algo-output.pcl'
+MC_CONFIG_FILENAME = 'mc_demo_config.json'
+MC_CONFIG_FILEPATH = os.path.join(MC_RAPTOR_OUT_DIR, MC_CONFIG_FILENAME)
 
-IN: str = "./../data/output"
-FEED: str = "./../data/input/gbfs.json"
-NAMES: List[str] = []
-
+INPUT_FOLDER: str = "./../data/output"
+FEED_CONFIG_PATH: str = "./../data/input/gbfs.json"
+STATION_NAMES: List[str] = []
+TIMETABLE: RaptorTimetable | None = None
 DEBUG: bool = True
-
-
-def run_script(file_name: str, flags: str):
-    cmd = f"python {file_name} {flags}"
-
-    logger.debug(f"Running script with command `{cmd}`")
-
-    if not DEBUG:
-        proc = subprocess.run(cmd, text=True, shell=True, capture_output=True)
-        if proc.returncode != 0:
-            exc = proc.stderr.split('\n')[-2]
-            raise Exception(exc)
-    else:
-        proc = subprocess.run(cmd, shell=True)
-        if proc.returncode != 0:
-            raise Exception("Internal Error")
-
-
-def visualize(dir_: str):
-    algo_file = path.join(dir_, ALGO_OUTPUT_NAME)
-    flags = f"-a {algo_file} -o {dir_} -b True"
-    run_script(file_name=VISUALIZER_PATH, flags=flags)
-
-
-def journey_desc(dir_: str) -> flask.templating:
-    algo_file: str = path.join(dir_, ALGO_OUTPUT_NAME)
-    desc: str = AlgorithmOutput.read_from_file(filepath=algo_file).journeys.print()
-    descs: List[str] = desc.split('\n')
-    return render_template("journey_desc.html", descs=descs)
+RAPTOR_ROUNDS = 5
 
 
 @app.route("/")
@@ -76,66 +45,57 @@ def home():
     return render_template('home.html')
 
 
-""" BASE RAPTOR """
+""" BASIC RAPTOR """
 
 
-@app.route("/base_raptor")
-def base_raptor():
-    return render_template('base_raptor.html', stop_names=NAMES)
+@app.route("/basic_raptor")
+def basic_raptor():
+    return render_template('basic_raptor.html', stop_names=STATION_NAMES, vehicles=['regular', 'electric', 'car'])
 
 
-@app.route("/base_raptor_run", methods=["GET", "POST"])
-def base_raptor_run():
-    if request.method == "POST":
-        # form
-        origin = request.form.get("origin")
-        destination = request.form.get("destination")
-        time = request.form.get("time")
-        # query command line
-        file = path.join(QUERY_DIR, QUERY_BASE_RAPTOR)
-        out = path.join(DEMO_OUTPUT, QUERY_BASE_RAPTOR_DIR)
-        flags = f"-i {IN} -or \"{origin}\" -d \"{destination}\" -t {time} -o {out}"
-        run_script(file_name=file, flags=flags)
-        visualize(out)
-        return journey_desc(out)
-
-
-""" SHARED MOBILITY RAPTOR """
-
-
-@app.route("/shared_mob_raptor")
-def shared_mob_raptor():
-    return render_template('shared_mob_raptor.html', stop_names=NAMES, vehicles=['regular', 'electric', 'car'])
-
-
-@app.route("/shared_mob_raptor_run", methods=["GET", "POST"])
+@app.route("/basic_raptor_run", methods=["GET", "POST"])
 def shared_mob_raptor_run():
     if request.method == "POST":
-        # form
+        # Retrieve data from the form
         origin = request.form.get("origin")
         destination = request.form.get("destination")
-        time = request.form.get("time")
-        preferred = request.form.get("preferred")
-        car = request.form.get("car") == 'on'
-        # query command line
-        file = path.join(QUERY_DIR, QUERY_RAPTOR_SHARED_MOB)
-        out = path.join(IN, QUERY_RAPTOR_SHARED_MOB_DIR)
-        flags = (f"-i {IN} -f {FEED} -or \"{origin}\" -d \"{destination}\" -t \"{time}\" -p \"{preferred}\" "
-                 f"{'-c True' if car else ''} -o {out}")
-        run_script(file_name=file, flags=flags)
-        visualize(out)
-        return journey_desc(out)
+        departure_time = request.form.get("time")
+        preferred_vehicle = request.form.get("preferred")
+        enable_car = request.form.get("car") == 'on'
+
+        query_raptor(
+            timetable=TIMETABLE,
+            output_folder=BASIC_RAPTOR_OUT_DIR,
+            origin_station=origin,
+            destination_station=destination,
+            departure_time=departure_time,
+            rounds=RAPTOR_ROUNDS,
+            variant=RaptorVariants.Basic.value,
+            enable_sm=True,
+            sm_feeds_path=FEED_CONFIG_PATH,
+            preferred_vehicle=preferred_vehicle,
+            enable_car=enable_car
+        )
+
+        visualize(BASIC_RAPTOR_OUT_DIR)
+
+        return show_journey_descriptions(algo_output_dir=BASIC_RAPTOR_OUT_DIR)
 
 
 """ WEIGHTED MULTICRITERIA RAPTOR """
 
 
-@app.route("/mc_raptor_weights")
+@app.route("/wmc_raptor")
+def mc_raptor():
+    return render_template('wmc_raptor.html', stop_names=STATION_NAMES)
+
+
+@app.route("/wmc_raptor_weights")
 def mc_raptor_weights():
-    return render_template('mc_raptor_weights.html')
+    return render_template('wmc_raptor_weights.html')
 
 
-@app.route("/mc_raptor_weights_save", methods=["GET", "POST"])
+@app.route("/wmc_raptor_weights_save", methods=["GET", "POST"])
 def mc_raptor_weights_save():
     if request.method == "POST":
         # form
@@ -147,37 +107,63 @@ def mc_raptor_weights_save():
             }
             for criteria in ['distance', 'arrival_time', 'transfers', 'co2']
         }
-        mc_dir = path.join(DEMO_OUTPUT, QUERY_MC_RAPTOR_DIR)
-        mkdir_if_not_exists(mc_dir)
-        with open(path.join(mc_dir, MC_CONFIG), 'w') as f:
+
+        with open(MC_CONFIG_FILEPATH, 'w') as f:
             json.dump(weights, f)
+
         return redirect(url_for('mc_raptor'))
 
 
-@app.route("/mc_raptor")
-def mc_raptor():
-    return render_template('mc_raptor.html', stop_names=NAMES)
-
-
-@app.route("/mc_raptor_run", methods=["GET", "POST"])
+@app.route("/wmc_raptor_run", methods=["GET", "POST"])
 def mc_raptor_run():
     if request.method == "POST":
         # form
         origin = request.form.get("origin")
         destination = request.form.get("destination")
-        time = request.form.get("time")
-        # query command line
-        file = path.join(QUERY_DIR, QUERY_MC_RAPTOR)
-        output_dir = path.join(DEMO_OUTPUT, QUERY_MC_RAPTOR_DIR)
-        mc_path = path.join(DEMO_OUTPUT, QUERY_MC_RAPTOR_DIR, MC_CONFIG)
-        flags = f"-i {IN} -or \"{origin}\" -d \"{destination}\" -t {time} -o {output_dir} -wmc True -cfg {mc_path}"
-        run_script(file_name=file, flags=flags)
-        visualize(output_dir)
-        return journey_desc(output_dir)
+        departure_time = request.form.get("time")
+
+        query_raptor(
+            timetable=TIMETABLE,
+            output_folder=MC_RAPTOR_OUT_DIR,
+            origin_station=origin,
+            destination_station=destination,
+            departure_time=departure_time,
+            rounds=RAPTOR_ROUNDS,
+            variant=RaptorVariants.WeightedMc.value,
+            criteria_config=MC_CONFIG_FILEPATH
+        )
+
+        visualize(MC_RAPTOR_OUT_DIR)
+        return show_journey_descriptions(MC_RAPTOR_OUT_DIR)
 
 
-def open_browser():
-    webbrowser.open('http://127.0.0.1:5000/')
+"""Visualization utils"""
+
+
+def visualize(algo_output_dir: str, open_browser: bool = True):
+    algo_out_path = path.join(algo_output_dir, ALGO_OUTPUT_FILENAME)
+    visualize_output(
+        algo_output_path=algo_out_path,
+        visualization_dir=algo_output_dir,
+        open_browser=open_browser
+    )
+
+
+def show_journey_descriptions(algo_output_dir: str) -> flask.templating:
+    algo_file: str = path.join(algo_output_dir, ALGO_OUTPUT_FILENAME)
+    algo_output = AlgorithmOutput.read_from_file(filepath=algo_file)
+
+    descriptions: List[str] = []
+    for jrny in algo_output.journeys:
+        desc: str = jrny.print()  # TODO implement __str__ to return just the string: print() side-effects to console
+        desc += "\n\n\n--------------------------------------------------------------\n\n\n"
+
+        descriptions.append(desc)
+
+    return render_template("journey_desc.html", descs=descriptions)
+
+
+"""Running the demo"""
 
 
 def parse_arguments():
@@ -186,14 +172,14 @@ def parse_arguments():
         "-i",
         "--input",
         type=str,
-        default=IN,
+        default=INPUT_FOLDER,
         help="Input directory containing timetable.pcl (and names.json)",
     )
     parser.add_argument(
         "-f",
         "--feed",
         type=str,
-        default=FEED,
+        default=FEED_CONFIG_PATH,
         help="Path to .json key specifying list of feeds and langs"
     )
     parser.add_argument(
@@ -208,31 +194,46 @@ def parse_arguments():
     return arguments
 
 
-def main(folder: str, feed: str, debug: bool):
-    logger.debug("Input folder     : {}", folder)
-    logger.debug("Input feed       : {}", feed)
-    logger.debug("Input debug      : {}", debug)
+def run_demo(input_folder: str, sm_feed_config_path: str, debug: bool):
+    logger.debug("Input folder            : {}", input_folder)
+    logger.debug("Input feed config path  : {}", sm_feed_config_path)
+    logger.debug("Debug mode              : {}", debug)
 
-    global IN
-    IN = folder
+    global INPUT_FOLDER
+    INPUT_FOLDER = input_folder
 
-    global FEED
-    FEED = feed
+    global FEED_CONFIG_PATH
+    FEED_CONFIG_PATH = sm_feed_config_path
 
     global DEBUG
     DEBUG = debug
 
-    names_file = path.join(folder, NAMES_FILE)
-    try:
-        global NAMES
-        NAMES = json.load(open(names_file, 'r'))['names']
-    except:
-        raise Exception(f"No {names_file} in {folder}, please run `generate_station_names`")
+    global TIMETABLE
+    TIMETABLE = read_timetable(input_folder=input_folder)
 
-    open_browser()
-    app.run(debug=True, use_reloader=False)
+    global STATION_NAMES
+    STATION_NAMES = _get_station_names(TIMETABLE)
+
+    webbrowser.open('http://127.0.0.1:5000/')
+    app.run(debug=DEBUG, use_reloader=False)
+
+
+def _get_station_names(timetable: RaptorTimetable):
+    names = [st.name.strip() for st in timetable.stations]
+    names = sorted(names, key=lambda s: s.lower())
+
+    return names
+
+
+# TODO bugs/stuff to investigate further:
+#   - query from ABBADIA LARIANA to ANZANO DEL PARCO @16:33 generates KeyError: ANZANO DEL PARCO not found
+#       -> it seems that with Trenord station names as destination, errors occur
 
 
 if __name__ == "__main__":
     args = parse_arguments()
-    main(folder=args.input, feed=args.feed, debug=args.debug)
+    run_demo(
+        input_folder=args.input,
+        sm_feed_config_path=args.feed,
+        debug=args.debug
+    )

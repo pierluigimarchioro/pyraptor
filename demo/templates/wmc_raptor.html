@@ -2,13 +2,13 @@
 <html lang="en">
 
     <head>
-        <title>Shared Mobility RAPTOR</title>
+        <title>Weighted McRAPTOR</title>
     </head>
 
     <body>
-        <h1> Shared Mobility RAPTOR </h1>
+        <h1> Weighted McRAPTOR </h1>
         <div class="container">
-            <form action="/shared_mob_raptor_run" method="POST">
+            <form action="/wmc_raptor_run" method="POST">
 
             <label>Choose origin:</label>
             <select name="origin">
@@ -30,33 +30,23 @@
             <input type="time" name="time" min="00:00" max="23:59" required>
             <br><br>
 
-            <label>Choose preferred vehicle:</label>
-            <select name="preferred">
-                {% for vehicle in vehicles %}
-                    <option  value="{{vehicle}}">{{vehicle}}</option>
-                {% endfor %}
-            </select>
-            <br><br>
-
-            <label> Use car </label>
-            <input type="checkbox" name="car" checked>
-            <br><br>
-
             <input type="submit" value="Run">
             </form>
-            <a href="home">Back</a>
+            <a href="/wmc_raptor_weights">Back</a>
         </div>
     </body>
 
 </html>
 
 <script>
+    // Set default value of time inputs to current time
     let date = new Date();
     let curr_time = String(date.getHours()).padStart(2, '0') + ":" + String(date.getMinutes()).padStart(2, '0');
-    let els = document.getElementsByTagName('input')
-    els = [].slice.call(els) // cast to array
-    let times = els.filter(el => el.type === 'time')
-    for(let time of times) {
+
+    let inputs = document.getElementsByTagName('input')
+    inputs = [].slice.call(inputs) // cast to array
+    let time_inputs = inputs.filter(el => el.type === 'time')
+    for(let time of time_inputs) {
         time.value = curr_time
     }
 </script>

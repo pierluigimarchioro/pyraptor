@@ -16,8 +16,6 @@ from pyraptor.model.timetable import Stop, Coordinates, TransportType, SHARED_MO
 from pyraptor.model.output import AlgorithmOutput, Leg
 from pyraptor.util import sec2str
 
-FILE_NAME = 'algo_output.html'
-
 
 """ Marker and Line Types"""
 
@@ -305,8 +303,10 @@ class TripVisualization:
         folium.TileLayer('cartodbpositron').add_to(self.map_)
         folium.LayerControl().add_to(self.map_)
 
+        logger.debug(f"Saving visualization to {path_}")
         self.map_.save(path_)
         if open_browser:
+            logger.debug("Opening visualization in the browser")
             path_url = 'file:///' + path.abspath(path_)
             webbrowser.open(url=path_url, new=1)
 
@@ -366,8 +366,10 @@ def visualize_output(
 
     for i, jrny in enumerate(output.journeys):
         visualization = TripVisualization(legs=jrny.legs)
+        dep = jrny.legs[0].from_stop.name
+        arr = jrny.legs[-1].from_stop.name
 
-        out_file_path = path.join(visualization_dir, f"{FILE_NAME}_{i}")
+        out_file_path = path.join(visualization_dir, f"{dep}-{arr}_{i}.html")
         visualization.save(path_=out_file_path, open_browser=open_browser)
 
 

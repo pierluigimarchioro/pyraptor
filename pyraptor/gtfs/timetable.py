@@ -112,7 +112,7 @@ def parse_arguments():
     return arguments
 
 
-def main(
+def generate_timetable(
         input_folder: str,
         output_folder: str,
         departure_date: str,
@@ -883,7 +883,7 @@ def _execute_jobs(
 
 if __name__ == "__main__":
     args = parse_arguments()
-    main(input_folder=args.input, output_folder=args.output,
-         departure_date=args.date, agencies=args.agencies,
-         shared_mobility=args.shared_mobility, feeds_path=args.feeds,
-         n_jobs=args.jobs)
+    generate_timetable(input_folder=args.input, output_folder=args.output,
+                       departure_date=args.date, agencies=args.agencies,
+                       shared_mobility=args.shared_mobility, feeds_path=args.feeds,
+                       n_jobs=args.jobs)

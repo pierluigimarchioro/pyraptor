@@ -148,11 +148,11 @@ def query_raptor(
         departure_time: str,
         rounds: int,
         variant: str,
-        criteria_config: str | bytes | os.PathLike,
-        enable_sm: bool,
-        sm_feeds_path: str | bytes | os.PathLike,
-        preferred_vehicle: str,
-        enable_car: bool
+        criteria_config: str | bytes | os.PathLike = None,
+        enable_sm: bool = False,
+        sm_feeds_path: str | bytes | os.PathLike = None,
+        preferred_vehicle: str = None,
+        enable_car: bool = None
 ):
     """
     Queries the RAPTOR algorithm with the provided parameters and saves its output in the
