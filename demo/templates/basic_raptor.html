@@ -10,39 +10,55 @@
         <div class="container">
             <form action="/basic_raptor_run" method="POST">
 
-            <label>Choose origin:</label>
-            <select name="origin">
-                {% for stop_name in stop_names %}
-                    <option  value="{{stop_name}}">{{stop_name}}</option>
-                {% endfor %}
-            </select>
-            <br><br>
+                <div id="or">
+                    <label>Choose origin:</label>
+                    <select name="origin">
+                        {% for stop_name in stop_names %}
+                        <option  value="{{stop_name}}">{{stop_name}}</option>
+                        {% endfor %}
+                    </select>
+                    <br><br>
+                </div>
 
-            <label>Choose destination:</label>
-            <select name="destination">
-                {% for stop_name in stop_names %}
-                    <option  value="{{stop_name}}">{{stop_name}}</option>
-                {% endfor %}
-            </select>
-            <br><br>
+                <div id="dest">
+                    <label>Choose destination:</label>
+                    <select name="destination">
+                        {% for stop_name in stop_names %}
+                            <option  value="{{stop_name}}">{{stop_name}}</option>
+                        {% endfor %}
+                    </select>
+                    <br><br>
+                </div>
 
-            <label>Choose departure time:</label>
-            <input type="time" name="time" min="00:00" max="23:59" required>
-            <br><br>
+                <div id="t">
+                    <label>Choose departure time:</label>
+                    <input type="time" name="time" min="00:00" max="23:59" required>
+                    <br><br>
+                </div>
 
-            <label>Choose preferred vehicle:</label>
-            <select name="preferred">
-                {% for vehicle in vehicles %}
-                    <option  value="{{vehicle}}">{{vehicle}}</option>
-                {% endfor %}
-            </select>
-            <br><br>
+                <div id="enable_sm" >
+                    <label> Use shared-mobility </label>
+                    <input id="enable_sm_checkbox" type="checkbox" name="enable_sm" checked>
+                    <br><br>
+                </div>
 
-            <label> Use car </label>
-            <input type="checkbox" name="car" checked>
-            <br><br>
+                <div id="p">
+                    <label>Choose preferred vehicle:</label>
+                        <select name="preferred">
+                            {% for vehicle in vehicles %}
+                                <option  value="{{vehicle.id_}}">{{vehicle.name}}</option>
+                            {% endfor %}
+                        </select>
+                    <br><br>
+                </div>
 
-            <input type="submit" value="Run">
+                <div id="c">
+                    <label> Use car </label>
+                    <input type="checkbox" name="car" checked>
+                    <br><br>
+                </div>
+
+                <input type="submit" value="Run">
             </form>
             <a href="/home">Back</a>
         </div>
@@ -61,4 +77,24 @@
     for(let time of time_inputs) {
         time.value = curr_time
     }
+</script>
+
+<script>
+
+    enable_sm = document.getElementById("enable_sm")
+    enable_sm_check = document.getElementById("enable_sm_checkbox")
+    preferred = document.getElementById("p")
+    car = document.getElementById("c")
+
+    enable_sm_check.addEventListener("change", (e) => {
+        if(e.target.checked) {
+            enable_sm.parentNode.insertBefore(preferred, enable_sm.nextSibling);
+            preferred.parentNode.insertBefore(car, preferred.nextSibling);
+        } else {
+            preferred.parentNode.removeChild(preferred)
+            car.parentNode.removeChild(car)
+        }
+    })
+
+
 </script>

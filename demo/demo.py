@@ -74,8 +74,13 @@ def shared_mob_raptor_run():
         origin = request.form.get("origin")
         destination = request.form.get("destination")
         departure_time = request.form.get("time")
+        enable_sm = request.form.get("enable_sm") == 'on'
         preferred_vehicle = request.form.get("preferred")
         enable_car = request.form.get("car") == 'on'
+
+        logger.debug(request.form.get("enable_sm"))
+        logger.debug(enable_sm)
+
 
         query_raptor(
             timetable=TIMETABLE,
@@ -85,7 +90,7 @@ def shared_mob_raptor_run():
             departure_time=departure_time,
             rounds=RAPTOR_ROUNDS,
             variant=RaptorVariants.Basic.value,
-            enable_sm=ENABLE_SM,
+            enable_sm=enable_sm,
             sm_feeds_path=FEED_CONFIG_PATH,
             preferred_vehicle=preferred_vehicle,
             enable_car=enable_car
