@@ -81,10 +81,6 @@ class Step(object):
         self.route_id = route_id
         self.transport_type = transport_type
 
-    def set_duration(self, duration):
-        """set a new duration value"""
-        self.duration = duration
-
 
 # def manhattan_heuristic(stop1, stop2) -> float:
 #     """
@@ -124,7 +120,7 @@ def get_heuristic(destination, timetable: RaptorTimetable) -> dict[str, float]:
     avg_speed = (14 + ((47 + 56) / 2)) / 2
 
     for st in timetable.stops:
-        heuristic[st.id] = (st.distance_from(destination) / avg_speed)*3600
+        heuristic[st.id] = (st.distance_from(timetable.stops.get_stop(destination)) / avg_speed)*3600
 
     return heuristic
 

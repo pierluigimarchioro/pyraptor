@@ -26,6 +26,7 @@ from pyraptor.model.algos.raptor import (
     best_stop_at_target_station,
 )
 from pyraptor.util import str2sec
+from pyraptor.util import sec2str
 
 
 def parse_arguments():
@@ -104,12 +105,12 @@ def main(
 
     logger.info(f"Calculating network from: {origin_station}")
 
-    # Departure time in seconds
-    dep_secs = str2sec(departure_time)
+    # Departure time
+    dep_secs = sec2str(str2sec(departure_time))
     logger.debug("Departure time (s.)  : " + str(dep_secs))
 
     # Find route between two stations
-    graph = a_star.Graph(adjacency_list, heuristic)
+    graph = a_star.Graph(adjacency_list, heuristic, timetable, str2sec(departure_time))
     graph.a_star_algorithm(origin_station, destination_station)
 
     # Print journey to destination
@@ -138,9 +139,3 @@ if __name__ == "__main__":
         departure_time=args.time
     )
 
-    # uso il tempo come peso, bisogna calcolare i tempi "buchi" di attesa
-    # todo fargli stampare il percorso trovato
-    # todo stampare su folium
-    # raptor normale non tiene conto del numero di cambi --> ottimizza solo il tempo, puo fare anche tanti cambi
-    # transfers ci sta il tempo di percorrenza in secondi --> devo dire all'algoritmo di considerare i transfers a piedi
-    # euristica e peso non stessa scala --> calcolo tempo di percorrenza in linea d'aria (considero una velocita media)
