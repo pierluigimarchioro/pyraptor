@@ -29,7 +29,7 @@ def read_timetable(input_folder: str) -> RaptorTimetable:
 
     timetable: RaptorTimetable = load_joblib("timetable")
 
-    logger.debug(timetable.counts())
+    timetable.counts()
 
     return timetable
 
