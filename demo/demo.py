@@ -123,6 +123,10 @@ def mc_raptor_weights_save():
             for criteria in ['distance', 'arrival_time', 'transfers', 'co2']
         }
 
+        logger.debug(MC_RAPTOR_OUT_DIR)
+        if not os.path.exists(MC_RAPTOR_OUT_DIR):
+            os.makedirs(MC_RAPTOR_OUT_DIR)
+
         with open(MC_CONFIG_FILEPATH, 'w') as f:
             json.dump(weights, f)
 
