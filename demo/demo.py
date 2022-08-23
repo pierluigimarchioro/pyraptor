@@ -78,10 +78,6 @@ def shared_mob_raptor_run():
         preferred_vehicle = request.form.get("preferred")
         enable_car = request.form.get("car") == 'on'
 
-        logger.debug(request.form.get("enable_sm"))
-        logger.debug(enable_sm)
-
-
         query_raptor(
             timetable=TIMETABLE,
             output_folder=BASIC_RAPTOR_OUT_DIR,
