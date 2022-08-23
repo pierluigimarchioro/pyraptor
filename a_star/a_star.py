@@ -104,3 +104,6 @@ class Graph:
 
         print('Path does not exist!')
         return None
+
+
+    # todo adattare l'algoritmo

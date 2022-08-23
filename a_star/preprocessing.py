@@ -1,9 +1,12 @@
-from loguru import logger
-import json
+from dataclasses import dataclass
 import argparse
-
+import joblib
+import os
+from loguru import logger
+from pathlib import Path
 from pyraptor.dao.timetable import read_timetable
 from pyraptor.model.timetable import RaptorTimetable
+from pyraptor.util import mkdir_if_not_exists
 
 
 def parse_arguments():
@@ -43,11 +46,20 @@ def main(
     get_adj_list(timetable, output_folder)
 
 
+@dataclass
 class Step(object):
     """
     Step object to represent the weight of an edge of the graph
     It contains information about the departure from a stop to another, the route this step is part of, and what transport is used for it
     """
+
+    stop_to = None
+    duration = None
+    departure_time = None
+    arrive_time = None
+    trip_id = None
+    route_id = None
+    transport_type = None
 
     def __init__(self, stop, duration, departure_time, arrive_time, trip_id, route_id, transport_type):
         """
@@ -117,7 +129,7 @@ def get_heuristic(destination, timetable: RaptorTimetable) -> dict[str, float]:
     return heuristic
 
 
-def get_adj_list(timetable: RaptorTimetable, output_folder):
+def get_adj_list(timetable: RaptorTimetable, output_folder) -> None:
     """
     contains all the neighbouring stops for some stop
 
@@ -126,7 +138,7 @@ def get_adj_list(timetable: RaptorTimetable, output_folder):
     :return: create adjacency list
     """
 
-    adjacency_list = {}
+    adjacency_list: dict[str, list] = {}
 
     # per ogni fermata
     #   trovo tutte le fermate che riesce a raggiungere tramite un trip
@@ -170,48 +182,64 @@ def get_adj_list(timetable: RaptorTimetable, output_folder):
     write_adjacency(output_folder, adjacency_list)
 
 
-def write_heuristic(output_folder: str, heuristic: dict[str, float]) -> None:
+# def write_heuristic(output_folder: str, heuristic: dict[str, float]) -> None:
+#     """
+#     Write the heuristic list to output directory
+#     """
+#     with open(output_folder + '/heuristic.json', 'w') as outfile:
+#         json.dump(heuristic, outfile, indent=4)
+#
+#     logger.debug("heuristic ok")
+#
+#
+# def read_heuristic(input_folder: str) -> dict[str, float]:
+#     """
+#     Read the heuristic data from the cache directory
+#     """
+#     with open(input_folder + '/heuristic.json', 'r') as file:
+#         data = json.load(file)
+#
+#     logger.debug("heuristic ok")
+#
+#     return data
+
+
+def read_adjacency(input_folder: str) -> dict[str, list]:
     """
-    Write the heuristic list to output directory
+    Read the adjacency data from the cache directory
     """
-    with open(output_folder + '/heuristic.json', 'w') as outfile:
-        json.dump(heuristic, outfile, indent=4)
 
-    logger.debug("heuristic ok")
+    def load_joblib(name):
+        logger.debug(f"Loading '{name}'")
+        with open(Path(input_folder, f"{name}.pcl"), "rb") as handle:
+            return joblib.load(handle)
+
+    if not os.path.exists(input_folder):
+        raise IOError(
+            "adjacency data not found. Run `python a_star/preprocessing.py`"
+            " first to create adjacency data from GTFS files."
+        )
+
+    logger.debug("Using cached datastructures")
+
+    adjacency_list: dict[str, list] = load_joblib("adjacency")
+
+    return adjacency_list
 
 
-def read_heuristic(input_folder: str) -> dict[str, float]:
+def write_adjacency(output_folder: str, adjacency_list: dict[str, list]) -> None:
     """
-    Read the heuristic data from the cache directory
+    Write the adjacency data to output directory
     """
-    with open(input_folder + '/heuristic.json', 'r') as file:
-        data = json.load(file)
 
-    logger.debug("heuristic ok")
+    def write_joblib(state, name):
+        with open(Path(output_folder, f"{name}.pcl"), "wb") as handle:
+            joblib.dump(state, handle)
 
-    return data
+    logger.info("Writing adjacency data to output directory")
 
-
-def write_adjacency(output_folder: str, adjacency_list) -> None:
-    """
-    Write the adjacency list to output directory
-    """
-    with open(output_folder+'/adjacency.json', 'w') as outfile:
-        json.dump(adjacency_list, outfile, indent=4)
-
-    logger.debug("adjacency ok")
-
-
-def read_adjacency(input_folder: str):
-    """
-    Read the adjacency list data from the cache directory
-    """
-    with open(input_folder+'/adjacency.json', 'r') as file:
-        data = json.load(file)
-
-    logger.debug("adjacency ok")
-
-    return data
+    mkdir_if_not_exists(output_folder)
+    write_joblib(adjacency_list, "adjacency")
 
 
 if __name__ == "__main__":
@@ -220,6 +248,3 @@ if __name__ == "__main__":
         input_folder=args.input,
         output_folder=args.output
     )
-
-# todo non va bene json
-# TypeError: Object of type Step is not JSON serializable

@@ -11,6 +11,7 @@ import os
 import uuid
 import argparse
 from typing import Dict
+from preprocessing import Step
 from preprocessing import get_heuristic
 from preprocessing import read_adjacency
 
@@ -89,7 +90,17 @@ def main(
     timetable = read_timetable(input_folder)
 
     heuristic = get_heuristic(destination_station, timetable)
-    adjacency_list = read_adjacency(output_folder) # todo non ho ancora capito se funziona
+    adjacency_list = read_adjacency(output_folder)
+
+    # todo print for debug
+    # for fermata in adjacency_list:
+    #     print("")
+    #     print("")
+    #     print("-----------------fermata: " + fermata + "-----------------")
+    #     for att in adjacency_list[fermata]:
+    #         print(att.stop_to)
+    #         print(att.duration)
+    #         print(att.arrive_time)
 
     logger.info(f"Calculating network from: {origin_station}")
 
@@ -127,8 +138,6 @@ if __name__ == "__main__":
         departure_time=args.time
     )
 
-
-    # todo adattare l'algoritmo
     # uso il tempo come peso, bisogna calcolare i tempi "buchi" di attesa
     # todo fargli stampare il percorso trovato
     # todo stampare su folium
