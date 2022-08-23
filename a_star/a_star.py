@@ -43,23 +43,25 @@ class Graph:
         # and who's neighbors have been always inspected
         open_lst = {start}
         closed_lst = set([])
-        duration = 0
-        arrival_time = self.departure
 
         # curr_dist contains current distances from start_node to all other nodes
         # the default value (if it's not found in the map) is +infinity
-        curr_dist = {start: 0}
+        curr_time = {start: self.departure}
 
         # parents contain an adjacency map of all nodes
         parents = {start: start}
+
         durations = {start: 0}
+        arrival_times = {start: self.departure}
 
         while len(open_lst) > 0:
             n = None
 
             # find a node with the lowest value of f() - evaluation function
             for v in open_lst:
-                if n is None or curr_dist[v] + self.heuristic[v] < curr_dist[n] + self.heuristic[n]:
+                if n is None or (curr_time[v] + self.heuristic[v] < curr_time[n] + self.heuristic[n]):
+                    # or (isinstance(arrival_times[v], int) and isinstance(arrival_times[n], int)
+                    #     and arrival_times[v] + self.heuristic[v] <= arrival_times[n] + self.heuristic[v])
                     n = v
 
             if n is None:
@@ -70,48 +72,69 @@ class Graph:
             # then we start again from start
             if n == stop:
                 reconst_path = []
+                duration = 0
+
+                tmp = []
 
                 while parents[n] != n:
                     reconst_path.append(self.timetable.stops.get_stop(n).name)
                     n = parents[n]
                     duration = duration + durations[n]
+
+                    tmp.append(arrival_times[n])
+
                 reconst_path.append(self.timetable.stops.get_stop(start).name)
                 reconst_path.reverse()
+                duration = duration + durations[start]
 
                 print('Path found: {}'.format(reconst_path))
                 print('duration: ', sec2str(duration))
-                print('arrival time: ', sec2str(arrival_time))
+
+                tmp.reverse()
+                print('arrival time: ', tmp)  # todo da correggere
+
                 return reconst_path
 
             # for all the neighbors of the current node do
             # Note that step is old (m, weight), m = id, weight = duration
             for step in self.get_neighbors(n):
-                # if the current node is not present in both open_lst and closed_lst
-                # add it to open_lst and note n as it's parents
-                if step.stop_to.id not in open_lst and step.stop_to.id not in closed_lst:
-                    open_lst.add(step.stop_to.id)
-                    parents[step.stop_to.id] = n
-                    curr_dist[step.stop_to.id] = curr_dist[n] + step.duration
-                    durations[step.stop_to.id] = step.duration
+                # check id it's transfer and add dep and arr time --> better not
+                # if isinstance(step.departure_time, str) and isinstance(step.arrive_time, str):
+                #     step.departure_time = arrival_times[n]
+                #     step.arrive_time = arrival_times[n] + step.duration
 
-                # otherwise, check if it's quicker to first visit n, then m
-                # and if it is, update parents data and curr_dist data
-                # and if the node was in the closed_lst, move it to open_lst
-                else:
-                    if curr_dist[step.stop_to.id] > curr_dist[n] + step.duration:
+                # if isinstance(step.departure_time, str) \
+                #         or (isinstance(step.departure_time, int) and isinstance(arrival_times[n], int)
+                #             and arrival_times[n] <= step.departure_time):
+
+                    # if the current node is not present in both open_lst and closed_lst
+                    # add it to open_lst and note n as it's parents
+                    if step.stop_to.id not in open_lst and step.stop_to.id not in closed_lst:
+                        open_lst.add(step.stop_to.id)
+
                         parents[step.stop_to.id] = n
-                        curr_dist[step.stop_to.id] = curr_dist[n] + step.duration
+                        curr_time[step.stop_to.id] = curr_time[n] + step.duration
                         durations[step.stop_to.id] = step.duration
+                        arrival_times[step.stop_to.id] = step.arrive_time
 
-                        if step.stop_to.id in closed_lst:
-                            closed_lst.remove(step.stop_to.id)
-                            open_lst.add(step.stop_to.id)
+                    # otherwise, check if it's quicker to first visit n, then m
+                    # and if it is, update parents data and curr_dist data
+                    # and if the node was in the closed_lst, move it to open_lst
+                    else:
+                        if curr_time[step.stop_to.id] > curr_time[n] + step.duration:
 
-                # todo
-                # la durata me la calcolo alla fine prendendo inizio e fine
-                # if step.arrive_time == "x":
-                #     step.arrive_time = arrival_time + curr_dist[step.stop_to.id]
-                # arrival_time = step.arrive_time
+                            parents[step.stop_to.id] = n
+                            curr_time[step.stop_to.id] = curr_time[n] + step.duration
+                            durations[step.stop_to.id] = step.duration
+                            arrival_times[step.stop_to.id] = step.arrive_time
+
+                            if step.stop_to.id in closed_lst:
+                                closed_lst.remove(step.stop_to.id)
+                                open_lst.add(step.stop_to.id)
+
+                    # todo consider to make a method instead of these 2 blocks of the same code
+                    # la durata me la calcolo alla fine prendendo inizio e fine
+                    # if step.arrive_time == "x":             to consider
 
             # remove n from the open_lst, and add it to closed_lst
             # because all of his neighbors were inspected
@@ -121,8 +144,8 @@ class Graph:
         print('Path does not exist!')
         return None
 
-# todo aggiornare tempo di arrivo e partenza quando e1 un transfer
 # todo considerare anche tempo di partenza, tempo di arrivo, tempo corrente
+# todo aggiornare tempo di arrivo e partenza quando e1 un transfer
     # uso il tempo come peso, bisogna calcolare i tempi "buchi" di attesa
 # todo salvare la sequenza di step fatti
 

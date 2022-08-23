@@ -151,8 +151,8 @@ def get_adj_list(timetable: RaptorTimetable, output_folder) -> None:
                 is_present_in_trip[arr.id] = arr
 
         # get all the next stops in the same trips of st
+        adjacency_list[st.id] = []
         for tripid, tr in is_present_in_trip.items():
-            adjacency_list[st.id] = []
             got_seq = False
             seq = -2
             dep = 0
