@@ -64,7 +64,8 @@ def home():
 
 @app.route("/basic_raptor")
 def basic_raptor():
-    return render_template('basic_raptor.html', stop_names=STATION_NAMES, vehicles=VEHICLES)
+    return render_template('raptor_form.html', stop_names=STATION_NAMES, vehicles=VEHICLES,
+                           version_name='Basic RAPTOR', action='basic_raptor_run')
 
 
 @app.route("/basic_raptor_run", methods=["GET", "POST"])
@@ -102,7 +103,8 @@ def shared_mob_raptor_run():
 
 @app.route("/wmc_raptor")
 def mc_raptor():
-    return render_template('wmc_raptor.html', stop_names=STATION_NAMES)
+    return render_template('raptor_form.html', stop_names=STATION_NAMES, vehicles=VEHICLES,
+                           version_name='Weighted McRAPTOR', action='wmc_raptor_run')
 
 
 @app.route("/wmc_raptor_weights")
@@ -140,6 +142,9 @@ def mc_raptor_run():
         origin = request.form.get("origin")
         destination = request.form.get("destination")
         departure_time = request.form.get("time")
+        enable_sm = request.form.get("enable_sm") == 'on'
+        preferred_vehicle = request.form.get("preferred")
+        enable_car = request.form.get("car") == 'on'
 
         query_raptor(
             timetable=TIMETABLE,
@@ -150,12 +155,10 @@ def mc_raptor_run():
             rounds=RAPTOR_ROUNDS,
             variant=RaptorVariants.WeightedMc.value,
             criteria_config=MC_CONFIG_FILEPATH,
-            enable_sm=ENABLE_SM,
+            enable_sm=enable_sm,
             sm_feeds_path=FEED_CONFIG_PATH,
-
-            # TODO define input in form
-            preferred_vehicle="bike",
-            enable_car=True
+            preferred_vehicle=preferred_vehicle,
+            enable_car=enable_car
         )
 
         visualize(MC_RAPTOR_OUT_DIR)
