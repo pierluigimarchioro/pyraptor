@@ -418,53 +418,30 @@ class BaseSharedMobRaptor(BaseRaptorAlgorithm[_BagType, _LabelType], ABC):
         marked_renting_stations: List[RentingStation] = filter_shared_mobility(marked_stops)
         logger.debug(f"{len(marked_renting_stations)} renting stations reachable")
 
-        # then we keep only new renting stations
-        new_renting_stations: List[RentingStation] = list(
-            set(marked_renting_stations).difference(self.visited_renting_stations)
-        )
-        logger.debug(f"New {len(new_renting_stations)} renting station reachable")
-
-        # Update visited renting stations with the new ones
-        self.visited_renting_stations = list(set(self.visited_renting_stations).union(new_renting_stations))
-
         # We add a VehicleTransfer foreach (old, new) renting station
         # (according to system_id and availability)
-        t1 = len(self.vehicle_transfers)  # debugging
+
+        new_vtrasnfers = VehicleTransfers()
 
         for old in self.visited_renting_stations:
-            for new in new_renting_stations:
-                self._add_vehicle_transfer(old, new)
+            for new in marked_renting_stations:
+                if old != new:
+                    new_vt = self._add_vehicle_transfer(stop_a=old, stop_b=new)
+                    if new_vt is not None:
+                        new_vtrasnfers.add(new_vt)
 
-        t2 = len(self.vehicle_transfers)  # debugging
-
-        logger.debug(f"New {t2 - t1} vehicle transfers created")
-
-        # We can try to improve the best arrival-time taking advantage of shared-mobility network:
-        #
-        # We consider only:
-        #     - vehicle-transfers
-        #     - just Transfers which to_stop is in `marked_renting_stations`
-        #
-        # List of vehicle-transfers arriving to reachable renting stations
-        t_to_new_renting_stations = VehicleTransfers()
-        for r_station in new_renting_stations:
-            for v_transfer in self.vehicle_transfers.with_to_stop(r_station):
-                t_to_new_renting_stations.add(v_transfer)
-
-
-        # List of departing renting stations from previous filtered vehicle-transfers
-        # NOTE: vehicle transfers are generated only between known renting stations
-        dep_to_new_renting_stations: List[RentingStation] = list(
-            set([t.from_stop for t in t_to_new_renting_stations])
-        )
+        logger.debug(f"New {len(new_vtrasnfers)} vehicle transfers created")
 
         # We can get compute transfer-time from these selected renting stations using only filtered transfers
         improved_new_renting_stations = self._improve_with_transfers(
             k=k,
-            marked_stops=dep_to_new_renting_stations,
-            transfers=t_to_new_renting_stations
+            marked_stops=self.visited_renting_stations,
+            transfers=new_vtrasnfers
         )
         logger.debug(f"{len(improved_new_renting_stations)} transferable renting stations improved")
+
+        # Update visited renting stations with the new ones
+        self.visited_renting_stations = list(set(self.visited_renting_stations).union(marked_renting_stations))
 
         # Part 5
         # `renting_stations_from_trip_improved` contains all improved renting-stations
@@ -479,7 +456,7 @@ class BaseSharedMobRaptor(BaseRaptorAlgorithm[_BagType, _LabelType], ABC):
 
         return marked_shared_mob_stops
 
-    def _add_vehicle_transfer(self, stop_a: RentingStation, stop_b: RentingStation):
+    def _add_vehicle_transfer(self, stop_a: RentingStation, stop_b: RentingStation) -> VehicleTransfer:
         """ Given two stop adds associated outdoor vehicle-transfer
             to a vehicles transfers depending on availability and system belongings
 
@@ -506,7 +483,6 @@ class BaseSharedMobRaptor(BaseRaptorAlgorithm[_BagType, _LabelType], ABC):
                     best_t_type = self.sm_config.preferred_vehicle
                 # 3.2. else the fastest transport type is chosen # TODO different possible criteria
                 else:
-                    # TODO before it was np.argmin(). why?
                     ind = np.argmax([VEHICLE_SPEED[t_type] for t_type in common_t_types])
                     best_t_type = common_t_types[ind]
 
@@ -515,7 +491,7 @@ class BaseSharedMobRaptor(BaseRaptorAlgorithm[_BagType, _LabelType], ABC):
 
                 # 5. Validate transfer against real-time availability
                 if stop_a not in self.no_source and stop_b not in self.no_dest:
-                    self.vehicle_transfers.add(t_ab)
+                    return t_ab
 
     def _update_availability_info(self):
         """ Updates stops availability based on real-time query
@@ -531,5 +507,3 @@ class BaseSharedMobRaptor(BaseRaptorAlgorithm[_BagType, _LabelType], ABC):
 
         self.no_source: List[RentingStation] = [i for sub in no_source_ for i in sub]  # flatten
         self.no_dest: List[RentingStation] = [i for sub in no_dest_ for i in sub]  # flatten
-
-        self.v_transfers = VehicleTransfers()
