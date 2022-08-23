@@ -19,6 +19,15 @@ from pyraptor.model.output import AlgorithmOutput
 
 app = Flask(__name__)
 
+
+class Option:
+    """ This class is helpful to iterate on both
+        class field in Jinja for-loop """
+    def __init__(self, id_: str, name: str):
+        self.id_: str = id_
+        self.name: str = name
+
+
 DEMO_OUTPUT_DIR = './../data/output/demo'
 BASIC_RAPTOR_OUT_DIR = os.path.join(DEMO_OUTPUT_DIR, "basic")
 MC_RAPTOR_OUT_DIR = os.path.join(DEMO_OUTPUT_DIR, "mc_raptor")
@@ -34,6 +43,10 @@ TIMETABLE: RaptorTimetable | None = None
 DEBUG: bool = True
 ENABLE_SM: bool = False
 RAPTOR_ROUNDS = 5
+
+VEHICLES = [Option(id_=id_, name=name) for id_, name in [
+    ('regular', 'Regular bike'), ('electric', 'Electric bike'), ('car', 'Car')
+]]
 
 
 @app.route("/")
@@ -51,7 +64,7 @@ def home():
 
 @app.route("/basic_raptor")
 def basic_raptor():
-    return render_template('basic_raptor.html', stop_names=STATION_NAMES, vehicles=['regular', 'electric', 'car'])
+    return render_template('basic_raptor.html', stop_names=STATION_NAMES, vehicles=VEHICLES)
 
 
 @app.route("/basic_raptor_run", methods=["GET", "POST"])
