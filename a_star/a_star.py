@@ -58,7 +58,6 @@ class Graph:
         parents = {start: start}
 
         durations = {start: 0}
-        arrival_times = {start: self.departure}
 
         to_delete = 0
         while len(open_lst) > 0:
@@ -83,13 +82,13 @@ class Graph:
                 while parents[n] != n:
                     path_found.append(self.timetable.stops.get_stop(n).name)
                     duration = duration + durations[n]
-                    times.append(arrival_times[n])
+                    times.append(curr_time[n])
                     n = parents[n]
 
                 path_found.append(self.timetable.stops.get_stop(start).name)
                 path_found.reverse()
                 duration = duration + durations[start]
-                times.append(arrival_times[start])
+                times.append(curr_time[start])
                 times.reverse()
 
                 print('Path found: {}'.format(path_found))
@@ -107,7 +106,7 @@ class Graph:
                 #     print("time found") # problema che non trova da qua bisceglie qt8
 
                 if not self.is_int(step.departure_time) \
-                        or arrival_times[n] <= step.departure_time:
+                        or curr_time[n] <= step.departure_time:
 
                     # if the current node is not present in both open_lst and closed_lst
                     # add it to open_lst and note n as it's parents
@@ -115,10 +114,8 @@ class Graph:
                         open_lst.add(step.stop_to.id)
 
                         if self.is_int(step.arrive_time):  # this cover all hours and waiting time
-                            arrival_times[step.stop_to.id] = step.arrive_time
                             curr_time[step.stop_to.id] = step.arrive_time  # old: curr_time[n] + step.duration
                         else:
-                            arrival_times[step.stop_to.id] = curr_time[n] + step.duration
                             curr_time[step.stop_to.id] = curr_time[n] + step.duration
                         parents[step.stop_to.id] = n
                         durations[step.stop_to.id] = step.duration  # waiting time is not added
@@ -131,10 +128,8 @@ class Graph:
                                 and curr_time[step.stop_to.id] > curr_time[n] + step.duration):
 
                             if self.is_int(step.arrive_time):
-                                arrival_times[step.stop_to.id] = step.arrive_time
                                 curr_time[step.stop_to.id] = step.arrive_time
                             else:
-                                arrival_times[step.stop_to.id] = curr_time[n] + step.duration
                                 curr_time[step.stop_to.id] = curr_time[n] + step.duration
                             parents[step.stop_to.id] = n
                             durations[step.stop_to.id] = step.duration
