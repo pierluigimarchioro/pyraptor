@@ -92,7 +92,6 @@ def main(
 
     heuristic = get_heuristic(destination_station, timetable)
     adjacency_list = read_adjacency(output_folder)
-    # a = adjacency_list["A_PAGANO"]
 
     logger.info(f"Calculating network from: {origin_station}")
 
@@ -105,7 +104,7 @@ def main(
     graph.a_star_algorithm(origin_station, destination_station)
 
     # Print journey to destination
-    # qua stampa il viaggio trovato scritto
+    # qua stampa il viaggio trovato scritto --> gia stampa riga 104
 
     # Save the algorithm output
     # algo_output = AlgorithmOutput(
@@ -117,7 +116,7 @@ def main(
     # AlgorithmOutput.save(output_dir=output_folder,
     #                      algo_output=algo_output)
 
-    # Todo visualizzazione in folium penso di doverlo adattare
+    # Todo visualizzazione in folium
 
 
 if __name__ == "__main__":

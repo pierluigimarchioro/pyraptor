@@ -81,9 +81,11 @@ class Graph:
 
                 while parents[n] != n:
                     path_found.append(self.timetable.stops.get_stop(n).name)
+                    print(duration)
                     duration = duration + durations[n]
                     times.append(curr_time[n])
                     n = parents[n]
+                print(duration)
 
                 path_found.append(self.timetable.stops.get_stop(start).name)
                 path_found.reverse()
@@ -100,7 +102,7 @@ class Graph:
             # for all the neighbors of the current node do
             for step in self.get_neighbors(n):
 
-                # if n == "A_CADORNA FN M1":
+                # if step.stop_to.name == "BUONARROTI" and n == "A_PAGANO":
                 #     print("found") #quando è che torna indietro a controllare? tempo di arrivo sicuro brutto
                 # if n == "A_PAGANO" and step.stop_to.name == "BUONARROTI" and step.departure_time == 44155:
                 #     print("time found") # problema che non trova da qua bisceglie qt8
@@ -124,8 +126,8 @@ class Graph:
                     # and if it is, update parents data and curr_dist data
                     # and if the node was in the closed_lst, move it to open_lst
                     else:
-                        if (self.both_int(curr_time[step.stop_to.id], curr_time[n])
-                                and curr_time[step.stop_to.id] > curr_time[n] + step.duration):
+                        if (self.is_int(step.arrive_time) and curr_time[step.stop_to.id] > step.arrive_time) \
+                                or (not self.is_int(step.arrive_time) and curr_time[step.stop_to.id] > curr_time[n] + step.duration):
 
                             if self.is_int(step.arrive_time):
                                 curr_time[step.stop_to.id] = step.arrive_time
@@ -152,4 +154,5 @@ class Graph:
         return None
 
     # todo salvare la sequenza di step fatti
-    # todo try to not use "x" ad dep_time and arr_time in transfers
+    # todo note down when route or means of transport changes
+    # todo save stop order to give as input to folium for visualization
