@@ -92,16 +92,7 @@ def main(
 
     heuristic = get_heuristic(destination_station, timetable)
     adjacency_list = read_adjacency(output_folder)
-
-    # todo print for debug
-    # for fermata in adjacency_list:
-    #     print("")
-    #     print("")
-    #     print("-----------------fermata: " + fermata + "-----------------")
-    #     for att in adjacency_list[fermata]:
-    #         print(att.stop_to)
-    #         print(att.duration)
-    #         print(att.arrive_time)
+    # a = adjacency_list["A_PAGANO"]
 
     logger.info(f"Calculating network from: {origin_station}")
 
@@ -114,7 +105,7 @@ def main(
     graph.a_star_algorithm(origin_station, destination_station)
 
     # Print journey to destination
-        # qua stampa il viaggio trovato scritto
+    # qua stampa il viaggio trovato scritto
 
     # Save the algorithm output
     # algo_output = AlgorithmOutput(

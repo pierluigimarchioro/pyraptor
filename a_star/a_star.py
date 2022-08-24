@@ -60,69 +60,70 @@ class Graph:
         durations = {start: 0}
         arrival_times = {start: self.departure}
 
+        to_delete = 0
         while len(open_lst) > 0:
             n = None
 
-            # find a node with the lowest value of f() - evaluation function
+            # find a node with the lowest value of f() - evaluation function, earliest arrival time
             for v in open_lst:
                 if n is None \
-                        or (self.both_int(curr_time[v], curr_time[n])
-                            and curr_time[v] + self.heuristic[v] < curr_time[n] + self.heuristic[n]):
+                        or curr_time[v] + self.heuristic[v] < curr_time[n] + self.heuristic[n]:
                     n = v
 
-            if n is None:
+            if n is None:  # to delete, it should impossible to reached
                 print('Path does not exist!')
                 return None
 
-            # if the current node is the stop
-            # then we start again from start
+            # if the current node is the stop print journey
             if n == stop:
-                reconst_path = []
+                path_found = []
                 duration = 0
                 times = []
 
                 while parents[n] != n:
-                    reconst_path.append(self.timetable.stops.get_stop(n).name)
+                    path_found.append(self.timetable.stops.get_stop(n).name)
                     duration = duration + durations[n]
                     times.append(arrival_times[n])
                     n = parents[n]
 
-                reconst_path.append(self.timetable.stops.get_stop(start).name)
-                reconst_path.reverse()
+                path_found.append(self.timetable.stops.get_stop(start).name)
+                path_found.reverse()
                 duration = duration + durations[start]
                 times.append(arrival_times[start])
                 times.reverse()
 
-                print('Path found: {}'.format(reconst_path))
+                print('Path found: {}'.format(path_found))
                 print('duration: ', sec2str(duration))
                 print('arrival time: ', times)
 
-                return reconst_path
+                return path_found
 
             # for all the neighbors of the current node do
             for step in self.get_neighbors(n):
-                # todo check waiting time
+
+                # if n == "A_CADORNA FN M1":
+                #     print("found") #quando è che torna indietro a controllare? tempo di arrivo sicuro brutto
+                # if n == "A_PAGANO" and step.stop_to.name == "BUONARROTI" and step.departure_time == 44155:
+                #     print("time found") # problema che non trova da qua bisceglie qt8
 
                 if not self.is_int(step.departure_time) \
-                        or (self.both_int(step.departure_time, arrival_times[n])
-                            and arrival_times[n] <= step.departure_time) \
-                        or (not self.is_int(arrival_times[n]) and self.departure <= step.departure_time):
+                        or arrival_times[n] <= step.departure_time:
 
                     # if the current node is not present in both open_lst and closed_lst
                     # add it to open_lst and note n as it's parents
                     if step.stop_to.id not in open_lst and step.stop_to.id not in closed_lst:
                         open_lst.add(step.stop_to.id)
 
-                        if self.is_int(step.arrive_time):  # this cover all hours
-                            curr_time[step.stop_to.id] = step.arrive_time  # original: curr_time[n] + step.duration
+                        if self.is_int(step.arrive_time):  # this cover all hours and waiting time
                             arrival_times[step.stop_to.id] = step.arrive_time
+                            curr_time[step.stop_to.id] = step.arrive_time  # old: curr_time[n] + step.duration
                         else:
-                            curr_time[step.stop_to.id] = curr_time[n] + step.duration
                             arrival_times[step.stop_to.id] = curr_time[n] + step.duration
+                            curr_time[step.stop_to.id] = curr_time[n] + step.duration
                         parents[step.stop_to.id] = n
-                        durations[step.stop_to.id] = step.duration
+                        durations[step.stop_to.id] = step.duration  # waiting time is not added
 
-                    # otherwise, check if it's quicker to first visit n, then m
+                    # otherwise, check if it's quicker to first visit n, than step
                     # and if it is, update parents data and curr_dist data
                     # and if the node was in the closed_lst, move it to open_lst
                     else:
@@ -130,19 +131,23 @@ class Graph:
                                 and curr_time[step.stop_to.id] > curr_time[n] + step.duration):
 
                             if self.is_int(step.arrive_time):
-                                curr_time[step.stop_to.id] = step.arrive_time
                                 arrival_times[step.stop_to.id] = step.arrive_time
+                                curr_time[step.stop_to.id] = step.arrive_time
                             else:
-                                curr_time[step.stop_to.id] = curr_time[n] + step.duration
                                 arrival_times[step.stop_to.id] = curr_time[n] + step.duration
+                                curr_time[step.stop_to.id] = curr_time[n] + step.duration
                             parents[step.stop_to.id] = n
                             durations[step.stop_to.id] = step.duration
                             # todo consider to make a method instead of these 2 blocks of the same code
 
                             if step.stop_to.id in closed_lst:
-                                closed_lst.remove(step.stop_to.id)
                                 open_lst.add(step.stop_to.id)
+                                closed_lst.remove(step.stop_to.id)
 
+            # if to_delete == 138:
+            #     print()
+            print(n, to_delete)
+            to_delete = to_delete+1
             # remove n from the open_lst, and add it to closed_lst
             # because all of his neighbors were inspected
             open_lst.remove(n)
