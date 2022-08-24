@@ -1,27 +1,4 @@
-from collections import deque
-import geopy
-import numpy as np
-import pandas as pd
-import pathos.pools as p
-from loguru import logger
-from typing import List, Iterable, Any, NamedTuple, Tuple, Callable, Dict, TypeVar
-import itertools
-import json
-import math
-import os
-import uuid
-import argparse
-from typing import Dict
-
-from pyraptor.dao.timetable import read_timetable
 from pyraptor.model.timetable import RaptorTimetable
-from pyraptor.model.output import Journey, AlgorithmOutput
-from pyraptor.model.algos.raptor import (
-    RaptorAlgorithm,
-    reconstruct_journey,
-    best_stop_at_target_station,
-)
-from pyraptor.util import str2sec
 from pyraptor.util import sec2str
 
 
@@ -34,9 +11,6 @@ class Graph:
 
     def is_int(self, v):
         return isinstance(v, int)
-
-    def both_int(self, v1, v2):
-        return self.is_int(v1) and self.is_int(v2)
 
     def get_neighbors(self, v):
         return self.adjacency_list[v]
@@ -59,7 +33,6 @@ class Graph:
 
         durations = {start: 0}
 
-        to_delete = 0
         while len(open_lst) > 0:
             n = None
 
@@ -81,11 +54,9 @@ class Graph:
 
                 while parents[n] != n:
                     path_found.append(self.timetable.stops.get_stop(n).name)
-                    print(duration)
                     duration = duration + durations[n]
                     times.append(curr_time[n])
                     n = parents[n]
-                print(duration)
 
                 path_found.append(self.timetable.stops.get_stop(start).name)
                 path_found.reverse()
@@ -101,11 +72,8 @@ class Graph:
 
             # for all the neighbors of the current node do
             for step in self.get_neighbors(n):
-
-                # if step.stop_to.name == "BUONARROTI" and n == "A_PAGANO":
-                #     print("found") #quando è che torna indietro a controllare? tempo di arrivo sicuro brutto
                 # if n == "A_PAGANO" and step.stop_to.name == "BUONARROTI" and step.departure_time == 44155:
-                #     print("time found") # problema che non trova da qua bisceglie qt8
+                #     print("time found")
 
                 if not self.is_int(step.departure_time) \
                         or curr_time[n] <= step.departure_time:
@@ -141,10 +109,6 @@ class Graph:
                                 open_lst.add(step.stop_to.id)
                                 closed_lst.remove(step.stop_to.id)
 
-            # if to_delete == 138:
-            #     print()
-            print(n, to_delete)
-            to_delete = to_delete+1
             # remove n from the open_lst, and add it to closed_lst
             # because all of his neighbors were inspected
             open_lst.remove(n)
@@ -156,3 +120,4 @@ class Graph:
     # todo salvare la sequenza di step fatti
     # todo note down when route or means of transport changes
     # todo save stop order to give as input to folium for visualization
+    # todo duration doesn't count waiting time
