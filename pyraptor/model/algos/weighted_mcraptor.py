@@ -13,7 +13,7 @@ than L2 in any criterion.
 from __future__ import annotations
 
 import os.path
-from collections.abc import Mapping, Iterable
+from collections.abc import Iterable
 from typing import List, Tuple, Dict
 
 from loguru import logger
@@ -32,10 +32,8 @@ from pyraptor.model.criteria import (
     CriteriaProvider,
     ArrivalTimeCriterion,
     LabelUpdate,
-    pareto_set,
     DEFAULT_ORIGIN_TRIP
 )
-from pyraptor.model.output import Leg, Journey
 
 
 class WeightedMcRaptorAlgorithm(BaseSharedMobRaptor[Bag, MultiCriteriaLabel]):

@@ -22,9 +22,6 @@ from pyraptor.model.timetable import RaptorTimetable, Stop, TransportType
 from pyraptor.model.output import AlgorithmOutput, get_journeys_to_destinations
 from pyraptor.util import str2sec
 
-# TODO
-#   - make McRAPTOR return journeys with intermediate legs too
-
 
 class RaptorVariants(Enum):
     """

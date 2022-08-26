@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from collections.abc import Iterable, Mapping
+from collections.abc import Iterable
 from typing import List, Tuple
 
 from loguru import logger
@@ -8,9 +8,7 @@ from loguru import logger
 from pyraptor.model.algos.base import BaseSharedMobRaptor
 from pyraptor.model.timetable import Transfers
 from pyraptor.model.timetable import Stop, Route, TransferTrip
-from pyraptor.model.criteria import BasicRaptorLabel, LabelUpdate, MultiCriteriaLabel
-from pyraptor.model.output import Leg, Journey
-from pyraptor.util import LARGE_NUMBER
+from pyraptor.model.criteria import BasicRaptorLabel, LabelUpdate
 
 
 class RaptorAlgorithm(BaseSharedMobRaptor[BasicRaptorLabel, BasicRaptorLabel]):
