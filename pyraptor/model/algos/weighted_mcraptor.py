@@ -24,7 +24,7 @@ from pyraptor.model.timetable import (
     Stop,
     Route,
     TransferTrip,
-    Transfer
+    Transfers
 )
 from pyraptor.model.criteria import (
     Bag,
@@ -36,11 +36,6 @@ from pyraptor.model.criteria import (
     DEFAULT_ORIGIN_TRIP
 )
 from pyraptor.model.output import Leg, Journey
-
-
-# TODO setting transfers weight to 0 breaks the query script
-#   because it says "max recursion depth exceeded". Maybe too many journeys?
-#   UPDATE: this error doesn't come up anymore, but it would be better to investigate further
 
 
 class WeightedMcRaptorAlgorithm(BaseSharedMobRaptor[Bag, MultiCriteriaLabel]):
@@ -219,7 +214,7 @@ class WeightedMcRaptorAlgorithm(BaseSharedMobRaptor[Bag, MultiCriteriaLabel]):
             self,
             k: int,
             marked_stops: Iterable[Stop],
-            transfers: Iterable[Transfer]
+            transfers: Transfers
     ) -> List[Stop]:
         marked_stops_transfers = set()
 
@@ -233,7 +228,7 @@ class WeightedMcRaptorAlgorithm(BaseSharedMobRaptor[Bag, MultiCriteriaLabel]):
                 # Create temp copy of B_k(p_i)
                 temp_bag = Bag()
                 for label in self.bag_round_stop[k][current_stop].labels:
-                    transfer = self._get_transfer(current_stop, other_stop)
+                    transfer = transfers.stop_to_stop_idx[(current_stop, other_stop)]
 
                     # Update label with new transfer trip, because the arrival time
                     # at other_stop is better with said trip
