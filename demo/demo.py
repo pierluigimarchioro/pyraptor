@@ -12,6 +12,13 @@ from flask import Flask, render_template, redirect, url_for, request
 from loguru import logger
 
 from pyraptor.dao.timetable import read_timetable
+from pyraptor.model.criteria import (
+    CriteriaProvider,
+    ArrivalTimeCriterion,
+    TransfersCriterion,
+    DistanceCriterion,
+    EmissionsCriterion
+)
 from pyraptor.model.timetable import RaptorTimetable
 from pyraptor.query import query_raptor, RaptorVariants
 from pyraptor.visualization.folium_visualizer import visualize_output
@@ -109,7 +116,25 @@ def wmc_raptor():
 
 @app.route("/wmc_raptor_weights")
 def wmc_raptor_weights():
-    return render_template('wmc_raptor_weights.html')
+    criteria_provider = CriteriaProvider(criteria_config_path=MC_CONFIG_FILEPATH)
+
+    try:
+        criteria = criteria_provider.get_criteria()
+    except FileNotFoundError:
+        criteria = [
+            ArrivalTimeCriterion(name="arrival_time", weight=1, upper_bound=86400, raw_value=0),
+            TransfersCriterion(name="transfers", weight=1, upper_bound=10, raw_value=0),
+            DistanceCriterion(name="distance", weight=1, upper_bound=50, raw_value=0),
+            ArrivalTimeCriterion(name="co2", weight=1, upper_bound=3000, raw_value=0)
+        ]
+
+    criteria_by_name = {c.name: c for c in criteria}
+
+    return render_template('wmc_raptor_weights.html',
+                           arrival_time=criteria_by_name["arrival_time"],
+                           transfers=criteria_by_name["transfers"],
+                           distance=criteria_by_name["distance"],
+                           co2=criteria_by_name["co2"])
 
 
 @app.route("/wmc_raptor_weights_save", methods=["GET", "POST"])
