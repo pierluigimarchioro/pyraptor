@@ -13,7 +13,7 @@ from time import sleep
 import pandas as pd
 from loguru import logger
 
-import pyraptor.gtfs.io as io
+import pyraptor.timetable.io as io
 
 from pyraptor.model.output import AlgorithmOutput
 from pyraptor.util import sec2str
@@ -146,7 +146,7 @@ class OTPVisualizer:
 
         io.save_gtfs(gtfs_tables=to_save,
                      out_dir=self._working_dir,
-                     gtfs_filename="visualization.gtfs.zip")
+                     gtfs_filename="visualization.timetable.zip")
 
         return self._get_journey_info(stops_table=to_save["stops"])
 

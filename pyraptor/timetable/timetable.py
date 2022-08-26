@@ -21,7 +21,7 @@ from loguru import logger
 from pathos.helpers.pp_helper import ApplyResult
 from pathos.helpers import cpu_count
 
-from pyraptor.dao import write_timetable
+from pyraptor.timetable.io import write_timetable
 from pyraptor.model.timetable import (
     RaptorTimetable,
     Stop,
@@ -56,6 +56,10 @@ class GtfsTimetable(TimetableInfo):
     transfers: pd.DataFrame = None
 
 
+TIMETABLE_FILENAME = "timetable"
+SHARED_MOB_TIMETABLE_FILENAME = "timetable_sm"
+
+
 def parse_arguments():
     """Parse command line arguments"""
     parser = argparse.ArgumentParser()
@@ -63,7 +67,7 @@ def parse_arguments():
         "-i",
         "--input",
         type=str,
-        default="data/input/NL-gtfs",
+        default="data/input/NL-timetable",
         help="Input directory",
     )
     parser.add_argument(
@@ -144,7 +148,13 @@ def generate_timetable(
         add_shared_mobility_to_pyraptor_timetable(timetable, feeds_path, n_jobs)
     timetable.counts()
 
-    write_timetable(output_folder, timetable)
+    # This is so there is no need to generate the timetable each time
+    #  we want/do not want sm data
+    if shared_mobility:
+        timetable_name = SHARED_MOB_TIMETABLE_FILENAME
+    else:
+        timetable_name = TIMETABLE_FILENAME
+    write_timetable(output_folder=output_folder, timetable=timetable, timetable_name=timetable_name)
 
 
 class CalendarHandler:
@@ -517,9 +527,9 @@ def gtfs_to_pyraptor_timetable(
         gtfs_timetable: GtfsTimetable,
         n_jobs: int) -> RaptorTimetable:
     """
-    Converts gtfs timetable to data structures suitable for the RAPTOR algorithm.
+    Converts timetable timetable to data structures suitable for the RAPTOR algorithm.
 
-    :param gtfs_timetable: gtfs timetable instance
+    :param gtfs_timetable: timetable timetable instance
     :param n_jobs: number of parallel jobs to run
     :return: RAPTOR timetable
     """

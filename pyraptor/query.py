@@ -12,7 +12,8 @@ from typing import Dict, List, Tuple, Callable
 
 from loguru import logger
 
-from pyraptor.dao.timetable import read_timetable
+from pyraptor.timetable.io import read_timetable
+from pyraptor.timetable.timetable import TIMETABLE_FILENAME, SHARED_MOB_TIMETABLE_FILENAME
 from pyraptor.model.algos.base import SharedMobilityConfig
 from pyraptor.model.algos.raptor import RaptorAlgorithm
 from pyraptor.model.algos.weighted_mcraptor import WeightedMcRaptorAlgorithm
@@ -346,16 +347,23 @@ def _handle_raptor_variant(
     return variant_switch[variant]()
 
 
-def _load_timetable(input_folder: str) -> RaptorTimetable:
-    logger.debug("Input directory       : {}", input_folder)
+def _load_timetable(input_folder: str, enable_sm: bool) -> RaptorTimetable:
+    logger.debug("Loading timetable...")
+    logger.debug("Input directory         : {}", input_folder)
+    logger.debug("Enable Shared Mob       : {}", input_folder)
 
-    return read_timetable(input_folder)
+    if enable_sm:
+        timetable_name = SHARED_MOB_TIMETABLE_FILENAME
+    else:
+        timetable_name = TIMETABLE_FILENAME
+
+    return read_timetable(input_folder=input_folder, timetable_name=timetable_name)
 
 
 if __name__ == "__main__":
     args = _parse_arguments()
 
-    timetable = _load_timetable(args.input)
+    timetable = _load_timetable(args.input, args.enable_sm)
 
     query_raptor(
         variant=args.variant,

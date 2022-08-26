@@ -1,12 +1,15 @@
 from __future__ import annotations
 
 import os
+from pathlib import Path
 from typing import Dict, List
 from zipfile import ZipFile
 
+import joblib
 import pandas as pd
 from loguru import logger
 
+from pyraptor.model.timetable import RaptorTimetable
 from pyraptor.util import mkdir_if_not_exists
 
 
@@ -52,8 +55,8 @@ def save_gtfs(gtfs_tables: Dict[str, pd.DataFrame],
 
     :param gtfs_tables: dictionary of pandas dataframe;
         keys are dataframe in name and values are relative pandas dataframe
-    :param out_dir: path of dir to save gtfs files
-    :param gtfs_filename: name of the gtfs file that will be created in the provided output directory
+    :param out_dir: path of dir to save timetable files
+    :param gtfs_filename: name of the timetable file that will be created in the provided output directory
     """
 
     mkdir_if_not_exists(out_dir)
@@ -68,12 +71,12 @@ def save_gtfs(gtfs_tables: Dict[str, pd.DataFrame],
 
 def tables_to_gtfs(tables_dir: str, gtfs_filename: str, out_dir: str = None):
     """
-    Given a path to a directory containing gtfs .txt tables, saves them into a .gtfs file.
+    Given a path to a directory containing timetable .txt tables, saves them into a .timetable file.
     Such file is created inside the provided directory.
 
     :param tables_dir: path of directory where the .txt table files are saved
-    :param gtfs_filename: name of gtfs file that will be created as output
-    :param out_dir: directory to write the gtfs archive to.
+    :param gtfs_filename: name of timetable file that will be created as output
+    :param out_dir: directory to write the timetable archive to.
         If None, then the provided table directory is used instead
     """
 
@@ -84,7 +87,7 @@ def tables_to_gtfs(tables_dir: str, gtfs_filename: str, out_dir: str = None):
     gtfs_dir = tables_dir if out_dir is None else out_dir
     gtfs_path = os.path.join(gtfs_dir, gtfs_filename)
 
-    # Delete previous .gtfs archive in order to overwrite it,
+    # Delete previous .timetable archive in order to overwrite it,
     # else there would be problems when zipping the folder
     try:
         logger.debug(f"Removing {gtfs_path}")
@@ -167,3 +170,44 @@ def _zip_directory(zip_path: str, dir_path: str):
 
     _zip_arcnames_dict(zip_path=zip_path,
                        paths_with_arcnames=arcnames)
+
+
+def read_timetable(input_folder: str, timetable_name: str) -> RaptorTimetable:
+    """
+    Read the timetable data from the cache directory
+    """
+
+    def load_joblib(name):
+        logger.debug(f"Loading '{name}'")
+        with open(Path(input_folder, f"{name}.pcl"), "rb") as handle:
+            return joblib.load(handle)
+
+    if not os.path.exists(input_folder):
+        raise IOError(
+            "PyRaptor timetable not found. Run `python pyraptor/timetable/timetable.py`"
+            " first to create timetable from GTFS files."
+        )
+
+    logger.debug("Using cached datastructures")
+
+    timetable: RaptorTimetable = load_joblib(timetable_name)
+
+    timetable.counts()
+
+    return timetable
+
+
+def write_timetable(output_folder: str, timetable_name: str, timetable: RaptorTimetable) -> None:
+    """
+    Write the timetable to output directory
+    """
+
+    def write_joblib(state, name):
+        with open(Path(output_folder, f"{name}.pcl"), "wb") as handle:
+            joblib.dump(state, handle)
+
+    logger.info("Writing PyRaptor timetable to output directory")
+
+    mkdir_if_not_exists(output_folder)
+    write_joblib(timetable, timetable_name)
+
