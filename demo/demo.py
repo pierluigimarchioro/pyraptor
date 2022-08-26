@@ -11,13 +11,13 @@ import flask
 from flask import Flask, render_template, redirect, url_for, request
 from loguru import logger
 
-from pyraptor.dao.timetable import read_timetable
+from pyraptor.timetable.io import read_timetable
+from pyraptor.timetable.timetable import SHARED_MOB_TIMETABLE_FILENAME, TIMETABLE_FILENAME
 from pyraptor.model.criteria import (
     CriteriaProvider,
     ArrivalTimeCriterion,
     TransfersCriterion,
-    DistanceCriterion,
-    EmissionsCriterion
+    DistanceCriterion
 )
 from pyraptor.model.timetable import RaptorTimetable
 from pyraptor.query import query_raptor, RaptorVariants
@@ -72,7 +72,8 @@ def home():
 @app.route("/basic_raptor")
 def basic_raptor():
     return render_template('raptor_form.html', stop_names=STATION_NAMES, vehicles=VEHICLES,
-                           version_name='Basic RAPTOR', action='basic_raptor_run')
+                           version_name='Basic RAPTOR', action='basic_raptor_run',
+                           enable_sm=ENABLE_SM)
 
 
 @app.route("/basic_raptor_run", methods=["GET", "POST"])
@@ -82,7 +83,6 @@ def basic_raptor_run():
         origin = request.form.get("origin")
         destination = request.form.get("destination")
         departure_time = request.form.get("time")
-        enable_sm = request.form.get("enable_sm") == 'on'
         preferred_vehicle = request.form.get("preferred")
         enable_car = request.form.get("car") == 'on'
 
@@ -94,7 +94,7 @@ def basic_raptor_run():
             departure_time=departure_time,
             rounds=RAPTOR_ROUNDS,
             variant=RaptorVariants.Basic.value,
-            enable_sm=enable_sm,
+            enable_sm=ENABLE_SM,
             sm_feeds_path=FEED_CONFIG_PATH,
             preferred_vehicle=preferred_vehicle,
             enable_car=enable_car
@@ -111,7 +111,8 @@ def basic_raptor_run():
 @app.route("/wmc_raptor")
 def wmc_raptor():
     return render_template('raptor_form.html', stop_names=STATION_NAMES, vehicles=VEHICLES,
-                           version_name='Weighted McRAPTOR', action='wmc_raptor_run')
+                           version_name='Weighted McRAPTOR', action='wmc_raptor_run',
+                           enable_sm=ENABLE_SM)
 
 
 @app.route("/wmc_raptor_weights")
@@ -167,7 +168,6 @@ def wmc_raptor_run():
         origin = request.form.get("origin")
         destination = request.form.get("destination")
         departure_time = request.form.get("time")
-        enable_sm = request.form.get("enable_sm") == 'on'
         preferred_vehicle = request.form.get("preferred")
         enable_car = request.form.get("car") == 'on'
 
@@ -180,7 +180,7 @@ def wmc_raptor_run():
             rounds=RAPTOR_ROUNDS,
             variant=RaptorVariants.WeightedMc.value,
             criteria_config=MC_CONFIG_FILEPATH,
-            enable_sm=enable_sm,
+            enable_sm=ENABLE_SM,
             sm_feeds_path=FEED_CONFIG_PATH,
             preferred_vehicle=preferred_vehicle,
             enable_car=enable_car
@@ -274,8 +274,13 @@ def run_demo(input_folder: str, sm_feed_config_path: str, enable_sm: bool, debug
     global ENABLE_SM
     ENABLE_SM = enable_sm
 
+    if ENABLE_SM:
+        timetable_name = SHARED_MOB_TIMETABLE_FILENAME
+    else:
+        timetable_name = TIMETABLE_FILENAME
+
     global TIMETABLE
-    TIMETABLE = read_timetable(input_folder=input_folder)
+    TIMETABLE = read_timetable(input_folder=input_folder, timetable_name=timetable_name)
 
     global STATION_NAMES
     STATION_NAMES = _get_station_names(TIMETABLE)

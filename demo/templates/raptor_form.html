@@ -36,11 +36,8 @@
                     <br><br>
                 </div>
 
-                <div id="enable_sm" >
-                    <label> Use shared-mobility </label>
-                    <input id="enable_sm_checkbox" type="checkbox" name="enable_sm" checked>
-                    <br><br>
-                </div>
+                <!-- Show shared mob input only if shared mob is enabled-->
+                {% if enable_sm %}
 
                 <div id="p">
                     <label>Choose preferred vehicle:</label>
@@ -57,6 +54,8 @@
                     <input type="checkbox" name="car" checked>
                     <br><br>
                 </div>
+
+                {% endif %}
 
                 <input type="submit" value="Run">
             </form>
@@ -77,24 +76,4 @@
     for(let time of time_inputs) {
         time.value = curr_time
     }
-</script>
-
-<script>
-
-    enable_sm = document.getElementById("enable_sm")
-    enable_sm_check = document.getElementById("enable_sm_checkbox")
-    preferred = document.getElementById("p")
-    car = document.getElementById("c")
-
-    enable_sm_check.addEventListener("change", (e) => {
-        if(e.target.checked) {
-            enable_sm.parentNode.insertBefore(preferred, enable_sm.nextSibling);
-            preferred.parentNode.insertBefore(car, preferred.nextSibling);
-        } else {
-            preferred.parentNode.removeChild(preferred)
-            car.parentNode.removeChild(car)
-        }
-    })
-
-
 </script>
