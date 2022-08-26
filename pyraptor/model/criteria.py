@@ -480,9 +480,6 @@ class TransfersNumberCriterion(Criterion):
     Class that represents and handles calculations for the number of transfers criterion.
     A transfer is defined as a change of trip, excluding the initial change that happens
     at the origin stops to board the first trip.
-    # TODO transfers on foot are not counted towards final number?
-        this is based on the assumption that on foot transfers are very short and are based on
-        the transfers.txt table, which connects stations that are close to each other
     """
 
     def __str__(self):
