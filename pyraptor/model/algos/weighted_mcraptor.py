@@ -182,12 +182,7 @@ class WeightedMcRaptorAlgorithm(BaseSharedMobRaptor[Bag, MultiCriteriaLabel]):
                     )
                     if earliest_trip is not None:
                         # Update label with the earliest trip in route leaving from this station
-                        # If trip is different, we board the trip at current_stop, else
-                        #   the trip is still boarded at the old boarding stop
-                        if label.trip != earliest_trip:
-                            boarding_stop = current_stop
-                        else:
-                            boarding_stop = label.boarding_stop
+                        boarding_stop = current_stop
 
                         # This update is just "temporary", meaning that we board the
                         # current trip at the current stop and also arrive at the current_stop,
@@ -270,81 +265,3 @@ class WeightedMcRaptorAlgorithm(BaseSharedMobRaptor[Bag, MultiCriteriaLabel]):
         logger.debug(f"{len(marked_stops_transfers)} transferable stops added")
 
         return list(marked_stops_transfers)
-
-
-def best_legs_to_destination_station(
-        to_stops: Iterable[Stop], last_round_bag: Mapping[Stop, Bag]
-) -> List[Leg]:
-    """
-    Find the last legs to destination station that are reached by non-dominated labels.
-    """
-
-    # Find all labels to target_stops
-    best_labels = [
-        (stop, label) for stop in to_stops for label in last_round_bag[stop].labels
-    ]
-
-    # TODO Use merge function on Bag
-    # Pareto optimal labels
-    pareto_optimal_labels = pareto_set([label for (_, label) in best_labels])
-    pareto_optimal_labels: List[Tuple[Stop, MultiCriteriaLabel]] = [
-        (stop, label) for (stop, label) in best_labels if label in pareto_optimal_labels
-    ]
-
-    # Label to leg, i.e. add to_stop
-    legs = [
-        Leg(
-            from_stop=label.boarding_stop,
-            to_stop=to_stop,
-            trip=label.trip,
-            criteria=label.criteria
-        )
-        for to_stop, label in pareto_optimal_labels
-    ]
-    return legs
-
-
-def reconstruct_journeys(
-        from_stops: Iterable[Stop],
-        destination_legs: List[Leg],
-        best_labels: Mapping[Stop, Bag]
-) -> List[Journey]:
-    """
-    Construct Journeys for destinations from bags by recursively
-    looping from destination to origin.
-    """
-
-    def loop(best_labels: Mapping[Stop, Bag], journeys: List[Journey]):
-        """Create full journey by prepending legs recursively"""
-
-        for jrny in journeys:
-            current_leg = jrny[0]
-
-            # End of journey if we are at origin stop or journey is not feasible
-            if current_leg.trip is None or current_leg.from_stop in from_stops:
-                jrny = jrny.remove_empty_legs()
-
-                # Journey is valid if leg k ends before the start of leg k+1
-                if jrny.is_valid() is True:
-                    yield jrny
-                continue
-
-            # Loop trough each new leg. These are the legs that come before the current and that lead to from_stop
-            labels_to_from_stop = best_labels[current_leg.from_stop].labels
-            for new_label in labels_to_from_stop:
-                new_leg = Leg(
-                    from_stop=new_label.boarding_stop,
-                    to_stop=current_leg.from_stop,
-                    trip=new_label.trip,
-                    criteria=new_label.criteria
-                )
-                # Only prepend new_leg if compatible before current leg, e.g. earlier arrival time, etc.
-                if new_leg.is_compatible_before(current_leg):
-                    new_jrny = jrny.prepend_leg(new_leg)
-                    for i in loop(best_labels, [new_jrny]):
-                        yield i
-
-    journeys = [Journey(legs=[leg]) for leg in destination_legs]
-    journeys = [jrny for jrny in loop(best_labels, journeys)]
-
-    return journeys
