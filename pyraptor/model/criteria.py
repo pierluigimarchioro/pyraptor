@@ -475,7 +475,7 @@ DEFAULT_ORIGIN_TRIP = None
 """Trip initially assigned to the origin stops of a journey"""
 
 
-class TransfersNumberCriterion(Criterion):
+class TransfersCriterion(Criterion):
     """
     Class that represents and handles calculations for the number of transfers criterion.
     A transfer is defined as a change of trip, excluding the initial change that happens
@@ -485,7 +485,7 @@ class TransfersNumberCriterion(Criterion):
     def __str__(self):
         return f"Total Transfers: {self.raw_value}"
 
-    def update(self, data: LabelUpdate) -> TransfersNumberCriterion:
+    def update(self, data: LabelUpdate) -> TransfersCriterion:
         # The leg counter is updated only if
         # - there is a trip change (new != old) and
         #       the old isn't the initial trip (origin trip)
@@ -499,7 +499,7 @@ class TransfersNumberCriterion(Criterion):
             if from_stop.station == to_stop.station:
                 add_new_leg = False
 
-        return TransfersNumberCriterion(
+        return TransfersCriterion(
             name=self.name,
             weight=self.weight,
             raw_value=self.raw_value if not add_new_leg else self.raw_value + 1,
@@ -546,7 +546,7 @@ class CriteriaProvider:
             "distance": DistanceCriterion,
             "arrival_time": ArrivalTimeCriterion,
             "co2": EmissionsCriterion,
-            "transfers": TransfersNumberCriterion,
+            "transfers": TransfersCriterion,
         }
 
         criteria = []
