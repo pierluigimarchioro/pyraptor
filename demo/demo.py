@@ -69,7 +69,7 @@ def basic_raptor():
 
 
 @app.route("/basic_raptor_run", methods=["GET", "POST"])
-def shared_mob_raptor_run():
+def basic_raptor_run():
     if request.method == "POST":
         # Retrieve data from the form
         origin = request.form.get("origin")
@@ -102,18 +102,18 @@ def shared_mob_raptor_run():
 
 
 @app.route("/wmc_raptor")
-def mc_raptor():
+def wmc_raptor():
     return render_template('raptor_form.html', stop_names=STATION_NAMES, vehicles=VEHICLES,
                            version_name='Weighted McRAPTOR', action='wmc_raptor_run')
 
 
 @app.route("/wmc_raptor_weights")
-def mc_raptor_weights():
+def wmc_raptor_weights():
     return render_template('wmc_raptor_weights.html')
 
 
 @app.route("/wmc_raptor_weights_save", methods=["GET", "POST"])
-def mc_raptor_weights_save():
+def wmc_raptor_weights_save():
     if request.method == "POST":
         # form
         form = request.form
@@ -132,11 +132,11 @@ def mc_raptor_weights_save():
         with open(MC_CONFIG_FILEPATH, 'w') as f:
             json.dump(weights, f)
 
-        return redirect(url_for('mc_raptor'))
+        return redirect(url_for('wmc_raptor'))
 
 
 @app.route("/wmc_raptor_run", methods=["GET", "POST"])
-def mc_raptor_run():
+def wmc_raptor_run():
     if request.method == "POST":
         # form
         origin = request.form.get("origin")
