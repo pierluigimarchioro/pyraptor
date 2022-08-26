@@ -6,10 +6,9 @@ from __future__ import annotations
 import argparse
 import json
 import os
-from collections.abc import Sequence, Mapping, Iterable
+from collections.abc import Mapping, Iterable
 from enum import Enum
-from time import perf_counter
-from typing import Dict, Any, List, Tuple, Callable
+from typing import Dict, List, Tuple, Callable
 
 from loguru import logger
 
@@ -17,10 +16,10 @@ from pyraptor.dao.timetable import read_timetable
 from pyraptor.model.algos.base import SharedMobilityConfig
 from pyraptor.model.algos.raptor import RaptorAlgorithm
 from pyraptor.model.algos.weighted_mcraptor import WeightedMcRaptorAlgorithm
-from pyraptor.model.criteria import Bag, MultiCriteriaLabel, pareto_set
+from pyraptor.model.criteria import Bag, MultiCriteriaLabel
 from pyraptor.model.shared_mobility import SharedMobilityFeed
 from pyraptor.model.timetable import RaptorTimetable, Stop, TransportType
-from pyraptor.model.output import Journey, AlgorithmOutput, Leg
+from pyraptor.model.output import AlgorithmOutput, get_journeys_to_destinations
 from pyraptor.util import str2sec
 
 # TODO
@@ -222,7 +221,7 @@ def query_raptor(
         rounds=rounds
     )
 
-    journeys_to_all_destinations = _get_journeys_to_destinations(
+    journeys_to_all_destinations = get_journeys_to_destinations(
         origin_stops=origin_stops,
         destination_stops=destination_stops,
         best_labels=best_labels
@@ -348,115 +347,6 @@ def _handle_raptor_variant(
     }
 
     return variant_switch[variant]()
-
-
-def _get_journeys_to_destinations(
-        origin_stops: Iterable[Stop],
-        destination_stops: Dict[Any, Iterable[Stop]],
-        best_labels: Mapping[Stop, Bag]
-) -> Mapping[Any, Sequence[Journey]]:
-    # Calculate journeys to all destinations
-    logger.info("Calculating journeys to all destinations")
-    s = perf_counter()
-
-    # TODO here journeys are constructed just with the first and last stop
-    #   of a leg (i.e. just beginning and end stop of each different trip)
-    #   maybe include intermediate stop to help with debug and visualization
-    journeys_to_destinations = {}
-    for destination_station_name, to_stops in destination_stops.items():
-        destination_legs = _best_legs_to_destination_station(to_stops, best_labels)
-
-        if len(destination_legs) == 0:
-            logger.debug(f"Destination '{destination_station_name}' unreachable with given parameters."
-                         f"Station stops: {to_stops}")
-            continue
-
-        journeys = _reconstruct_journeys(
-            origin_stops, destination_legs, best_labels
-        )
-        journeys_to_destinations[destination_station_name] = journeys
-
-    logger.info(f"Journey calculation time: {perf_counter() - s}")
-
-    return journeys_to_destinations
-
-
-def _best_legs_to_destination_station(
-        to_stops: Iterable[Stop], last_round_bag: Mapping[Stop, Bag]
-) -> Sequence[Leg]:
-    """
-    Find the last legs to destination station that are reached by non-dominated labels.
-    """
-
-    # Find all labels to target_stops
-    best_labels = [
-        (stop, label) for stop in to_stops for label in last_round_bag[stop].labels
-    ]
-
-    # TODO Use merge function on Bag
-    # Pareto optimal labels
-    pareto_optimal_labels = pareto_set([label for (_, label) in best_labels])
-    pareto_optimal_labels: List[Tuple[Stop, MultiCriteriaLabel]] = [
-        (stop, label) for (stop, label) in best_labels if label in pareto_optimal_labels
-    ]
-
-    # Label to leg, i.e. add to_stop
-    legs = [
-        Leg(
-            from_stop=label.boarding_stop,
-            to_stop=to_stop,
-            trip=label.trip,
-            criteria=label.criteria
-        )
-        for to_stop, label in pareto_optimal_labels
-    ]
-    return legs
-
-
-def _reconstruct_journeys(
-        from_stops: Iterable[Stop],
-        destination_legs: Iterable[Leg],
-        best_labels: Mapping[Stop, Bag]
-) -> List[Journey]:
-    """
-    Construct Journeys for destinations from bags by recursively
-    looping from destination to origin.
-    """
-
-    def loop(best_labels: Mapping[Stop, Bag], journeys: Iterable[Journey]):
-        """Create full journey by prepending legs recursively"""
-
-        for jrny in journeys:
-            current_leg = jrny[0]
-
-            # End of journey if we are at origin stop or journey is not feasible
-            if current_leg.trip is None or current_leg.from_stop in from_stops:
-                jrny = jrny.remove_empty_legs()
-
-                # Journey is valid if leg k ends before the start of leg k+1
-                if jrny.is_valid() is True:
-                    yield jrny
-                continue
-
-            # Loop trough each new leg. These are the legs that come before the current and that lead to from_stop
-            labels_to_from_stop = best_labels[current_leg.from_stop].labels
-            for new_label in labels_to_from_stop:
-                new_leg = Leg(
-                    from_stop=new_label.boarding_stop,
-                    to_stop=current_leg.from_stop,
-                    trip=new_label.trip,
-                    criteria=new_label.criteria
-                )
-                # Only prepend new_leg if compatible before current leg, e.g. earlier arrival time, etc.
-                if new_leg.is_compatible_before(current_leg):
-                    new_jrny = jrny.prepend_leg(new_leg)
-                    for i in loop(best_labels, [new_jrny]):
-                        yield i
-
-    journeys = [Journey(legs=[leg]) for leg in destination_legs]
-    journeys = [jrny for jrny in loop(best_labels, journeys)]
-
-    return journeys
 
 
 def _load_timetable(input_folder: str) -> RaptorTimetable:
