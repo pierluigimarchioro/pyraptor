@@ -301,10 +301,6 @@ def _get_station_names(timetable: RaptorTimetable):
 #       -> it seems that with Trenord station names as destination, errors occur.
 #       POSSIBLE SOLUTION: this is because Trenord actually does not have available trips,
 #           so raptor can't find anything. This edge case, however, is not handled by the demo
-#   - add enable_sm checkbox (and remove enable_sm from script args)
-#       and disable departure time input if checkbox is ticked: shared mob data is realtime only,
-#       so the departure time can only be the current one. Maybe implement check in BaseSharedMobRaptor
-#       that ignores dep_secs if enable_sm==True and logs a warning
 
 
 if __name__ == "__main__":
