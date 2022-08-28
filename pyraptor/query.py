@@ -196,6 +196,7 @@ def query_raptor(
     origin_stops = timetable.stations.get(origin_station).stops
     destination_stops = {
         st.name: timetable.stations.get_stops(st.name) for st in timetable.stations
+        if st.name == destination_station  # only true destination stops
     }
     destination_stops.pop(origin_station, None)
 
@@ -227,8 +228,12 @@ def query_raptor(
 
     # Print all the journeys to the specified destination
     destination_journeys = journeys_to_all_destinations[destination_station]
-    for j in destination_journeys:
-        j.print()
+
+    if len(destination_journeys) == 0:
+        logger.warning(f"No journeys found for destination `{destination_station}`")
+    else:
+        for j in destination_journeys:
+            j.print()
 
     algo_output = AlgorithmOutput(
         journeys=destination_journeys,
@@ -350,7 +355,7 @@ def _handle_raptor_variant(
 def _load_timetable(input_folder: str, enable_sm: bool) -> RaptorTimetable:
     logger.debug("Loading timetable...")
     logger.debug("Input directory         : {}", input_folder)
-    logger.debug("Enable Shared Mob       : {}", input_folder)
+    logger.debug("Enable Shared Mob       : {}", enable_sm)
 
     if enable_sm:
         timetable_name = SHARED_MOB_TIMETABLE_FILENAME
