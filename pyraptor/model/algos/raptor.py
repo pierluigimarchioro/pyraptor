@@ -30,9 +30,9 @@ class RaptorAlgorithm(BaseSharedMobRaptor[BasicRaptorLabel, BasicRaptorLabel]):
         # This bag is used as a side-collection to efficiently retrieve
         # the earliest arrival time for each reachable stop at round k.
         # Look for "local pruning" in the Microsoft paper for a better description.
-        self.bag_star = {}
+        self.best_bag = {}
         for s in self.timetable.stops:
-            self.bag_star[s] = BasicRaptorLabel()
+            self.best_bag[s] = BasicRaptorLabel()
 
         # Initialize bags with starting stops taking dep_secs to reach
         # Remember that dep_secs is the departure_time expressed in seconds
@@ -42,7 +42,7 @@ class RaptorAlgorithm(BaseSharedMobRaptor[BasicRaptorLabel, BasicRaptorLabel]):
             departure_label = BasicRaptorLabel(earliest_arrival_time=dep_secs)
 
             self.bag_round_stop[0][s] = departure_label
-            self.bag_star[s] = departure_label
+            self.best_bag[s] = departure_label
 
             marked_stops.append(s)
 
@@ -101,7 +101,7 @@ class RaptorAlgorithm(BaseSharedMobRaptor[BasicRaptorLabel, BasicRaptorLabel]):
                             arrival_stop=current_stop,
                             old_trip=arrival_label.trip,
                             new_trip=current_trip,
-                            best_labels=self.bag_star
+                            best_labels=self.best_bag
                         )
                         self._update_arrival_label(update_data=update_data, k=k)
 
@@ -166,7 +166,7 @@ class RaptorAlgorithm(BaseSharedMobRaptor[BasicRaptorLabel, BasicRaptorLabel]):
                 transfer = transfers.stop_to_stop_idx[(current_stop, arrival_stop)]
 
                 arrival_time_with_transfer = time_sofar + transfer.transfer_time
-                previous_earliest_arrival = self.bag_star[
+                previous_earliest_arrival = self.best_bag[
                     arrival_stop
                 ].earliest_arrival_time
 
@@ -211,4 +211,4 @@ class RaptorAlgorithm(BaseSharedMobRaptor[BasicRaptorLabel, BasicRaptorLabel]):
 
         # Assign the updated label to the bags
         self.bag_round_stop[k][update_data.arrival_stop] = arrival_label
-        self.bag_star[update_data.arrival_stop] = arrival_label
+        self.best_bag[update_data.arrival_stop] = arrival_label
