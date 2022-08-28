@@ -486,18 +486,10 @@ class TransfersCriterion(Criterion):
         return f"Total Transfers: {self.raw_value}"
 
     def update(self, data: LabelUpdate) -> TransfersCriterion:
-        # The leg counter is updated only if
+        # The transfer counter is updated only if:
         # - there is a trip change (new != old) and
         #       the old isn't the initial trip (origin trip)
-        # - the new trip isn't a transfer between stops of the same station
         add_new_leg = data.new_trip != data.old_trip and data.old_trip != DEFAULT_ORIGIN_TRIP
-        if add_new_leg and isinstance(data.new_trip, TransferTrip):
-            # Transfer trips refer to movements between just two stops
-            from_stop = data.new_trip.stop_times[0].stop
-            to_stop = data.new_trip.stop_times[1].stop
-
-            if from_stop.station == to_stop.station:
-                add_new_leg = False
 
         return TransfersCriterion(
             name=self.name,
