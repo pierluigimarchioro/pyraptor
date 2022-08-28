@@ -179,8 +179,17 @@ class WeightedMcRaptorAlgorithm(BaseSharedMobRaptor[Bag, MultiCriteriaLabel]):
                         label.get_earliest_arrival_time(), current_stop
                     )
                     if earliest_trip is not None:
-                        # Update label with the earliest trip in route leaving from this station
-                        boarding_stop = current_stop
+                        # If the trip is different from the previous one, we board the trip
+                        #   at current_stop, else the trip is still boarded at the old boarding stop.
+                        # This basically results in consecutive stops of the same journey
+                        #   only pointing to the first stop of each different trip in the journey,
+                        #   as opposed to pointing to each intermediate stop of each different trip.
+                        if label.trip != earliest_trip:
+                            boarding_stop = current_stop
+                        else:
+                            boarding_stop = label.boarding_stop
+
+                        # TODO keep only updated labels compatible with the best labels at the boarding stop
 
                         # This update is just "temporary", meaning that we board the
                         # current trip at the current stop and also arrive at the current_stop,

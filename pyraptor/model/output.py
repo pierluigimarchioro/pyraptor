@@ -49,6 +49,10 @@ class Leg:
             raise Exception(f"No arrival time for to_stop: {self.to_stop}.\n"
                             f"Current Leg: {self}. \n Original Error: {ex}")
 
+    @property
+    def total_cost(self) -> float:
+        return sum(self.criteria, start=0.0)
+
     def is_same_station_transfer(self) -> bool:
         """
         Returns true if the current instance is a transfer leg between stops
@@ -61,15 +65,15 @@ class Leg:
     def is_compatible_before(self, other_leg: Leg) -> bool:
         """
         Check if Leg is allowed before another leg, that is if the accumulated value of
-        the criteria of the current leg is larger or equal to the accumulated value of
+        the criteria of the current leg is less or equal to the accumulated value of
         those of the other leg (current leg is instance of this class).
         E.g. Leg X+1 criteria must be >= their counter-parts in Leg X, because
-        Leg X+1 comes later.
+            Leg X+1 comes later.
         """
 
         criteria_compatible = np.all(
-            np.array([c for c in other_leg.criteria])
-            >= np.array([c for c in self.criteria])
+            np.array([c.raw_value for c in other_leg.criteria])
+            >= np.array([c.raw_value for c in self.criteria])
         )
 
         return all([criteria_compatible])
@@ -90,6 +94,9 @@ class Leg:
             to_platform_code=self.to_stop.platform_code,
             criteria=self.criteria
         )
+
+    def __str__(self):
+        return f"From {self.from_stop} to {self.to_stop} | Criteria: {self.criteria}"
 
 
 @dataclass(frozen=True)
@@ -208,7 +215,8 @@ class Journey:
         """
 
         for index in range(len(self.legs) - 1):
-            if self.legs[index].arr > self.legs[index + 1].dep:
+            if not self.legs[index].is_compatible_before(self.legs[index + 1]):
+                logger.warning(f"Journey not valid:\n {self}")  # TODO debug
                 return False
         return True
 
@@ -337,7 +345,8 @@ def _best_legs_to_destination_station(
 def _reconstruct_journeys(
         from_stops: Iterable[Stop],
         destination_legs: Iterable[Leg],
-        best_labels: Mapping[Stop, Bag]
+        best_labels: Mapping[Stop, Bag],
+        add_intermediate_stops: bool = True
 ) -> List[Journey]:
     """
     Construct Journeys for destinations from bags by recursively
@@ -348,10 +357,10 @@ def _reconstruct_journeys(
         """Create full journey by prepending legs recursively"""
 
         for jrny in journeys:
-            current_leg = jrny[0]
+            later_leg = jrny[0]
 
             # End of journey if we are at origin stop or journey is not feasible
-            if current_leg.trip is None or current_leg.from_stop in from_stops:
+            if later_leg.trip is None or later_leg.from_stop in from_stops:
                 jrny = jrny.remove_empty_legs()
 
                 # Journey is valid if leg k ends before the start of leg k+1
@@ -360,17 +369,51 @@ def _reconstruct_journeys(
                 continue
 
             # Loop trough each new leg. These are the legs that come before the current and that lead to from_stop
-            labels_to_from_stop = best_labels[current_leg.from_stop].labels
+            labels_to_from_stop = best_labels[later_leg.from_stop].labels
             for new_label in labels_to_from_stop:
-                new_leg = Leg(
+                full_earlier_leg = Leg(
                     from_stop=new_label.boarding_stop,
-                    to_stop=current_leg.from_stop,
+                    to_stop=later_leg.from_stop,
                     trip=new_label.trip,
                     criteria=new_label.criteria
                 )
-                # Only prepend new_leg if compatible before current leg, e.g. earlier arrival time, etc.
-                if new_leg.is_compatible_before(current_leg):
-                    new_jrny = jrny.prepend_leg(new_leg)
+
+                # TODO checking for compatibility unfortunately can't be generalized:
+                #   there are some real world constraints like arrival time that have to be accounted for
+                # Only add the new leg if compatible before current leg, e.g. earlier arrival time, etc.
+                if full_earlier_leg.is_compatible_before(later_leg):
+                    # Generate and add the intermediate legs before the first stop of the new leg
+                    if add_intermediate_stops:
+                        new_jrny = jrny
+                        prev_leg = later_leg
+                        first_stop_reached: bool = False
+
+                        while not first_stop_reached:
+                            # The first intermediate stop is the one that comes before
+                            # the last stop of the previous intermediate leg
+                            intermediate_stop_idx = (full_earlier_leg.trip.stop_times_index[prev_leg.from_stop] - 1)
+                            intermediate_stop = full_earlier_leg.trip[intermediate_stop_idx].stop
+                            intermediate_leg = Leg(
+                                from_stop=intermediate_stop,
+                                to_stop=prev_leg.from_stop,
+                                trip=full_earlier_leg.trip,
+
+                                # Setting the criteria to be the same ones of the current leg
+                                # (and not specifically retrieving them from best labels) is fine,
+                                # since the compatibility between consecutive legs is maintained
+                                criteria=later_leg.criteria
+                            )
+                            new_jrny = new_jrny.prepend_leg(intermediate_leg)
+
+                            prev_leg = intermediate_leg
+
+                            # Stop adding intermediate legs when the first stop of the leg is reached
+                            if intermediate_leg.from_stop == new_label.boarding_stop:
+                                first_stop_reached = True
+                    else:
+                        # Only add the full leg if intermediate stops flag is False
+                        new_jrny = jrny.prepend_leg(full_earlier_leg)
+
                     for i in loop(best_labels, [new_jrny]):
                         yield i
 

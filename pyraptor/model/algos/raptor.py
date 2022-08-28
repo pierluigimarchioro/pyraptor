@@ -123,8 +123,15 @@ class RaptorAlgorithm(BaseSharedMobRaptor[BasicRaptorLabel, BasicRaptorLabel]):
                         and previous_earliest_arrival_time
                         <= earliest_trip_stop_time.dts_dep
                 ):
+                    # If the trip is different from the previous one, we board the trip
+                    #   at current_stop, else the trip is still boarded at the old boarding stop.
+                    # This basically results in consecutive stops of the same journey
+                    #   only pointing to the first stop of each different trip in the journey,
+                    #   as opposed to pointing to each intermediate stop of each different trip.
+                    if earliest_trip_stop_time.trip != current_trip:
+                        boarding_stop = current_stop
+
                     current_trip = earliest_trip_stop_time.trip
-                    boarding_stop = current_stop
 
         logger.debug(f"- Evaluations    : {n_evaluations}")
         logger.debug(f"- Improvements   : {n_improvements}")

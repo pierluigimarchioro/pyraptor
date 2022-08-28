@@ -448,7 +448,7 @@ class Trip:
             stop_times=len(self.stop_times),
         )
 
-    def __getitem__(self, n):
+    def __getitem__(self, n: int) -> TripStopTime:
         return self.stop_times[n]
 
     def __len__(self):
@@ -472,10 +472,6 @@ class Trip:
 
         self.stop_times.append(stop_time)
         self.stop_times_index[stop_time.stop] = len(self.stop_times) - 1
-
-    def get_stop(self, stop: Stop) -> TripStopTime:
-        """Get stop"""
-        return self.stop_times[self.stop_times_index[stop]]
 
     def get_stop_time(self, stop: Stop) -> TripStopTime:
         """Get stop"""
