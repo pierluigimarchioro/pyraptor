@@ -15,7 +15,7 @@ from pyraptor.model.shared_mobility import (
     filter_shared_mobility,
     VehicleTransfers,
     VehicleTransfer,
-    TRANSPORT_TYPE_SPEEDS)
+    TRANSPORT_TYPE_SPEEDS, RaptorTimetableSM)
 from pyraptor.model.timetable import RaptorTimetable, Route, Stop, TransportType, Transfer
 
 _BagType = TypeVar("_BagType")
@@ -228,6 +228,10 @@ class BaseSharedMobRaptor(BaseRaptorAlgorithm[_BagType, _LabelType], ABC):
     # TODO explain how shared mob is used in RAPTOR
     """
 
+    timetable: RaptorTimetableSM
+    """RAPTOR timetable, containing stops, routes, trips and transfers data,
+    as well as shared mobility transfer data"""
+
     enable_sm: bool
     """If True, shared mobility data is included in the itinerary computation"""
 
@@ -249,7 +253,7 @@ class BaseSharedMobRaptor(BaseRaptorAlgorithm[_BagType, _LabelType], ABC):
 
     def __init__(
             self,
-            timetable: RaptorTimetable,
+            timetable: RaptorTimetableSM,
             enable_sm: bool = False,
             sm_config: SharedMobilityConfig = None
     ):
