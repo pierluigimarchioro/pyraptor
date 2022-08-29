@@ -156,15 +156,12 @@ class Criterion(ABC):
     This value maintains is expressed in the original unit of measurement.
     """
 
+    # TODO explain the two ways the upper_bound can be used
     upper_bound: float
     """
     Maximum value allowed for this criterion.
     Such threshold is also used to scale the raw value into the [0,1] range.
     """
-
-    # TODO If the raw value surpasses this threshold, the associated label should be discarded
-    #   How to enforce maximum values? set a high cost? add a `upper_bound_surpassed` flag to discard the label?
-    #   Or just filter the itineraries in post-processing (this I don't like)
 
     @property
     def cost(self) -> float:
@@ -177,8 +174,6 @@ class Criterion(ABC):
         """
 
         if self.raw_value > self.upper_bound:
-            # TODO is this correct way to enforce upper bound?
-            #   see above
             return LARGE_NUMBER
         else:
             return self.weight * (self.raw_value / self.upper_bound)  # lower bound is always 0
