@@ -4,23 +4,21 @@ Script that allows to execute queries with all the RAPTOR algorithm variants.
 from __future__ import annotations
 
 import argparse
-import json
 import os
 from collections.abc import Mapping, Iterable
 from enum import Enum
-from typing import Dict, List, Tuple, Callable
+from typing import Dict, Callable
 
 from loguru import logger
 
-from pyraptor.timetable.io import read_timetable
-from pyraptor.timetable.timetable import TIMETABLE_FILENAME, SHARED_MOB_TIMETABLE_FILENAME
 from pyraptor.model.algos.base import SharedMobilityConfig
 from pyraptor.model.algos.raptor import RaptorAlgorithm
 from pyraptor.model.algos.weighted_mcraptor import WeightedMcRaptorAlgorithm
 from pyraptor.model.criteria import Bag, MultiCriteriaLabel
-from pyraptor.model.shared_mobility import SharedMobilityFeed
-from pyraptor.model.timetable import RaptorTimetable, Stop, TransportType
 from pyraptor.model.output import AlgorithmOutput, get_journeys_to_destinations
+from pyraptor.model.timetable import RaptorTimetable, Stop, TransportType
+from pyraptor.timetable.io import read_timetable
+from pyraptor.timetable.timetable import TIMETABLE_FILENAME, SHARED_MOB_TIMETABLE_FILENAME
 from pyraptor.util import str2sec
 
 
@@ -108,14 +106,6 @@ def _parse_arguments():
         help="Enable use of shared mobility data (default False)",
     )
     parser.add_argument(
-        "-f",
-        "--feeds",
-        type=str,
-        default="data/input/gbfs.json",
-        help="Path to .json key specifying list of feeds and langs"
-             "Ignored if argument -sm is set to False"
-    )
-    parser.add_argument(
         "-p",
         "--preferred",
         type=str,
@@ -147,7 +137,6 @@ def query_raptor(
         variant: str,
         criteria_config: str | bytes | os.PathLike = None,
         enable_sm: bool = False,
-        sm_feeds_path: str | bytes | os.PathLike = None,
         preferred_vehicle: str = None,
         enable_car: bool = None
 ):
@@ -166,7 +155,6 @@ def query_raptor(
         Ignored if variant is not multi-criteria.
     :param enable_sm: if True, shared mobility data is included in the itinerary computation.
         If False, provided shared mob data is ignored
-    :param sm_feeds_path: path to the shared mob configuration file
     :param preferred_vehicle: type of preferred vehicle
     :param enable_car: car-sharing transfer enabled
     """
@@ -179,7 +167,6 @@ def query_raptor(
     logger.debug("Algorithm Variant        : {}", variant)
     logger.debug("Criteria Config          : {}", criteria_config)
     logger.debug("Enable use of shared-mob : {}", enable_sm)
-    logger.debug("Input shared-mob         : {}", sm_feeds_path)
     logger.debug("Preferred vehicle        : {}", preferred_vehicle)
     logger.debug("Enable car               : {}", enable_car)
 
@@ -200,11 +187,10 @@ def query_raptor(
     }
     destination_stops.pop(origin_station, None)
 
-    preferred_transport_type, sm_feeds = _process_shared_mob_args(
+    preferred_transport_type = _process_shared_mob_args(
         enable_sm=enable_sm,
         preferred_vehicle=preferred_vehicle,
-        enable_car=enable_car,
-        feeds_path=sm_feeds_path
+        enable_car=enable_car
     )
 
     best_labels = _handle_raptor_variant(
@@ -214,7 +200,6 @@ def query_raptor(
         dep_secs=dep_secs,
         criteria_file_path=criteria_config,
         enable_sm=enable_sm,
-        feeds=sm_feeds,
         preferred_vehicle=preferred_transport_type,
         enable_car=enable_car,
         rounds=rounds
@@ -250,15 +235,9 @@ def query_raptor(
 def _process_shared_mob_args(
         enable_sm: bool,
         preferred_vehicle: str,
-        enable_car: bool,
-        feeds_path: str
-) -> Tuple[TransportType, Iterable[SharedMobilityFeed]] | Tuple[None, None]:
+        enable_car: bool
+) -> TransportType | None:
     if enable_sm:
-        # Reading shared mobility feed
-        feed_infos: List[Dict] = json.load(open(feeds_path))['feeds']
-        feeds: List[SharedMobilityFeed] = ([SharedMobilityFeed(feed_info['url'], feed_info['lang'])
-                                            for feed_info in feed_infos])
-        logger.debug(f"{', '.join([feed.system_id for feed in feeds])} feeds retrieved successfully")
 
         # Preferred bike type
         if preferred_vehicle == 'car':
@@ -274,9 +253,9 @@ def _process_shared_mob_args(
         if preferred_vehicle == TransportType.Car and not enable_car:
             raise Exception("Preferred vehicle is car, but car-sharing transfers are disabled")
 
-        return preferred_vehicle_type, feeds
+        return preferred_vehicle_type
     else:
-        return None, None
+        return None
 
 
 def _handle_raptor_variant(
@@ -287,7 +266,6 @@ def _handle_raptor_variant(
         rounds: int,
         criteria_file_path: str,
         enable_sm: bool,
-        feeds: Iterable[SharedMobilityFeed],
         preferred_vehicle: TransportType,
         enable_car: bool
 ) -> Mapping[Stop, Bag]:
@@ -304,14 +282,12 @@ def _handle_raptor_variant(
         Ignored if variant is not multi-criteria
     :param enable_sm: if True, shared mobility data is included in the itinerary computation.
         If False, provided shared mob data is ignored
-    :param feeds: share mobility feeds to include in the timetable
     :param preferred_vehicle: type of preferred vehicle
     :param enable_car: car-sharing transfer enabled
     :return: mapping that pairs each stop with its bag of best labels
     """
 
     sm_config = SharedMobilityConfig(
-        feeds=feeds,
         preferred_vehicle=preferred_vehicle,
         enable_car=enable_car
     )
@@ -380,7 +356,6 @@ if __name__ == "__main__":
         rounds=args.rounds,
         criteria_config=args.mc_config,
         enable_sm=args.enable_sm,
-        sm_feeds_path=args.feeds,
         preferred_vehicle=args.preferred,
         enable_car=args.car
     )

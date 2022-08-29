@@ -217,8 +217,6 @@ class BaseRaptorAlgorithm(ABC, Generic[_BagType, _LabelType]):
 
 @dataclass(frozen=True)
 class SharedMobilityConfig:
-    feeds: Iterable[SharedMobilityFeed]
-    """Shared mobility data to include in the itinerary calculation"""
 
     preferred_vehicle: TransportType
     """Preferred vehicle type for shared mob transport"""
@@ -423,7 +421,7 @@ class BaseSharedMobRaptor(BaseRaptorAlgorithm[_BagType, _LabelType], ABC):
         self._update_availability_info()
         sm_feeds_info = [
             f'{feed.system_id} ({[t.name for t in feed.transport_types]})'
-            for feed in self.sm_config.feeds
+            for feed in self.timetable.shared_mobility_feeds
         ]
         logger.debug(f"Shared mobility feeds: {sm_feeds_info} ")
         logger.debug(f"{len(self.no_source)} shared-mob stops not available as source: {self.no_source} ")
@@ -547,13 +545,13 @@ class BaseSharedMobRaptor(BaseRaptorAlgorithm[_BagType, _LabelType], ABC):
         """ Updates stops availability based on real-time query
             Also clears all vehicle transfers computed """
 
-        for feed in self.sm_config.feeds:
+        for feed in self.timetable.shared_mobility_feeds:
             feed.renting_stations.update()
 
         no_source_: List[List[RentingStation]] = [feed.renting_stations.no_source for feed in
-                                                  self.sm_config.feeds]
+                                                  self.timetable.shared_mobility_feeds]
         no_dest_: List[List[RentingStation]] = [feed.renting_stations.no_destination for feed in
-                                                self.sm_config.feeds]
+                                                self.timetable.shared_mobility_feeds]
 
         self.no_source: List[RentingStation] = [i for sub in no_source_ for i in sub]  # flatten
         self.no_dest: List[RentingStation] = [i for sub in no_dest_ for i in sub]  # flatten
