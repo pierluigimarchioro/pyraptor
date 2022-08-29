@@ -123,7 +123,7 @@ class BaseRaptorAlgorithm(ABC, Generic[_BagType, _LabelType]):
 
             logger.debug(f"{len(marked_stops)} stops to evaluate in next round")
 
-        return self.best_bag
+        return self.bag_round_stop[rounds]
 
     @abstractmethod
     def _initialization(self, from_stops: Iterable[Stop], dep_secs: int, rounds: int) -> List[Stop]:
@@ -393,13 +393,22 @@ class BaseSharedMobRaptor(BaseRaptorAlgorithm[_BagType, _LabelType], ABC):
                     )
 
                     # TODO improve_with_shared_mob() call here (only if enable_sm == True)?
+                    if self.enable_sm:
+                        sm_improved_stops = self._improve_with_sm_transfers(
+                            k=current_round,
+                            marked_stops=transfer_improved_stops
+                        )
+                        transfer_improved_stops = set(transfer_improved_stops).union(sm_improved_stops)
 
                     transfer_improved_route_stops = [(r, s) for r, s in transfer_improved_route_stops
                                                      if len(set(r.stops).intersection(transfer_improved_stops)) > 0]
+
+                # Apply the results of the convergence step to the last actual RAPTOR round
+                self.bag_round_stop[rounds] = copy(self.bag_round_stop[len(self.bag_round_stop) - 1])
                 
             logger.debug(f"{len(marked_stops)} stops to evaluate in next round")
 
-        return self.best_bag
+        return self.bag_round_stop[rounds]
 
     def _initialize_shared_mob(self, origin_stops: Sequence[Stop]):
         """
