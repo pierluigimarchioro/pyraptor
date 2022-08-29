@@ -7,7 +7,7 @@
  
 <body>
  
-    <div class="container">
+    <div class="raptor_variants">
         <p>Home</p>
         <ul>
             <li>
@@ -18,6 +18,20 @@
             </li>
         </ul>
     </div>
+
+    <div id="sm_enabling">
+        <label> Enable shared mobility </label>
+        <input type="checkbox" name="enable_sm" id="enable_sm" {% if enable_sm %} checked {% endif %}>
+        <br><br>
+    </div>
+
 </body>
- 
+
+<script>
+    enable_sm = document.getElementById("enable_sm")
+    enable_sm.addEventListener("change", (e) => {
+        location.href = 'switch_enable_sm';
+    })
+</script>
+
 </html>

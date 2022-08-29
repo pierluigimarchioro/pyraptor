@@ -11,6 +11,7 @@ import flask
 from flask import Flask, render_template, redirect, url_for, request
 from loguru import logger
 
+from pyraptor.model.shared_mobility import RaptorTimetableSM
 from pyraptor.timetable.io import read_timetable
 from pyraptor.timetable.timetable import SHARED_MOB_TIMETABLE_FILENAME, TIMETABLE_FILENAME
 from pyraptor.model.criteria import (
@@ -45,9 +46,11 @@ MC_CONFIG_FILEPATH = os.path.join(MC_RAPTOR_OUT_DIR, MC_CONFIG_FILENAME)
 
 INPUT_FOLDER: str = "./../data/output"
 STATION_NAMES: List[str] = []
+STATION_NAMES_SM: List[str] = []
 TIMETABLE: RaptorTimetable | None = None
+TIMETABLE_SM: RaptorTimetableSM | None = None
 DEBUG: bool = True
-ENABLE_SM: bool = False
+ENABLE_SM: bool = True
 RAPTOR_ROUNDS = 5
 
 VEHICLES = [Option(id_=id_, name=name) for id_, name in [
@@ -62,7 +65,15 @@ def root():
 
 @app.route("/home")
 def home():
-    return render_template('home.html')
+    return render_template('home.html', enable_sm=ENABLE_SM)
+
+
+@app.route("/switch_enable_sm")
+def switch_enable_sm():
+    global ENABLE_SM
+    ENABLE_SM = not ENABLE_SM
+    logger.debug(ENABLE_SM)
+    return redirect(url_for('home'))
 
 
 """ BASIC RAPTOR """
@@ -70,7 +81,8 @@ def home():
 
 @app.route("/basic_raptor")
 def basic_raptor():
-    return render_template('raptor_form.html', stop_names=STATION_NAMES, vehicles=VEHICLES,
+    station_names = STATION_NAMES_SM if ENABLE_SM else STATION_NAMES
+    return render_template('raptor_form.html', stop_names=station_names, vehicles=VEHICLES,
                            version_name='Basic RAPTOR', action='basic_raptor_run',
                            enable_sm=ENABLE_SM)
 
@@ -85,8 +97,10 @@ def basic_raptor_run():
         preferred_vehicle = request.form.get("preferred")
         enable_car = request.form.get("car") == 'on'
 
+        timetable = TIMETABLE_SM if ENABLE_SM else TIMETABLE
+
         query_raptor(
-            timetable=TIMETABLE,
+            timetable=timetable,
             output_folder=BASIC_RAPTOR_OUT_DIR,
             origin_station=origin,
             destination_station=destination,
@@ -108,7 +122,8 @@ def basic_raptor_run():
 
 @app.route("/wmc_raptor")
 def wmc_raptor():
-    return render_template('raptor_form.html', stop_names=STATION_NAMES, vehicles=VEHICLES,
+    station_names = STATION_NAMES_SM if ENABLE_SM else STATION_NAMES
+    return render_template('raptor_form.html', stop_names=station_names, vehicles=VEHICLES,
                            version_name='Weighted McRAPTOR', action='wmc_raptor_run',
                            enable_sm=ENABLE_SM)
 
@@ -169,8 +184,10 @@ def wmc_raptor_run():
         preferred_vehicle = request.form.get("preferred")
         enable_car = request.form.get("car") == 'on'
 
+        timetable = TIMETABLE_SM if ENABLE_SM else TIMETABLE
+
         query_raptor(
-            timetable=TIMETABLE,
+            timetable=timetable,
             output_folder=MC_RAPTOR_OUT_DIR,
             origin_station=origin,
             destination_station=destination,
@@ -226,14 +243,6 @@ def parse_arguments():
         help="Input directory containing timetable.pcl (and names.json)",
     )
     parser.add_argument(
-        "-sm",
-        "--enable_sm",
-        type=bool,
-        default=ENABLE_SM,
-        action=argparse.BooleanOptionalAction,
-        help="Enable use of shared mobility data"
-    )
-    parser.add_argument(
         "-d",
         "--debug",
         type=bool,
@@ -246,30 +255,30 @@ def parse_arguments():
     return arguments
 
 
-def run_demo(input_folder: str, enable_sm: bool, debug: bool):
+def run_demo(input_folder: str, debug: bool):
     logger.debug("Input folder            : {}", input_folder)
-    logger.debug("Enable shared mob       : {}", enable_sm)
     logger.debug("Debug mode              : {}", debug)
 
+    # input to global variables
     global INPUT_FOLDER
     INPUT_FOLDER = input_folder
 
     global DEBUG
     DEBUG = debug
 
-    global ENABLE_SM
-    ENABLE_SM = enable_sm
-
-    if ENABLE_SM:
-        timetable_name = SHARED_MOB_TIMETABLE_FILENAME
-    else:
-        timetable_name = TIMETABLE_FILENAME
+    # loading timetables
 
     global TIMETABLE
-    TIMETABLE = read_timetable(input_folder=input_folder, timetable_name=timetable_name)
+    TIMETABLE = read_timetable(input_folder=input_folder, timetable_name=TIMETABLE_FILENAME)
 
     global STATION_NAMES
     STATION_NAMES = _get_station_names(TIMETABLE)
+
+    global TIMETABLE_SM
+    TIMETABLE_SM = read_timetable(input_folder=input_folder, timetable_name=SHARED_MOB_TIMETABLE_FILENAME)
+
+    global STATION_NAMES_SM
+    STATION_NAMES_SM = _get_station_names(TIMETABLE_SM)
 
     webbrowser.open('http://127.0.0.1:5000/')
     app.run(debug=DEBUG, use_reloader=False)
@@ -294,6 +303,5 @@ if __name__ == "__main__":
     print(args)
     run_demo(
         input_folder=args.input,
-        enable_sm=args.enable_sm,
         debug=args.debug
     )
