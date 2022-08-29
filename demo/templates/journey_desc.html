@@ -39,13 +39,13 @@
                 <p> Arrival time: {{desc.arrival_time}}</p>
                 <p> Duration: {{desc.duration}}</p>
                 {% if desc.distance != '' %}
-                    <p> Distance: {{desc.distance}}</p>
+                    <p> Distance: {{desc.distance}} [Km]</p>
                 {% endif %}
                 {% if desc.transfers != '' %}
-                    <p> Distance: {{desc.transfers}}</p>
+                    <p> Transfers: {{desc.transfers}}</p>
                 {% endif %}
                 {% if desc.emissions != '' %}
-                    <p> Distance: {{desc.emissions}}</p>
+                    <p> Emissions: {{desc.emissions}} [CO2 grams / passenger Km]</p>
                 {% endif %}
             {% endfor %}
             <a href="/home">Home</a>
