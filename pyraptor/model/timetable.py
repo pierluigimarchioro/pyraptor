@@ -514,6 +514,12 @@ class TransferTrip(Trip):
                                            long_name=f"Transfer from {from_stop.name} to {to_stop.name}",
                                            route_info=transfer_route)
 
+        dep_stop_time = TripStopTime(
+            trip=self, stop_idx=0, stop=from_stop, dts_arr=dep_time, dts_dep=dep_time,
+            travelled_distance=0.0
+        )
+        super(TransferTrip, self).add_stop_time(dep_stop_time)
+
         # Add stop times for both origin and end stops
         travelling_time = arr_time - dep_time
 
@@ -521,17 +527,11 @@ class TransferTrip(Trip):
             raise ValueError(f"Unhandled transport type `{transport_type}`: average speed is not defined")
 
         travelled_distance = (travelling_time / 3600) * TRANSPORT_TYPE_SPEEDS[transport_type]
-        dep_stop_time = TripStopTime(
-            trip=self, stop_idx=0, stop=from_stop, dts_arr=dep_time, dts_dep=dep_time,
-            travelled_distance=travelled_distance
-        )
-        self.add_stop_time(dep_stop_time)
-
         arr_stop_time = TripStopTime(
             trip=self, stop_idx=1, stop=to_stop, dts_arr=arr_time, dts_dep=arr_time,
             travelled_distance=travelled_distance
         )
-        self.add_stop_time(arr_stop_time)
+        super(TransferTrip, self).add_stop_time(arr_stop_time)
 
 
 class Trips:
