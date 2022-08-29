@@ -101,6 +101,8 @@ def parse_arguments():
         "-sm",
         "--shared_mobility",
         type=bool,
+        action=argparse.BooleanOptionalAction,   # --shared_mobility    evaluates True,
+                                                 # --no-shared_mobility evaluates False
         default=False,
         help="If True, shared-mobility data are included",
     )
