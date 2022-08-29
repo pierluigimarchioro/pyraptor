@@ -1,6 +1,12 @@
 <!DOCTYPE html>
 <html lang="en">
 
+    <style>
+        table, th, td {
+            border:1px solid black;
+        }
+    </style>
+
     <head>
         <title>Journey Descriptions</title>
     </head>
@@ -8,9 +14,30 @@
     <body>
         <div class="container">
             {% for desc in descs %}
-                {% for d in desc %}
-                    <p>{{d}}</p>
+                <table>
+                <tr>
+                    <th>From stop</th>
+                    <th>At</th>
+                    <th>To stop</th>
+                    <th>At</th>
+                    <th>With</th>
+                    <th>Line</th>
+                    <th>Trip number</th>
+                </tr>
+                {% for d in desc.legs_descriptor %}
+                    <tr>
+                        <td>{{d.stop_start}}</td>
+                        <td>{{d.hour_start}}</td>
+                        <td>{{d.stop_end}}</td>
+                        <td>{{d.hour_end}}</td>
+                        <td>{{d.transport}}</td>
+                        <td>{{d.line}}</td>
+                        <td>{{d.trip_change}}</td>
+                    </tr>
                 {% endfor %}
+                </table>
+                <p> Arrival time: {{desc.arrival_time}}</p>
+                <p> Duration:     {{desc.duration}}</p>
             {% endfor %}
             <a href="/home">Home</a>
         </div>

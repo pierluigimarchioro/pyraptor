@@ -3,6 +3,7 @@ from __future__ import annotations
 import argparse
 import json
 import os.path
+import re
 import webbrowser
 from os import path
 from typing import List
@@ -31,9 +32,79 @@ app = Flask(__name__)
 class Option:
     """ This class is helpful to iterate on both
         class field in Jinja for-loop """
+
     def __init__(self, id_: str, name: str):
         self.id_: str = id_
         self.name: str = name
+
+
+class LegDescriptor:
+
+    def __init__(self, hour_start: str, stop_start: str,
+                 hour_end: str, stop_end: str, transport: str,
+                 line: str, trip_change: int):
+        self.hour_start: str = hour_start
+        self.stop_start: str = stop_start
+        self.hour_end: str = hour_end
+        self.stop_end: str = stop_end
+        self.transport: str = transport
+        self.line: str = line
+        self.trip_change: int = trip_change
+
+
+class JourneyDescriptor:
+
+    def __init__(self):
+        self.legs_descriptor: List[LegDescriptor] = []
+        self.arrival_time = ''
+        self.duration = ''
+
+    def add(self, leg_descriptor: LegDescriptor):
+        self.legs_descriptor.append(leg_descriptor)
+
+
+def _handle_journey_description(desc: str) -> JourneyDescriptor:
+    line_pattern: str = "(.+?) (.+?) TO (.+?) (.+?) WITH Transport: (.+?) Route Name: (.+?$)"
+    trip_change_line: str = "-- Trip Change"
+    arrival_time_line: str = "Arrival Time: "
+    duration_line: str = "Duration: "
+
+    journey_descriptor: JourneyDescriptor = JourneyDescriptor()
+
+    # Split line-per-line
+    descs: List[str] = desc.split("\n")
+
+    # Remove double spaces and separators
+    descs = [" ".join(d.replace('|', '').split()) for d in descs]
+    # Remove empty line and debug log
+    descs = [d for d in descs if
+             not d.startswith('[Leg]') and not d.startswith('Journey')
+             and d != '' and d != ' ']  # TODO remove first check when remove debug
+
+    # Add legs
+    n_trip = 1
+    for d in descs:
+        if d.startswith(trip_change_line):
+            n_trip += 1
+        elif d.startswith(arrival_time_line):
+            journey_descriptor.arrival_time = (d.split(arrival_time_line)[1].strip())
+        elif d.startswith(duration_line):
+            journey_descriptor.duration_line = (d.split(duration_line)[1].strip())
+        else:
+            m = re.search(line_pattern, d)
+            journey_descriptor.add(
+                LegDescriptor(
+                    hour_start=m.group(1),
+                    stop_start=m.group(2),
+                    hour_end=m.group(3),
+                    stop_end=m.group(4),
+                    transport=m.group(5),
+                    line=m.group(6),
+                    trip_change=n_trip
+                )
+            )
+
+    return journey_descriptor
 
 
 DEMO_OUTPUT_DIR = './../data/output/demo'
@@ -220,12 +291,10 @@ def show_journey_descriptions(algo_output_dir: str) -> flask.templating:
     algo_file: str = path.join(algo_output_dir, ALGO_OUTPUT_FILENAME)
     algo_output = AlgorithmOutput.read_from_file(filepath=algo_file)
 
-    descriptions: List[List[str]] = []
-    for jrny in algo_output.journeys:
-        desc: str = str(jrny)
-        desc += "\n\n\n--------------------------------------------------------------\n\n\n"
+    descriptions: List[JourneyDescriptor] = []
 
-        descriptions.append(desc.split("\n"))
+    for jrny in algo_output.journeys:
+        descriptions.append(_handle_journey_description(str(jrny)))
 
     return render_template("journey_desc.html", descs=descriptions)
 
@@ -299,6 +368,7 @@ def _get_station_names(timetable: RaptorTimetable):
 
 
 if __name__ == "__main__":
+
     args = parse_arguments()
     print(args)
     run_demo(
