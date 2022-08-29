@@ -343,6 +343,8 @@ def _best_legs_to_destination_station(
     ]
 
     # Label to leg, i.e. add to_stop
+    # TODO this does not account for intermediate stops (legs).
+    #   create a function that returns the intermediate legs from a full leg
     legs = [
         Leg(
             from_stop=label.boarding_stop,
