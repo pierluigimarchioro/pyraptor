@@ -11,8 +11,7 @@ import attr
 from loguru import logger
 
 from pyraptor.model.timetable import Stop, Stops, TransportType, Transfers, Transfer, Coordinates, Station, \
-    RaptorTimetable
-from pyraptor.util import MEAN_FOOT_SPEED
+    RaptorTimetable, TRANSPORT_TYPE_SPEEDS
 
 
 @dataclass
@@ -27,8 +26,9 @@ class RaptorTimetableSM(RaptorTimetable):
         logger.debug([str(smf) for smf in self.shared_mobility_feeds])
 
 
+# TODO added ABC and @abstractmethod: check if it works in raptor sm
 @attr.s(cmp=False, repr=False)
-class RentingStation(Stop):
+class RentingStation(Stop, ABC):
     """
     Interface representing a Renting Station used
     This class represents a Physical Renting Station used in urban network for shared mobility
@@ -40,16 +40,16 @@ class RentingStation(Stop):
     """Types of vehicle rentable in the station"""
 
     @property
-    # @abstractmethod TODO check AttributeError
+    @abstractmethod
     def valid_source(self) -> bool:
         """ Returns true if the renting station is able to rent a vehicle, false otherwise """
-        return False
+        pass
 
     @property
-    # @abstractmethod
+    @abstractmethod
     def valid_destination(self) -> bool:
         """ Returns true if the renting station is able to accept a returning vehicle, false otherwise """
-        return False
+        pass
 
 
 @attr.s(cmp=False, repr=False)
@@ -162,14 +162,9 @@ class PhysicalRentingStations(RentingStations):
             station.is_returning = state['is_returning']
             station.docks_available = state['num_docks_available']
 
-            # TODO check for other possible vehicles names
-            v_name = (
-                'bike' if
-                TransportType.Bike in self.system_transport_types or
-                TransportType.ElectricBike in self.system_transport_types
-                else 'other'
-            )
-
+            # This is specific for bikemi gbfs, because it uses bikes.
+            # For other gbfs feeds, this code needs to be extended to handle other vehicles
+            v_name = 'bike'
             station.vehicles_available = state[f'num_{v_name}s_available']
 
 
@@ -220,21 +215,12 @@ class GeofenceAreas(RentingStations):
         pass
 
 
-VEHICLE_SPEED: Mapping[TransportType, float] = {
-    TransportType.Walk: MEAN_FOOT_SPEED,
-    TransportType.Bike: 20,
-    TransportType.ElectricBike: 15,
-    TransportType.Car: 50,
-}
-
-
 @attr.s
 class VehicleTransfer(Transfer):
     """
     This class represents a generic Transfer between two
     """
 
-    # TODO can we override Transfer.get_vehicle? chiedere a Seba
     @staticmethod
     def get_vehicle_transfer(
             sa: RentingStation,
@@ -250,7 +236,10 @@ class VehicleTransfer(Transfer):
         dist: float = Stop.stop_distance(sa, sb)
 
         if speed is None:
-            speed: float = VEHICLE_SPEED[transport_type]
+            if transport_type not in TRANSPORT_TYPE_SPEEDS.keys():
+                raise ValueError(f"Unhandled transport type `{transport_type}`: average speed is not defined")
+
+            speed: float = TRANSPORT_TYPE_SPEEDS[transport_type]
 
         time: int = int(dist * 3600 / speed)
 

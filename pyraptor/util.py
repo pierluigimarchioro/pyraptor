@@ -9,7 +9,12 @@ DEFAULT_TRANSFER_COST: int = 2 * 60  # Default transfer between stop in same sta
 LARGE_NUMBER: int = 2147483647  # Earliest arrival time at start of algorithm
 
 MIN_DIST: float = 0.3  # Minimum distance in kilometers to consider transfer
-MEAN_FOOT_SPEED: float = 4  # Default foot-speed as the crow flies in km/h
+
+# Average speed for some transport types [Km/h]
+MEAN_FOOT_SPEED: float = 4.0
+MEAN_BIKE_SPEED: float = 10.0
+MEAN_ELECTRIC_BIKE_SPEED: float = 15.0
+MEAN_CAR_SPEED: float = 50.0
 
 
 def mkdir_if_not_exists(name: str) -> None:

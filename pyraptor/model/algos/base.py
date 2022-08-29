@@ -2,12 +2,7 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 from collections.abc import Iterable, Mapping, Sequence
-
-# TODO copy() or deepcopy()? note that deepcopy() is much much heavier performance-wise
-#   copy() might fuck the result of the previous rounds, but if we only want the last round,
-#   then it is fine and sensibly improves performance. Consider returning just the best_bag
-#   and not the full bag_round_stop: the last round is what is wanted anyways
-from copy import deepcopy, copy
+from copy import copy
 from dataclasses import dataclass
 from typing import List, Tuple, TypeVar, Generic, Dict
 
@@ -16,12 +11,11 @@ from loguru import logger
 
 from pyraptor.model.criteria import BaseLabel
 from pyraptor.model.shared_mobility import (
-    SharedMobilityFeed,
     RentingStation,
     filter_shared_mobility,
     VehicleTransfers,
     VehicleTransfer,
-    VEHICLE_SPEED)
+    TRANSPORT_TYPE_SPEEDS, RaptorTimetableSM)
 from pyraptor.model.timetable import RaptorTimetable, Route, Stop, TransportType, Transfer
 
 _BagType = TypeVar("_BagType")
@@ -63,14 +57,14 @@ class BaseRaptorAlgorithm(ABC, Generic[_BagType, _LabelType]):
             from_stops: Iterable[Stop],
             dep_secs: int,
             rounds: int
-    ) -> Mapping[int, Mapping[Stop, _BagType]]:
+    ) -> Mapping[Stop, _BagType]:
         """
         Executes the round-based algorithm and returns the stop-label mappings, keyed by round.
 
         :param from_stops: collection of stops to depart from
         :param dep_secs: departure time in seconds from midnight
         :param rounds: total number of rounds to execute
-        :return: stop-label mappings, keyed by round.
+        :return: mapping of the best labels for each stop
         """
 
         initial_marked_stops = self._initialization(
@@ -81,7 +75,6 @@ class BaseRaptorAlgorithm(ABC, Generic[_BagType, _LabelType]):
 
         # Get stops immediately reachable with a transfer
         # and add them to the marked stops list
-        # TODO in raptor_sm.py there is another implementation for this step. Is mine good?
         logger.debug("Computing immediate transfers from origin stops")
         immediately_reachable_stops = self._improve_with_transfers(
             k=0,  # still initialization round
@@ -130,7 +123,7 @@ class BaseRaptorAlgorithm(ABC, Generic[_BagType, _LabelType]):
 
             logger.debug(f"{len(marked_stops)} stops to evaluate in next round")
 
-        return self.bag_round_stop
+        return self.best_bag
 
     @abstractmethod
     def _initialization(self, from_stops: Iterable[Stop], dep_secs: int, rounds: int) -> List[Stop]:
@@ -221,7 +214,7 @@ class SharedMobilityConfig:
     preferred_vehicle: TransportType
     """Preferred vehicle type for shared mob transport"""
 
-    enable_car: bool  # TODO chiedere a Seba perché serve
+    enable_car: bool
     """If True, car transport is enabled"""
 
 
@@ -234,6 +227,10 @@ class BaseSharedMobRaptor(BaseRaptorAlgorithm[_BagType, _LabelType], ABC):
 
     # TODO explain how shared mob is used in RAPTOR
     """
+
+    timetable: RaptorTimetableSM
+    """RAPTOR timetable, containing stops, routes, trips and transfers data,
+    as well as shared mobility transfer data"""
 
     enable_sm: bool
     """If True, shared mobility data is included in the itinerary computation"""
@@ -256,7 +253,7 @@ class BaseSharedMobRaptor(BaseRaptorAlgorithm[_BagType, _LabelType], ABC):
 
     def __init__(
             self,
-            timetable: RaptorTimetable,
+            timetable: RaptorTimetableSM,
             enable_sm: bool = False,
             sm_config: SharedMobilityConfig = None
     ):
@@ -282,7 +279,7 @@ class BaseSharedMobRaptor(BaseRaptorAlgorithm[_BagType, _LabelType], ABC):
             from_stops: Iterable[Stop],
             dep_secs: int,
             rounds: int
-    ) -> Mapping[int, Mapping[Stop, _BagType]]:
+    ) -> Mapping[Stop, _BagType]:
         initial_marked_stops = self._initialization(
             from_stops=from_stops,
             dep_secs=dep_secs,
@@ -297,7 +294,6 @@ class BaseSharedMobRaptor(BaseRaptorAlgorithm[_BagType, _LabelType], ABC):
 
         # Get stops immediately reachable with a transfer
         # and add them to the marked stops list
-        # TODO in raptor_sm.py there is another implementation for this step. Is mine good?
         logger.debug("Computing immediate transfers from origin stops")
         immediately_reachable_stops = self._improve_with_transfers(
             k=0,  # still initialization round
@@ -355,7 +351,6 @@ class BaseSharedMobRaptor(BaseRaptorAlgorithm[_BagType, _LabelType], ABC):
 
                     # Only transfer stops can be passed because shared mob stations
                     # are reachable just by foot transfers
-                    # TODO is this right?
                     marked_stops=marked_transfer_stops
                 )
                 logger.debug(f"{len(shared_mob_marked_stops)} shared mob transferable stops added")
@@ -402,13 +397,9 @@ class BaseSharedMobRaptor(BaseRaptorAlgorithm[_BagType, _LabelType], ABC):
                     transfer_improved_route_stops = [(r, s) for r, s in transfer_improved_route_stops
                                                      if len(set(r.stops).intersection(transfer_improved_stops)) > 0]
                 
-                # Copy the last convergence round into the last actual round to apply the WMC fix
-                # TODO does doing this "break" the relation with previous rounds?
-                self.bag_round_stop[rounds] = copy(self.bag_round_stop[len(self.bag_round_stop) - 1])
-                
             logger.debug(f"{len(marked_stops)} stops to evaluate in next round")
 
-        return self.bag_round_stop
+        return self.best_bag
 
     def _initialize_shared_mob(self, origin_stops: Sequence[Stop]):
         """
@@ -510,7 +501,7 @@ class BaseSharedMobRaptor(BaseRaptorAlgorithm[_BagType, _LabelType], ABC):
 
             If stops have common available multiple vehicles:
              * uses preferred vehicle if present,
-             * otherwise uses an other vehicle TODO more option criteria
+             * otherwise uses another vehicle (the fastest on average)
         """
 
         # 1. they are part of same system
@@ -529,9 +520,9 @@ class BaseSharedMobRaptor(BaseRaptorAlgorithm[_BagType, _LabelType], ABC):
                 # 3.1. if preferred vehicle is present, transfer is generated
                 if self.sm_config.preferred_vehicle in common_t_types:
                     best_t_type = self.sm_config.preferred_vehicle
-                # 3.2. else the fastest transport type is chosen # TODO different possible criteria
+                # 3.2. else the fastest transport type is chosen
                 else:
-                    ind = np.argmax([VEHICLE_SPEED[t_type] for t_type in common_t_types])
+                    ind = np.argmax([TRANSPORT_TYPE_SPEEDS[t_type] for t_type in common_t_types])
                     best_t_type = common_t_types[ind]
 
                 # 4. Create transfer (only A to B is needed)
