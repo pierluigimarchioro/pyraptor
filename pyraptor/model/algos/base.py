@@ -16,12 +16,11 @@ from loguru import logger
 
 from pyraptor.model.criteria import BaseLabel
 from pyraptor.model.shared_mobility import (
-    SharedMobilityFeed,
     RentingStation,
     filter_shared_mobility,
     VehicleTransfers,
     VehicleTransfer,
-    VEHICLE_SPEED)
+    TRANSPORT_TYPE_SPEEDS)
 from pyraptor.model.timetable import RaptorTimetable, Route, Stop, TransportType, Transfer
 
 _BagType = TypeVar("_BagType")
@@ -221,7 +220,7 @@ class SharedMobilityConfig:
     preferred_vehicle: TransportType
     """Preferred vehicle type for shared mob transport"""
 
-    enable_car: bool  # TODO chiedere a Seba perché serve
+    enable_car: bool
     """If True, car transport is enabled"""
 
 
@@ -297,7 +296,6 @@ class BaseSharedMobRaptor(BaseRaptorAlgorithm[_BagType, _LabelType], ABC):
 
         # Get stops immediately reachable with a transfer
         # and add them to the marked stops list
-        # TODO in raptor_sm.py there is another implementation for this step. Is mine good?
         logger.debug("Computing immediate transfers from origin stops")
         immediately_reachable_stops = self._improve_with_transfers(
             k=0,  # still initialization round
@@ -355,7 +353,6 @@ class BaseSharedMobRaptor(BaseRaptorAlgorithm[_BagType, _LabelType], ABC):
 
                     # Only transfer stops can be passed because shared mob stations
                     # are reachable just by foot transfers
-                    # TODO is this right?
                     marked_stops=marked_transfer_stops
                 )
                 logger.debug(f"{len(shared_mob_marked_stops)} shared mob transferable stops added")
@@ -529,9 +526,9 @@ class BaseSharedMobRaptor(BaseRaptorAlgorithm[_BagType, _LabelType], ABC):
                 # 3.1. if preferred vehicle is present, transfer is generated
                 if self.sm_config.preferred_vehicle in common_t_types:
                     best_t_type = self.sm_config.preferred_vehicle
-                # 3.2. else the fastest transport type is chosen # TODO different possible criteria
+                # 3.2. else the fastest transport type is chosen
                 else:
-                    ind = np.argmax([VEHICLE_SPEED[t_type] for t_type in common_t_types])
+                    ind = np.argmax([TRANSPORT_TYPE_SPEEDS[t_type] for t_type in common_t_types])
                     best_t_type = common_t_types[ind]
 
                 # 4. Create transfer (only A to B is needed)
