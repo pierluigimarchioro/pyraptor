@@ -138,7 +138,8 @@ class WeightedMcRaptorAlgorithm(BaseSharedMobRaptor[Bag, MultiCriteriaLabel]):
                         arrival_stop=current_stop,
                         old_trip=label.trip,
                         new_trip=label.trip,  # Trip stays the same
-                        best_labels=self.best_bag
+                        best_labels=self.best_bag,
+                        current_round_update=k
                     )
                     label = label.update(data=update_data)
 
@@ -189,8 +190,6 @@ class WeightedMcRaptorAlgorithm(BaseSharedMobRaptor[Bag, MultiCriteriaLabel]):
                         else:
                             boarding_stop = label.boarding_stop
 
-                        # TODO keep only updated labels compatible with the best labels at the boarding stop
-
                         # This update is just "temporary", meaning that we board the
                         # current trip at the current stop and also arrive at the current_stop,
                         # but then the actual arrival stop of the label is assigned
@@ -200,7 +199,8 @@ class WeightedMcRaptorAlgorithm(BaseSharedMobRaptor[Bag, MultiCriteriaLabel]):
                             arrival_stop=current_stop,
                             old_trip=label.trip,
                             new_trip=earliest_trip,
-                            best_labels=self.best_bag
+                            best_labels=self.best_bag,
+                            current_round_update=k
                         )
                         label = label.update(data=update_data)
 
@@ -251,7 +251,8 @@ class WeightedMcRaptorAlgorithm(BaseSharedMobRaptor[Bag, MultiCriteriaLabel]):
                         arrival_stop=other_stop,
                         old_trip=label.trip,
                         new_trip=transfer_trip,
-                        best_labels=self.best_bag
+                        best_labels=self.best_bag,
+                        current_round_update=k
                     )
                     label = label.update(data=update_data)
 

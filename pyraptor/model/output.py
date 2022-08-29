@@ -25,6 +25,9 @@ class Leg:
     trip: Trip
     criteria: Iterable[Criterion]
 
+    # TODO
+    last_updated_round: int = 0
+
     @property
     def dep(self) -> int:
         """Departure time in seconds past midnight"""
@@ -166,6 +169,12 @@ class Journey:
             )
             update_(msg)
 
+            # TODO debug
+            update_(f"[Leg] Last updated at: {leg.last_updated_round}")
+            for c in leg.criteria:
+                update_(f"[Leg] {str(c)}")
+
+            update_("\n")
         update_("")
         for c in self.criteria():
             update_(str(c))
@@ -218,6 +227,10 @@ class Journey:
             if not self.legs[index].is_compatible_before(self.legs[index + 1]):
                 logger.warning(f"Journey not valid:\n {self}")  # TODO debug
                 return False
+
+            # TODO fare in modo che bag salvi tutte le label e in qualche modo le mantenga ordinate per bontà.
+            #   poi fare metodo che da ogni bag prende una label che è compatibile prima di quella data,
+            #   del tipo get_label_compatible_before(other_label)
         return True
 
     def from_stop(self) -> Stop:
@@ -335,7 +348,8 @@ def _best_legs_to_destination_station(
             from_stop=label.boarding_stop,
             to_stop=to_stop,
             trip=label.trip,
-            criteria=label.criteria
+            criteria=label.criteria,
+            last_updated_round=label.last_round_update
         )
         for to_stop, label in pareto_optimal_labels
     ]
@@ -366,6 +380,10 @@ def _reconstruct_journeys(
                 # Journey is valid if leg k ends before the start of leg k+1
                 if jrny.is_valid() is True:
                     yield jrny
+                else:  # TODO debug
+                    logger.warning(f"Journey discarded because not valid:\n"
+                                   f"{jrny}")
+
                 continue
 
             # Loop trough each new leg. These are the legs that come before the current and that lead to from_stop
@@ -375,7 +393,8 @@ def _reconstruct_journeys(
                     from_stop=new_label.boarding_stop,
                     to_stop=later_leg.from_stop,
                     trip=new_label.trip,
-                    criteria=new_label.criteria
+                    criteria=new_label.criteria,
+                    last_updated_round=new_label.last_round_update
                 )
 
                 # TODO checking for compatibility unfortunately can't be generalized:
@@ -383,8 +402,12 @@ def _reconstruct_journeys(
                 # Only add the new leg if compatible before current leg, e.g. earlier arrival time, etc.
                 if full_earlier_leg.is_compatible_before(later_leg):
                     # Generate and add the intermediate legs before the first stop of the new leg
+                    # TODO qualche volta non vengono correttamente generate fermate intermedie
                     if add_intermediate_stops:
                         new_jrny = jrny
+
+                        # Start from `from_stop` of later leg and go backwards until
+                        # `from_stop` of earlier leg is reached: these are the intermediate legs
                         prev_leg = later_leg
                         first_stop_reached: bool = False
 
@@ -398,10 +421,12 @@ def _reconstruct_journeys(
                                 to_stop=prev_leg.from_stop,
                                 trip=full_earlier_leg.trip,
 
-                                # Setting the criteria to be the same ones of the current leg
-                                # (and not specifically retrieving them from best labels) is fine,
+                                # Setting the criteria to be the same ones of the leg that is
+                                # currently being reconstructed (the earlier one)
+                                # and not specifically retrieving them from best labels is fine,
                                 # since the compatibility between consecutive legs is maintained
-                                criteria=later_leg.criteria
+                                criteria=full_earlier_leg.criteria,
+                                last_updated_round=new_label.last_round_update
                             )
                             new_jrny = new_jrny.prepend_leg(intermediate_leg)
 
@@ -416,9 +441,18 @@ def _reconstruct_journeys(
 
                     for i in loop(best_labels, [new_jrny]):
                         yield i
+                else:
+                    # TODO debug
+                    logger.warning(f"Journey discarded because current leg not compatible:\n"
+                                   f"[Journey]: {jrny}\n"
+                                   f"[Current Leg]: {later_leg}\n"
+                                   f"[New Leg]: {full_earlier_leg}\n")
 
     journeys = [Journey(legs=[leg]) for leg in destination_legs]
     journeys = [jrny for jrny in loop(best_labels, journeys)]
+
+    # TODO debug
+    logger.warning(f"Reconstructed Journeys: {journeys}")
 
     return journeys
 

@@ -507,11 +507,13 @@ class TransferTrip(Trip):
         # Add stop times for both origin and end stops
         dep_stop_time = TripStopTime(
             trip=self, stop_idx=0, stop=from_stop, dts_arr=dep_time, dts_dep=dep_time
+            # TODO travelled distance here is 0
         )
         self.add_stop_time(dep_stop_time)
 
         arr_stop_time = TripStopTime(
             trip=self, stop_idx=1, stop=to_stop, dts_arr=arr_time, dts_dep=arr_time
+            # TODO travelled distance here is the total distance of the transfer
         )
         self.add_stop_time(arr_stop_time)
 

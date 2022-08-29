@@ -12,7 +12,7 @@ import attr
 import numpy as np
 from loguru import logger
 
-from pyraptor.model.timetable import TransferTrip, TransportType, Trip, Stop
+from pyraptor.model.timetable import TransportType, Trip, Stop
 from pyraptor.util import sec2str, LARGE_NUMBER
 
 
@@ -45,6 +45,9 @@ class LabelUpdate:
     This data is needed by criteria that have a dependency on other labels to calculate their cost.
     (e.g. the distance cost of label x+1 depends on the distance cost of label x)
     """
+
+    # TODO debug
+    current_round_update: int = 0
 
 
 @dataclass(frozen=True)
@@ -578,6 +581,9 @@ class MultiCriteriaLabel(BaseLabel):
     criteria: Sequence[Criterion] = attr.ib(default=list)
     """Collection of criteria used to compare labels"""
 
+    # TODO debug
+    last_round_update: int = attr.ib(default=0)
+
     @staticmethod
     def from_base_raptor_label(label: BasicRaptorLabel) -> MultiCriteriaLabel:
         """
@@ -636,7 +642,6 @@ class MultiCriteriaLabel(BaseLabel):
             return int(arrival_time_crit.raw_value)
 
     def update(self, data: LabelUpdate) -> MultiCriteriaLabel:
-
         if len(self.criteria) == 0:
             raise Exception("Trying to update an instance with no criteria set")
 
@@ -651,7 +656,8 @@ class MultiCriteriaLabel(BaseLabel):
         return MultiCriteriaLabel(
             boarding_stop=updated_stop,
             trip=updated_trip,
-            criteria=updated_criteria
+            criteria=updated_criteria,
+            last_round_update=data.current_round_update
         )
 
     def is_dominating(self, other: MultiCriteriaLabel) -> bool:
