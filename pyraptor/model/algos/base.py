@@ -2,6 +2,11 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 from collections.abc import Iterable, Mapping, Sequence
+
+# TODO copy() or deepcopy()? note that deepcopy() is much much heavier performance-wise
+#   copy() might fuck the result of the previous rounds, but if we only want the last round,
+#   then it is fine and sensibly improves performance. Consider returning just the best_bag
+#   and not the full bag_round_stop: the last round is what is wanted anyways
 from copy import deepcopy, copy
 from dataclasses import dataclass
 from typing import List, Tuple, TypeVar, Generic, Dict
@@ -98,7 +103,7 @@ class BaseRaptorAlgorithm(ABC, Generic[_BagType, _LabelType]):
             logger.info(f"Analyzing possibilities at round {k}")
 
             # Initialize round k (current) with the labels of round k-1 (previous)
-            self.bag_round_stop[k] = deepcopy(self.bag_round_stop[k - 1])
+            self.bag_round_stop[k] = copy(self.bag_round_stop[k - 1])
 
             # Get list of stops to evaluate in the process
             logger.debug(f"Stops to evaluate: {len(marked_stops)}")
@@ -321,7 +326,7 @@ class BaseSharedMobRaptor(BaseRaptorAlgorithm[_BagType, _LabelType], ABC):
             logger.info(f"Analyzing possibilities at round {k}")
 
             # Initialize round k (current) with the labels of round k-1 (previous)
-            self.bag_round_stop[k] = deepcopy(self.bag_round_stop[k - 1])
+            self.bag_round_stop[k] = copy(self.bag_round_stop[k - 1])
 
             # Get list of stops to evaluate in the process
             logger.debug(f"Stops to evaluate: {len(marked_stops)}")
@@ -378,7 +383,6 @@ class BaseSharedMobRaptor(BaseRaptorAlgorithm[_BagType, _LabelType], ABC):
                     logger.debug(f"Convergence round #{i}")
 
                     current_round = k + i
-                    # TODO copy() or deepcopy()? note that deepcopy() is much much heavier performance-wise
                     self.bag_round_stop[current_round] = copy(self.bag_round_stop[current_round - 1])
 
                     trip_improved_stops = self._traverse_routes(
