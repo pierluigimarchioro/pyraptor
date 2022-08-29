@@ -3,6 +3,7 @@ from __future__ import annotations
 import os
 import uuid
 from collections import defaultdict
+from collections.abc import Mapping
 from dataclasses import dataclass
 from enum import Enum
 from operator import attrgetter
@@ -13,7 +14,8 @@ import numpy as np
 from geopy.distance import geodesic
 from loguru import logger
 
-from pyraptor.util import DEFAULT_TRANSFER_COST, MEAN_FOOT_SPEED
+from pyraptor.util import DEFAULT_TRANSFER_COST, MEAN_FOOT_SPEED, MEAN_BIKE_SPEED, MEAN_ELECTRIC_BIKE_SPEED, \
+    MEAN_CAR_SPEED
 
 
 def same_type_and_id(first, second):
@@ -478,6 +480,14 @@ class Trip:
         return self.stop_times[self.stop_times_index[stop]]
 
 
+TRANSPORT_TYPE_SPEEDS: Mapping[TransportType, float] = {
+    TransportType.Walk: MEAN_FOOT_SPEED,
+    TransportType.Bike: MEAN_BIKE_SPEED,
+    TransportType.ElectricBike: MEAN_ELECTRIC_BIKE_SPEED,
+    TransportType.Car: MEAN_CAR_SPEED,
+}
+
+
 class TransferTrip(Trip):
     """
     Class that represents a transfer trip made between to stops
@@ -505,15 +515,21 @@ class TransferTrip(Trip):
                                            route_info=transfer_route)
 
         # Add stop times for both origin and end stops
+        travelling_time = arr_time - dep_time
+
+        if transport_type not in TRANSPORT_TYPE_SPEEDS.keys():
+            raise ValueError(f"Unhandled transport type `{transport_type}`: average speed is not defined")
+
+        travelled_distance = (travelling_time / 3600) * TRANSPORT_TYPE_SPEEDS[transport_type]
         dep_stop_time = TripStopTime(
-            trip=self, stop_idx=0, stop=from_stop, dts_arr=dep_time, dts_dep=dep_time
-            # TODO travelled distance here is 0
+            trip=self, stop_idx=0, stop=from_stop, dts_arr=dep_time, dts_dep=dep_time,
+            travelled_distance=travelled_distance
         )
         self.add_stop_time(dep_stop_time)
 
         arr_stop_time = TripStopTime(
-            trip=self, stop_idx=1, stop=to_stop, dts_arr=arr_time, dts_dep=arr_time
-            # TODO travelled distance here is the total distance of the transfer
+            trip=self, stop_idx=1, stop=to_stop, dts_arr=arr_time, dts_dep=arr_time,
+            travelled_distance=travelled_distance
         )
         self.add_stop_time(arr_stop_time)
 

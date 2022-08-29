@@ -11,8 +11,7 @@ import attr
 from loguru import logger
 
 from pyraptor.model.timetable import Stop, Stops, TransportType, Transfers, Transfer, Coordinates, Station, \
-    RaptorTimetable
-from pyraptor.util import MEAN_FOOT_SPEED
+    RaptorTimetable, TRANSPORT_TYPE_SPEEDS
 
 
 @dataclass
@@ -220,21 +219,12 @@ class GeofenceAreas(RentingStations):
         pass
 
 
-VEHICLE_SPEED: Mapping[TransportType, float] = {
-    TransportType.Walk: MEAN_FOOT_SPEED,
-    TransportType.Bike: 20,
-    TransportType.ElectricBike: 15,
-    TransportType.Car: 50,
-}
-
-
 @attr.s
 class VehicleTransfer(Transfer):
     """
     This class represents a generic Transfer between two
     """
 
-    # TODO can we override Transfer.get_vehicle? chiedere a Seba
     @staticmethod
     def get_vehicle_transfer(
             sa: RentingStation,
@@ -250,7 +240,10 @@ class VehicleTransfer(Transfer):
         dist: float = Stop.stop_distance(sa, sb)
 
         if speed is None:
-            speed: float = VEHICLE_SPEED[transport_type]
+            if transport_type not in TRANSPORT_TYPE_SPEEDS.keys():
+                raise ValueError(f"Unhandled transport type `{transport_type}`: average speed is not defined")
+
+            speed: float = TRANSPORT_TYPE_SPEEDS[transport_type]
 
         time: int = int(dist * 3600 / speed)
 
