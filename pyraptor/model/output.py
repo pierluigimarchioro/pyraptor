@@ -228,9 +228,6 @@ class Journey:
                 logger.warning(f"Journey not valid:\n {self}")  # TODO debug
                 return False
 
-            # TODO fare in modo che bag salvi tutte le label e in qualche modo le mantenga ordinate per bontà.
-            #   poi fare metodo che da ogni bag prende una label che è compatibile prima di quella data,
-            #   del tipo get_label_compatible_before(other_label)
         return True
 
     def from_stop(self) -> Stop:
@@ -301,9 +298,6 @@ def get_journeys_to_destinations(
     logger.info("Calculating journeys to all destinations")
     s = perf_counter()
 
-    # TODO here journeys are constructed just with the first and last stop
-    #   of a leg (i.e. just beginning and end stop of each different trip)
-    #   maybe include intermediate stop to help with debug and visualization
     journeys_to_destinations = {}
     for destination_station_name, to_stops in destination_stops.items():
         destination_legs = _best_legs_to_destination_station(to_stops, best_labels)
@@ -399,12 +393,9 @@ def _reconstruct_journeys(
                     last_updated_round=new_label.last_round_update
                 )
 
-                # TODO checking for compatibility unfortunately can't be generalized:
-                #   there are some real world constraints like arrival time that have to be accounted for
                 # Only add the new leg if compatible before current leg, e.g. earlier arrival time, etc.
                 if full_earlier_leg.is_compatible_before(later_leg):
                     # Generate and add the intermediate legs before the first stop of the new leg
-                    # TODO qualche volta non vengono correttamente generate fermate intermedie
                     if add_intermediate_stops:
                         new_jrny = jrny
 
