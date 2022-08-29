@@ -24,8 +24,7 @@ class RaptorTimetableSM(RaptorTimetable):
     def counts(self) -> None:
         """Prints timetable counts"""
         super().counts()
-        logger.debug("SM Feeds   : {}", [f"{smf.system_id}: {len(smf.renting_stations)}"
-                                         for smf in self.shared_mobility_feeds])
+        logger.debug([str(smf) for smf in self.shared_mobility_feeds])
 
 
 @attr.s(cmp=False, repr=False)
@@ -294,6 +293,9 @@ class SharedMobilityFeed:
         self.system_id: str = self._get_items_list(feed_name='system_information')['system_id']  # feed system_id
         self.transport_types: List[TransportType] = self._get_transport_types()
         self.renting_stations: RentingStations = self._get_station()
+
+    def __str__(self) -> str:
+        return f"{self.system_id}: {len(self.renting_stations)}"
 
     @property
     def feeds(self):
