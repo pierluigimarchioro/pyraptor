@@ -111,7 +111,8 @@ class RaptorAlgorithm(BaseSharedMobRaptor[BasicRaptorLabel, BasicRaptorLabel]):
 
                 # Can we catch an earlier trip at p_i
                 # if tau_{k-1}(next_stop) <= tau_dep(t, next_stop)
-                # TODO why bag[k] and not bag[k-1]? Try putting k-1 and see what happens
+                # NOTE: bag[k] is used, and not bag[k-1], because at this point they have the same value.
+                #   bag[k] is (iirc) initialized with bag[k-1] values
                 previous_earliest_arrival_time = self.bag_round_stop[k][
                     current_stop
                 ].earliest_arrival_time
