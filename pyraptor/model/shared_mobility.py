@@ -3,13 +3,29 @@ from __future__ import annotations
 import json
 from abc import abstractmethod, ABC
 from collections.abc import Iterable, Mapping
+from dataclasses import dataclass
 from typing import List, Dict, Tuple
 from urllib.request import urlopen
 
 import attr
+from loguru import logger
 
-from pyraptor.model.timetable import Stop, Stops, TransportType, Transfers, Transfer, Coordinates, Station
+from pyraptor.model.timetable import Stop, Stops, TransportType, Transfers, Transfer, Coordinates, Station, \
+    RaptorTimetable
 from pyraptor.util import MEAN_FOOT_SPEED
+
+
+@dataclass
+class RaptorTimetableSM(RaptorTimetable):
+    """Timetable data"""
+
+    shared_mobility_feeds: List[SharedMobilityFeed] = None
+
+    def counts(self) -> None:
+        """Prints timetable counts"""
+        super().counts()
+        logger.debug("SM Feeds   : {}", [f"{smf.system_id}: {len(smf.renting_stations)}"
+                                         for smf in self.shared_mobility_feeds])
 
 
 @attr.s(cmp=False, repr=False)
