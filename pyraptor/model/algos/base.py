@@ -360,52 +360,6 @@ class BaseSharedMobRaptor(BaseRaptorAlgorithm[_BagType, _LabelType], ABC):
 
             marked_stops = set(marked_trip_stops).union(marked_transfer_stops)
 
-            # TODO where to put this code? only in WMC implementation?
-            #  this would mean rewriting all the run method,
-            #  making the super class definition much less meaningful
-            if k == rounds:
-                transfer_improved_route_stops: List[Tuple[Route, Stop]] = (
-                    [(r, s) for r, s in route_marked_stops
-                     if len(set(r.stops).intersection(marked_transfer_stops)) > 0]
-                )
-
-                i = 0
-                logger.warning("Starting convergence step...")
-                while len(transfer_improved_route_stops) > 0:
-                    i += 1
-                    logger.debug(f"Convergence round #{i}")
-
-                    current_round = k + i
-                    self.bag_round_stop[current_round] = copy(self.bag_round_stop[current_round - 1])
-
-                    trip_improved_stops = self._traverse_routes(
-                        k=current_round,
-                        route_marked_stops=transfer_improved_route_stops
-                    )
-                    transfer_improved_stops = self._improve_with_transfers(
-                        k=current_round,
-                        marked_stops=trip_improved_stops,
-
-                        # TODO need to somehow make it work with sm transfers too
-                        #   since only "normal" transfers are passed, there are no updates for
-                        #   stops improved with shared mob transfers
-                        transfers=self.timetable.transfers
-                    )
-
-                    # TODO improve_with_shared_mob() call here (only if enable_sm == True)?
-                    if self.enable_sm:
-                        sm_improved_stops = self._improve_with_sm_transfers(
-                            k=current_round,
-                            marked_stops=transfer_improved_stops
-                        )
-                        transfer_improved_stops = set(transfer_improved_stops).union(sm_improved_stops)
-
-                    transfer_improved_route_stops = [(r, s) for r, s in transfer_improved_route_stops
-                                                     if len(set(r.stops).intersection(transfer_improved_stops)) > 0]
-
-                # Apply the results of the convergence step to the last actual RAPTOR round
-                self.bag_round_stop[rounds] = copy(self.bag_round_stop[len(self.bag_round_stop) - 1])
-                
             logger.debug(f"{len(marked_stops)} stops to evaluate in next round")
 
         return self.bag_round_stop[rounds]
