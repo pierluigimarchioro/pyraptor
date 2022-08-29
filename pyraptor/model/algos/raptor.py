@@ -86,7 +86,7 @@ class RaptorAlgorithm(BaseSharedMobRaptor[BasicRaptorLabel, BasicRaptorLabel]):
                 if current_trip is not None:
                     # Arrival time at stop, i.e. arr(current_trip, next_stop)
                     new_arrival_time = current_trip.get_stop_time(current_stop).dts_arr
-                    best_arrival_time = self.bag_star[
+                    best_arrival_time = self.best_bag[
                         current_stop
                     ].earliest_arrival_time
 
@@ -187,7 +187,7 @@ class RaptorAlgorithm(BaseSharedMobRaptor[BasicRaptorLabel, BasicRaptorLabel]):
                         arrival_stop=arrival_stop,
                         old_trip=arrival_label.trip,
                         new_trip=transfer_trip,
-                        best_labels=self.bag_star
+                        best_labels=self.best_bag
                     )
                     self._update_arrival_label(update_data=update_data, k=k)
 
