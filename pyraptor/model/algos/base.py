@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 from collections.abc import Iterable, Mapping, Sequence
-from copy import deepcopy
+from copy import deepcopy, copy
 from dataclasses import dataclass
 from typing import List, Tuple, TypeVar, Generic, Dict
 
@@ -332,7 +332,8 @@ class BaseSharedMobRaptor(BaseRaptorAlgorithm[_BagType, _LabelType], ABC):
 
             # Update stop arrival times calculated basing on reachable stops
             marked_trip_stops = self._traverse_routes(
-                k, route_marked_stops
+                k=k, 
+                route_marked_stops=route_marked_stops
             )
             logger.debug(f"{len(marked_trip_stops)} reachable stops added")
 
@@ -344,11 +345,9 @@ class BaseSharedMobRaptor(BaseRaptorAlgorithm[_BagType, _LabelType], ABC):
             )
             logger.debug(f"{len(marked_transfer_stops)} transferable stops added")
 
-            marked_stops = set(marked_trip_stops).union(marked_transfer_stops)
-
             if self.enable_sm:
                 # Mark stops that were improved with shared mob data
-                shared_mob_marked_stops = self._improve_with_shared_mob(
+                shared_mob_marked_stops = self._improve_with_sm_transfers(
                     k=k,
 
                     # Only transfer stops can be passed because shared mob stations
@@ -356,8 +355,55 @@ class BaseSharedMobRaptor(BaseRaptorAlgorithm[_BagType, _LabelType], ABC):
                     # TODO is this right?
                     marked_stops=marked_transfer_stops
                 )
-                marked_stops = set(marked_stops).union(shared_mob_marked_stops)
+                logger.debug(f"{len(shared_mob_marked_stops)} shared mob transferable stops added")
 
+                # Shared mob legs are a special kind of transfer legs
+                marked_transfer_stops = set(marked_transfer_stops).union(shared_mob_marked_stops)
+
+            marked_stops = set(marked_trip_stops).union(marked_transfer_stops)
+
+            # TODO where to put this code? only in WMC implementation?
+            #  this would mean rewriting all the run method,
+            #  making the super class definition much less meaningful
+            if k == rounds:
+                transfer_improved_route_stops: List[Tuple[Route, Stop]] = (
+                    [(r, s) for r, s in route_marked_stops
+                     if len(set(r.stops).intersection(marked_transfer_stops)) > 0]
+                )
+
+                i = 0
+                logger.warning("Starting convergence step...")
+                while len(transfer_improved_route_stops) > 0:
+                    i += 1
+                    logger.debug(f"Convergence round #{i}")
+
+                    current_round = k + i
+                    # TODO copy() or deepcopy()? note that deepcopy() is much much heavier performance-wise
+                    self.bag_round_stop[current_round] = copy(self.bag_round_stop[current_round - 1])
+
+                    trip_improved_stops = self._traverse_routes(
+                        k=current_round,
+                        route_marked_stops=transfer_improved_route_stops
+                    )
+                    transfer_improved_stops = self._improve_with_transfers(
+                        k=current_round,
+                        marked_stops=trip_improved_stops,
+
+                        # TODO need to somehow make it work with sm transfers too
+                        #   since only "normal" transfers are passed, there are no updates for
+                        #   stops improved with shared mob transfers
+                        transfers=self.timetable.transfers
+                    )
+
+                    # TODO improve_with_shared_mob() call here (only if enable_sm == True)?
+
+                    transfer_improved_route_stops = [(r, s) for r, s in transfer_improved_route_stops
+                                                     if len(set(r.stops).intersection(transfer_improved_stops)) > 0]
+                
+                # Copy the last convergence round into the last actual round to apply the WMC fix
+                # TODO does doing this "break" the relation with previous rounds?
+                self.bag_round_stop[rounds] = copy(self.bag_round_stop[len(self.bag_round_stop) - 1])
+                
             logger.debug(f"{len(marked_stops)} stops to evaluate in next round")
 
         return self.bag_round_stop
@@ -391,11 +437,11 @@ class BaseSharedMobRaptor(BaseRaptorAlgorithm[_BagType, _LabelType], ABC):
                     and s not in self.visited_renting_stations):
                 self.visited_renting_stations.append(s)
 
-    def _improve_with_shared_mob(
+    def _improve_with_sm_transfers(
             self,
             k: int,
             marked_stops: Iterable[Stop]
-    ) -> Iterable[Stop]:
+    ) -> Sequence[Stop]:
         """
         Tries to improve the criteria values for the provided marked stops
         with shared mob data.
@@ -421,22 +467,22 @@ class BaseSharedMobRaptor(BaseRaptorAlgorithm[_BagType, _LabelType], ABC):
         # We add a VehicleTransfer foreach (old, new) renting station
         # (according to system_id and availability)
 
-        new_vtrasnfers = VehicleTransfers()
+        new_v_transfers = VehicleTransfers()
 
         for old in self.visited_renting_stations:
             for new in marked_renting_stations:
                 if old != new:
                     new_vt = self._add_vehicle_transfer(stop_a=old, stop_b=new)
                     if new_vt is not None:
-                        new_vtrasnfers.add(new_vt)
+                        new_v_transfers.add(new_vt)
 
-        logger.debug(f"New {len(new_vtrasnfers)} vehicle transfers created")
+        logger.debug(f"New {len(new_v_transfers)} vehicle transfers created")
 
         # We can get compute transfer-time from these selected renting stations using only filtered transfers
         improved_new_renting_stations = self._improve_with_transfers(
             k=k,
             marked_stops=self.visited_renting_stations,
-            transfers=new_vtrasnfers
+            transfers=new_v_transfers
         )
         logger.debug(f"{len(improved_new_renting_stations)} transferable renting stations improved")
 
