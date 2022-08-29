@@ -194,7 +194,7 @@ def read_timetable(input_folder: str, timetable_name: str) -> RaptorTimetable:
     timetable: RaptorTimetable = load_joblib(timetable_name)
 
     # Re-instance SM data with same feeds
-    if type(timetable == RaptorTimetableSM):
+    if isinstance(timetable, RaptorTimetableSM):
         updated_feeds = [SharedMobilityFeed(url=smf.url, lang=smf.lang)
                          for smf in timetable.shared_mobility_feeds]
         timetable.shared_mobility_feeds = updated_feeds
