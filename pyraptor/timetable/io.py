@@ -198,7 +198,7 @@ def read_timetable(input_folder: str, timetable_name: str) -> RaptorTimetable:
     return timetable
 
 
-def write_timetable(output_folder: str, timetable_name: str, timetable: RaptorTimetable | RaptorTimetableSM) -> None:
+def write_timetable(output_folder: str, timetable_name: str, timetable: RaptorTimetable) -> None:
     """
     Write the timetable to output directory
     """
