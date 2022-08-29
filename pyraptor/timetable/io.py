@@ -9,6 +9,7 @@ import joblib
 import pandas as pd
 from loguru import logger
 
+from pyraptor.model.shared_mobility import RaptorTimetableSM
 from pyraptor.model.timetable import RaptorTimetable
 from pyraptor.util import mkdir_if_not_exists
 
@@ -197,7 +198,7 @@ def read_timetable(input_folder: str, timetable_name: str) -> RaptorTimetable:
     return timetable
 
 
-def write_timetable(output_folder: str, timetable_name: str, timetable: RaptorTimetable) -> None:
+def write_timetable(output_folder: str, timetable_name: str, timetable: RaptorTimetable | RaptorTimetableSM) -> None:
     """
     Write the timetable to output directory
     """

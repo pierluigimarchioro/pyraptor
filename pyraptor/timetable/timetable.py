@@ -40,7 +40,8 @@ from pyraptor.model.timetable import (
     Coordinates,
     TransportType,
 )
-from pyraptor.model.shared_mobility import SharedMobilityFeed, public_transport_stop, shared_mobility_stops
+from pyraptor.model.shared_mobility import SharedMobilityFeed, public_transport_stop, shared_mobility_stops, \
+    RaptorTimetableSM
 from pyraptor.util import mkdir_if_not_exists, str2sec, MIN_DIST
 
 
@@ -143,11 +144,12 @@ def generate_timetable(
     logger.info("Parse timetable from GTFS files")
     mkdir_if_not_exists(output_folder)
 
-    gtfs_timetable = read_gtfs_timetable(input_folder, departure_date, agencies)
-    timetable = gtfs_to_pyraptor_timetable(gtfs_timetable, n_jobs)
+    gtfs_timetable: GtfsTimetable = read_gtfs_timetable(input_folder, departure_date, agencies)
+    timetable: RaptorTimetable = gtfs_to_pyraptor_timetable(gtfs_timetable, n_jobs)
 
     if shared_mobility:
-        add_shared_mobility_to_pyraptor_timetable(timetable, feeds_path, n_jobs)
+        timetable: RaptorTimetableSM = add_shared_mobility_to_pyraptor_timetable(timetable, feeds_path, n_jobs)
+
     timetable.counts()
 
     # This is so there is no need to generate the timetable each time
@@ -763,26 +765,26 @@ def _trips_processor_job(
     return job
 
 
-def add_shared_mobility_to_pyraptor_timetable(timetable: RaptorTimetable, feeds_path: str, n_jobs: int):
+def add_shared_mobility_to_pyraptor_timetable(timetable: RaptorTimetable, feeds: str, n_jobs: int) -> RaptorTimetableSM:
     """
     Adds shared mobility data to the provided timetable.
 
     :param timetable: timetable instance
-    :param feeds_path: path to the file containing shared mobility feed info
+    :param feeds: path to the file containing shared mobility feed info
     :param n_jobs: number of jobs to execute when processing shared mob data
     """
 
     logger.info("Adding shared mobility datas")
 
-    feed_infos: List[Dict] = json.load(open(feeds_path))['feeds']
-    feeds_path: List[SharedMobilityFeed] = [SharedMobilityFeed(feed_info['url'], feed_info['lang'])
-                                            for feed_info in feed_infos]
+    feed_infos: List[Dict] = json.load(open(feeds))['feeds']
+    feeds: List[SharedMobilityFeed] = [SharedMobilityFeed(feed_info['url'], feed_info['lang'])
+                                       for feed_info in feed_infos]
 
     logger.debug("Adding stations and renting-stations")
 
     stations_before_sm, stops_before_sm = len(timetable.stations), len(timetable.stops)  # debugging
 
-    for feed in feeds_path:
+    for feed in feeds:
         for renting_station in feed.renting_stations:
             timetable.stops.add_stop(renting_station)
             timetable.stations.add(renting_station.station)
@@ -832,6 +834,15 @@ def add_shared_mobility_to_pyraptor_timetable(timetable: RaptorTimetable, feeds_
     transfers_after_sm = len(timetable.transfers)
     logger.debug(f"Added new {transfers_after_sm - transfers_before_sm} vehicle-transfers "
                  f"between public and shared-mobility stops")
+    return RaptorTimetableSM(
+        stations=timetable.stations,
+        stops=timetable.stops,
+        trips=timetable.trips,
+        trip_stop_times=timetable.trip_stop_times,
+        routes=timetable.routes,
+        transfers=timetable.transfers,
+        shared_mobility_feeds=feeds
+    )
 
 
 def _shared_mob_processor_job(
