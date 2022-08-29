@@ -37,7 +37,16 @@
                 {% endfor %}
                 </table>
                 <p> Arrival time: {{desc.arrival_time}}</p>
-                <p> Duration:     {{desc.duration}}</p>
+                <p> Duration: {{desc.duration}}</p>
+                {% if desc.distance != '' %}
+                    <p> Distance: {{desc.distance}}</p>
+                {% endif %}
+                {% if desc.transfers != '' %}
+                    <p> Distance: {{desc.transfers}}</p>
+                {% endif %}
+                {% if desc.emissions != '' %}
+                    <p> Distance: {{desc.emissions}}</p>
+                {% endif %}
             {% endfor %}
             <a href="/home">Home</a>
         </div>

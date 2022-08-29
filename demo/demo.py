@@ -58,6 +58,9 @@ class JourneyDescriptor:
         self.legs_descriptor: List[LegDescriptor] = []
         self.arrival_time = ''
         self.duration = ''
+        self.distance = ''
+        self.transfers = ''
+        self.emissions = ''
 
     def add(self, leg_descriptor: LegDescriptor):
         self.legs_descriptor.append(leg_descriptor)
@@ -68,6 +71,9 @@ def _handle_journey_description(desc: str) -> JourneyDescriptor:
     trip_change_line: str = "-- Trip Change"
     arrival_time_line: str = "Arrival Time: "
     duration_line: str = "Duration: "
+    distance_line: str = "Travelled Distance: "
+    transfer_line: str = "Total Transfers: "
+    emissions_line: str = "Total Emissions: "
 
     journey_descriptor: JourneyDescriptor = JourneyDescriptor()
 
@@ -89,7 +95,13 @@ def _handle_journey_description(desc: str) -> JourneyDescriptor:
         elif d.startswith(arrival_time_line):
             journey_descriptor.arrival_time = (d.split(arrival_time_line)[1].strip())
         elif d.startswith(duration_line):
-            journey_descriptor.duration_line = (d.split(duration_line)[1].strip())
+            journey_descriptor.duration = (d.split(duration_line)[1].strip())
+        elif d.startswith(distance_line):
+            journey_descriptor.distance = (d.split(distance_line)[1].strip())
+        elif d.startswith(transfer_line):
+            journey_descriptor.transfers = (d.split(transfer_line)[1].strip())
+        elif d.startswith(emissions_line):
+            journey_descriptor.emissions = (d.split(emissions_line)[1].strip())
         else:
             m = re.search(line_pattern, d)
             journey_descriptor.add(
