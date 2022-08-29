@@ -44,7 +44,6 @@ MC_CONFIG_FILENAME = 'mc_demo_config.json'
 MC_CONFIG_FILEPATH = os.path.join(MC_RAPTOR_OUT_DIR, MC_CONFIG_FILENAME)
 
 INPUT_FOLDER: str = "./../data/output"
-FEED_CONFIG_PATH: str = "./../data/input/gbfs.json"
 STATION_NAMES: List[str] = []
 TIMETABLE: RaptorTimetable | None = None
 DEBUG: bool = True
@@ -95,7 +94,6 @@ def basic_raptor_run():
             rounds=RAPTOR_ROUNDS,
             variant=RaptorVariants.Basic.value,
             enable_sm=ENABLE_SM,
-            sm_feeds_path=FEED_CONFIG_PATH,
             preferred_vehicle=preferred_vehicle,
             enable_car=enable_car
         )
@@ -181,7 +179,6 @@ def wmc_raptor_run():
             variant=RaptorVariants.WeightedMc.value,
             criteria_config=MC_CONFIG_FILEPATH,
             enable_sm=ENABLE_SM,
-            sm_feeds_path=FEED_CONFIG_PATH,
             preferred_vehicle=preferred_vehicle,
             enable_car=enable_car
         )
@@ -229,13 +226,6 @@ def parse_arguments():
         help="Input directory containing timetable.pcl (and names.json)",
     )
     parser.add_argument(
-        "-f",
-        "--feed",
-        type=str,
-        default=FEED_CONFIG_PATH,
-        help="Path to .json key specifying list of feeds and langs"
-    )
-    parser.add_argument(
         "-sm",
         "--enable_sm",
         type=bool,
@@ -256,17 +246,13 @@ def parse_arguments():
     return arguments
 
 
-def run_demo(input_folder: str, sm_feed_config_path: str, enable_sm: bool, debug: bool):
+def run_demo(input_folder: str, enable_sm: bool, debug: bool):
     logger.debug("Input folder            : {}", input_folder)
-    logger.debug("Input feed config path  : {}", sm_feed_config_path)
     logger.debug("Enable shared mob       : {}", enable_sm)
     logger.debug("Debug mode              : {}", debug)
 
     global INPUT_FOLDER
     INPUT_FOLDER = input_folder
-
-    global FEED_CONFIG_PATH
-    FEED_CONFIG_PATH = sm_feed_config_path
 
     global DEBUG
     DEBUG = debug
@@ -308,7 +294,6 @@ if __name__ == "__main__":
     print(args)
     run_demo(
         input_folder=args.input,
-        sm_feed_config_path=args.feed,
         enable_sm=args.enable_sm,
         debug=args.debug
     )
