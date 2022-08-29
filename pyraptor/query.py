@@ -299,9 +299,9 @@ def _handle_raptor_variant(
             sm_config=sm_config,
             criteria_file_path=criteria_file_path
         )
-        bag_round_stop = raptor.run(origin_stops, dep_secs, rounds)
+        best_labels = raptor.run(origin_stops, dep_secs, rounds)
 
-        return bag_round_stop[rounds]
+        return best_labels
 
     def run_base_raptor() -> Mapping[Stop, Bag]:
         raptor = RaptorAlgorithm(
@@ -309,8 +309,7 @@ def _handle_raptor_variant(
             enable_sm=enable_sm,
             sm_config=sm_config
         )
-        bag_round_stop = raptor.run(origin_stops, dep_secs, rounds)
-        best_labels = bag_round_stop[rounds]
+        best_labels = raptor.run(origin_stops, dep_secs, rounds)
 
         # Convert best labels from Dict[Stop, Label] to Dict[Stop, Bag]
         best_bags: Dict[Stop, Bag] = {}
