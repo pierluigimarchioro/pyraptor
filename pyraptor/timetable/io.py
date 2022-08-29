@@ -9,7 +9,7 @@ import joblib
 import pandas as pd
 from loguru import logger
 
-from pyraptor.model.shared_mobility import RaptorTimetableSM
+from pyraptor.model.shared_mobility import RaptorTimetableSM, SharedMobilityFeed
 from pyraptor.model.timetable import RaptorTimetable
 from pyraptor.util import mkdir_if_not_exists
 
@@ -192,6 +192,12 @@ def read_timetable(input_folder: str, timetable_name: str) -> RaptorTimetable:
     logger.debug("Using cached datastructures")
 
     timetable: RaptorTimetable = load_joblib(timetable_name)
+
+    # Re-instance SM data with same feeds
+    if type(timetable == RaptorTimetableSM):
+        updated_feeds = [SharedMobilityFeed(url=smf.url, lang=smf.lang)
+                         for smf in timetable.shared_mobility_feeds]
+        timetable.shared_mobility_feeds = updated_feeds
 
     timetable.counts()
 
