@@ -318,7 +318,8 @@ def get_journeys_to_destinations(
 
 
 def _best_legs_to_destination_station(
-        to_stops: Iterable[Stop], last_round_bag: Mapping[Stop, Bag]
+        to_stops: Iterable[Stop],
+        last_round_bag: Mapping[Stop, Bag]
 ) -> Sequence[Leg]:
     """
     Find the last legs to destination station that are reached by non-dominated labels.
@@ -356,7 +357,7 @@ def _reconstruct_journeys(
         from_stops: Iterable[Stop],
         destination_legs: Iterable[Leg],
         best_labels: Mapping[Stop, Bag],
-        add_intermediate_stops: bool = True
+        add_intermediate_legs: bool = True
 ) -> List[Journey]:
     """
     Construct Journeys for destinations from bags by recursively
@@ -395,41 +396,18 @@ def _reconstruct_journeys(
 
                 # Only add the new leg if compatible before current leg, e.g. earlier arrival time, etc.
                 if full_earlier_leg.is_compatible_before(later_leg):
-                    # Generate and add the intermediate legs before the first stop of the new leg
-                    if add_intermediate_stops:
+                    # Generate and prepend the intermediate legs to the provided journey,
+                    # starting from the full earlier leg
+                    if add_intermediate_legs:
+                        intermediate_legs = _generate_intermediate_legs(
+                            full_leg=full_earlier_leg
+                        )
+
                         new_jrny = jrny
-
-                        # Start from `from_stop` of later leg and go backwards until
-                        # `from_stop` of earlier leg is reached: these are the intermediate legs
-                        prev_leg = later_leg
-                        first_stop_reached: bool = False
-
-                        while not first_stop_reached:
-                            # The first intermediate stop is the one that comes before
-                            # the last stop of the previous intermediate leg
-                            intermediate_stop_idx = (full_earlier_leg.trip.stop_times_index[prev_leg.from_stop] - 1)
-                            intermediate_stop = full_earlier_leg.trip[intermediate_stop_idx].stop
-                            intermediate_leg = Leg(
-                                from_stop=intermediate_stop,
-                                to_stop=prev_leg.from_stop,
-                                trip=full_earlier_leg.trip,
-
-                                # Setting the criteria to be the same ones of the leg that is
-                                # currently being reconstructed (the earlier one)
-                                # and not specifically retrieving them from best labels is fine,
-                                # since the compatibility between consecutive legs is maintained
-                                criteria=full_earlier_leg.criteria,
-                                last_updated_round=new_label.last_round_update
-                            )
-                            new_jrny = new_jrny.prepend_leg(intermediate_leg)
-
-                            prev_leg = intermediate_leg
-
-                            # Stop adding intermediate legs when the first stop of the leg is reached
-                            if intermediate_leg.from_stop == new_label.boarding_stop:
-                                first_stop_reached = True
+                        for leg in intermediate_legs:
+                            new_jrny = new_jrny.prepend_leg(leg)
                     else:
-                        # Only add the full leg if intermediate stops flag is False
+                        # Only add the full leg if intermediate legs are not added
                         new_jrny = jrny.prepend_leg(full_earlier_leg)
 
                     for i in loop(best_labels, [new_jrny]):
@@ -440,14 +418,63 @@ def _reconstruct_journeys(
                                    f"[Journey]: {jrny}\n"
                                    f"[Current Leg]: {later_leg}\n"
                                    f"[New Leg]: {full_earlier_leg}\n")
-
-    journeys = [Journey(legs=[leg]) for leg in destination_legs]
+    if add_intermediate_legs:
+        journeys = [Journey(legs=list(reversed(_generate_intermediate_legs(leg))))
+                    for leg in destination_legs]
+    else:
+        journeys = [Journey(legs=[leg]) for leg in destination_legs]
     journeys = [jrny for jrny in loop(best_labels, journeys)]
 
     # TODO debug
     logger.warning(f"Reconstructed Journeys: {journeys}")
 
     return journeys
+
+
+def _generate_intermediate_legs(full_leg: Leg) -> List[Leg]:
+    """
+    Generates the intermediate legs from the provided full leg,
+    i.e. all the sub-legs involving each stop of the trip that the leg represents.
+    Such intermediate legs are then returned, with the first leg of the collection
+    being the later one.
+
+    :param full_leg: full leg to generate intermediate legs from
+    :return: intermediate legs, ordered by most late
+    """
+
+    # Start from `to_stop` of the full leg (which is `from_stop` of the later leg)
+    # and go backwards until `from_stop` of the full earlier leg is reached:
+    # these are the intermediate legs
+    prev_dep_stop: Stop = full_leg.to_stop
+    first_stop_reached: bool = False
+    legs = []
+    while not first_stop_reached:
+        # The first intermediate stop is the one that comes before
+        # the last stop of the previous intermediate leg
+        intermediate_stop_idx = (full_leg.trip.stop_times_index[prev_dep_stop] - 1)
+        intermediate_stop = full_leg.trip[intermediate_stop_idx].stop
+        intermediate_leg = Leg(
+            from_stop=intermediate_stop,
+            to_stop=prev_dep_stop,
+            trip=full_leg.trip,
+
+            # Setting the criteria to be the same ones of the leg that is
+            # currently being reconstructed (the earlier one)
+            # and not specifically retrieving them from best labels is fine,
+            # since the compatibility between consecutive legs is maintained
+            criteria=full_leg.criteria,
+            last_updated_round=full_leg.last_updated_round
+        )
+        legs.append(intermediate_leg)
+
+        prev_dep_stop = intermediate_leg.from_stop
+
+        # Stop adding intermediate legs when the first stop
+        # of the full leg is reached
+        if intermediate_leg.from_stop == full_leg.from_stop:
+            first_stop_reached = True
+
+    return legs
 
 
 @dataclass
