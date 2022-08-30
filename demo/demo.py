@@ -134,7 +134,7 @@ TIMETABLE: RaptorTimetable | None = None
 TIMETABLE_SM: RaptorTimetableSM | None = None
 DEBUG: bool = True
 ENABLE_SM: bool = True
-RAPTOR_ROUNDS = 5
+RAPTOR_ROUNDS = 10
 
 VEHICLES = [Option(id_=id_, name=name) for id_, name in [
     ('regular', 'Regular bike'), ('electric', 'Electric bike'), ('car', 'Car')
