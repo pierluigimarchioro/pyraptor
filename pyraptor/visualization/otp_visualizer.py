@@ -19,6 +19,9 @@ from pyraptor.model.output import AlgorithmOutput
 from pyraptor.util import sec2str
 
 
+# TODO need to change the script to serve another purpose: simply launch OTP server to
+#   compute and show an itinerary between two stops
+
 # TODO generate (if not existing) files such as otp-config.json and build-config.json
 
 

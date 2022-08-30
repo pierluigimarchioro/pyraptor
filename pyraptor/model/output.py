@@ -221,7 +221,6 @@ class Journey:
 
         for index in range(len(self.legs) - 1):
             if not self.legs[index].is_compatible_before(self.legs[index + 1]):
-                logger.warning(f"Journey not valid:\n {self}")  # TODO debug
                 return False
 
         return True
