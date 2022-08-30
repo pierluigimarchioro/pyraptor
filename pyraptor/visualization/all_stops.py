@@ -5,8 +5,8 @@ from os import path
 
 from loguru import logger
 
-from pyraptor.dao import read_timetable
-from pyraptor.model.criteria import Criterion, DistanceCriterion
+from pyraptor.timetable.io import read_timetable
+from pyraptor.model.criteria import DistanceCriterion
 from pyraptor.model.output import Leg
 from pyraptor.model.timetable import Stop, Trip, Coordinates
 from pyraptor.visualization.folium_visualizer import StopVisualization, TripVisualization
