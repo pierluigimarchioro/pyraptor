@@ -26,7 +26,6 @@ class RaptorTimetableSM(RaptorTimetable):
         logger.debug([str(smf) for smf in self.shared_mobility_feeds])
 
 
-# TODO added ABC and @abstractmethod: check if it works in raptor sm
 @attr.s(cmp=False, repr=False)
 class RentingStation(Stop, ABC):
     """

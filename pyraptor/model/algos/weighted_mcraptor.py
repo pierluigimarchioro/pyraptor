@@ -245,8 +245,7 @@ class WeightedMcRaptorAlgorithm(BaseSharedMobRaptor[Bag, MultiCriteriaLabel]):
                         arrival_stop=current_stop,
                         old_trip=label.trip,
                         new_trip=label.trip,  # Trip stays the same
-                        best_labels=self.best_bag,
-                        current_round_update=k
+                        best_labels=self.best_bag
                     )
                     label = label.update(data=update_data)
 
@@ -306,8 +305,7 @@ class WeightedMcRaptorAlgorithm(BaseSharedMobRaptor[Bag, MultiCriteriaLabel]):
                             arrival_stop=current_stop,
                             old_trip=label.trip,
                             new_trip=earliest_trip,
-                            best_labels=self.best_bag,
-                            current_round_update=k
+                            best_labels=self.best_bag
                         )
                         label = label.update(data=update_data)
 
@@ -358,8 +356,7 @@ class WeightedMcRaptorAlgorithm(BaseSharedMobRaptor[Bag, MultiCriteriaLabel]):
                         arrival_stop=other_stop,
                         old_trip=label.trip,
                         new_trip=transfer_trip,
-                        best_labels=self.best_bag,
-                        current_round_update=k
+                        best_labels=self.best_bag
                     )
                     label = label.update(data=update_data)
 

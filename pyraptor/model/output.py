@@ -25,9 +25,6 @@ class Leg:
     trip: Trip
     criteria: Iterable[Criterion]
 
-    # TODO
-    last_updated_round: int = 0
-
     @property
     def dep(self) -> int:
         """Departure time in seconds past midnight"""
@@ -174,7 +171,6 @@ class Journey:
             for c in leg.criteria:
                 update_(f"[Leg] {str(c)}")
 
-            update_("\n")
         update_("")
         for c in self.criteria():
             update_(str(c))
@@ -338,15 +334,12 @@ def _best_legs_to_destination_station(
     ]
 
     # Label to leg, i.e. add to_stop
-    # TODO this does not account for intermediate stops (legs).
-    #   create a function that returns the intermediate legs from a full leg
     legs = [
         Leg(
             from_stop=label.boarding_stop,
             to_stop=to_stop,
             trip=label.trip,
-            criteria=label.criteria,
-            last_updated_round=label.last_round_update
+            criteria=label.criteria
         )
         for to_stop, label in pareto_optimal_labels
     ]
@@ -377,9 +370,6 @@ def _reconstruct_journeys(
                 # Journey is valid if leg k ends before the start of leg k+1
                 if jrny.is_valid() is True:
                     yield jrny
-                else:  # TODO debug
-                    logger.warning(f"Journey discarded because not valid:\n"
-                                   f"{jrny}")
 
                 continue
 
@@ -390,8 +380,7 @@ def _reconstruct_journeys(
                     from_stop=new_label.boarding_stop,
                     to_stop=later_leg.from_stop,
                     trip=new_label.trip,
-                    criteria=new_label.criteria,
-                    last_updated_round=new_label.last_round_update
+                    criteria=new_label.criteria
                 )
 
                 # Only add the new leg if compatible before current leg, e.g. earlier arrival time, etc.
@@ -412,21 +401,13 @@ def _reconstruct_journeys(
 
                     for i in loop(best_labels, [new_jrny]):
                         yield i
-                else:
-                    # TODO debug
-                    logger.warning(f"Journey discarded because current leg not compatible:\n"
-                                   f"[Journey]: {jrny}\n"
-                                   f"[Current Leg]: {later_leg}\n"
-                                   f"[New Leg]: {full_earlier_leg}\n")
+
     if add_intermediate_legs:
         journeys = [Journey(legs=list(reversed(_generate_intermediate_legs(leg))))
                     for leg in destination_legs]
     else:
         journeys = [Journey(legs=[leg]) for leg in destination_legs]
     journeys = [jrny for jrny in loop(best_labels, journeys)]
-
-    # TODO debug
-    logger.warning(f"Reconstructed Journeys: {journeys}")
 
     return journeys
 
@@ -462,8 +443,7 @@ def _generate_intermediate_legs(full_leg: Leg) -> List[Leg]:
             # currently being reconstructed (the earlier one)
             # and not specifically retrieving them from best labels is fine,
             # since the compatibility between consecutive legs is maintained
-            criteria=full_leg.criteria,
-            last_updated_round=full_leg.last_updated_round
+            criteria=full_leg.criteria
         )
         legs.append(intermediate_leg)
 
