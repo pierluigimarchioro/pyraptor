@@ -253,7 +253,7 @@ class BaseSharedMobRaptor(BaseRaptorAlgorithm[_BagType, _LabelType], ABC):
 
     def __init__(
             self,
-            timetable: RaptorTimetableSM,
+            timetable: RaptorTimetable | RaptorTimetableSM,
             enable_sm: bool = False,
             sm_config: SharedMobilityConfig = None
     ):
@@ -267,6 +267,10 @@ class BaseSharedMobRaptor(BaseRaptorAlgorithm[_BagType, _LabelType], ABC):
         super(BaseSharedMobRaptor, self).__init__(timetable=timetable)
 
         self.enable_sm = enable_sm
+
+        if enable_sm and not isinstance(timetable, RaptorTimetableSM):
+            raise ValueError("The provided timetable does not contain the necessary shared mobility data")
+
         self.sm_config = sm_config
 
         self.visited_renting_stations = []

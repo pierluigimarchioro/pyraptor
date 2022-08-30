@@ -16,6 +16,7 @@ from pyraptor.model.algos.raptor import RaptorAlgorithm
 from pyraptor.model.algos.weighted_mcraptor import WeightedMcRaptorAlgorithm
 from pyraptor.model.criteria import Bag, MultiCriteriaLabel
 from pyraptor.model.output import AlgorithmOutput, get_journeys_to_destinations
+from pyraptor.model.shared_mobility import RaptorTimetableSM
 from pyraptor.model.timetable import RaptorTimetable, Stop, TransportType
 from pyraptor.timetable.io import read_timetable
 from pyraptor.timetable.timetable import TIMETABLE_FILENAME, SHARED_MOB_TIMETABLE_FILENAME
@@ -260,7 +261,7 @@ def _process_shared_mob_args(
 
 def _handle_raptor_variant(
         variant: RaptorVariants,
-        timetable: RaptorTimetable,
+        timetable: RaptorTimetable | RaptorTimetableSM,
         origin_stops: Iterable[Stop],
         dep_secs: int,
         rounds: int,
