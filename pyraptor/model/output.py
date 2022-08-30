@@ -166,11 +166,6 @@ class Journey:
             )
             update_(msg)
 
-            # TODO debug
-            update_(f"[Leg] Last updated at: {leg.last_updated_round}")
-            for c in leg.criteria:
-                update_(f"[Leg] {str(c)}")
-
         update_("")
         for c in self.criteria():
             update_(str(c))
