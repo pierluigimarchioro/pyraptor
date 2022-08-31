@@ -358,11 +358,11 @@ if __name__ == "__main__":
 
     args = _parse_arguments()
 
-    timetable = _load_timetable(args.input, args.enable_sm)
+    cached_timetable = _load_timetable(args.input, args.enable_sm)
 
     elapsed_time = query_raptor(
         variant=args.variant,
-        timetable=timetable,
+        timetable=cached_timetable,
         output_folder=args.output,
         origin_station=args.origin,
         destination_station=args.destination,
