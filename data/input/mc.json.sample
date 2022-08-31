@@ -23,13 +23,13 @@
     "weight": 1,
 
     // Maximum number of transfers in an acceptable itinerary
-    "max": 20
+    "max": 10
   },
   "co2": {
     // Weight to assign to the co2 emissions of the itinerary
     "weight": 1,
 
-    // Maximum kg of co2 emissions in an acceptable itinerary
-    "max": 100
+    // Maximum grams of co2 per passenger km emissions of an acceptable itinerary
+    "max": 2000
   }
 }

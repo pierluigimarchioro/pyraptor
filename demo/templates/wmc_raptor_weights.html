@@ -1,0 +1,47 @@
+<!DOCTYPE html>
+<html lang="en">
+
+    <head>
+        <title>Weighted McRAPTOR</title>
+    </head>
+
+    <body>
+        <h1> Weighted McRAPTOR </h1>
+        <div class="container">
+            <form action="/wmc_raptor_weights_save" method="POST">
+
+            <h3> Distance </h3>
+            <label>Weight:</label>
+            <input type="number" name="distance-weight" min="0" max=+Inf value="{{distance.weight}}">
+            <label>Max value:</label>
+            <input type="number" name="distance-max" min="0" max=+Inf value="{{distance.upper_bound}}">
+            <br><br>
+
+            <h3> Arrival time </h3>
+            <label>Weight:</label>
+            <input type="number" name="arrival_time-weight" min="0" max=+Inf value="{{arrival_time.weight}}">
+            <label>Max value:</label>
+            <input type="number" name="arrival_time-max" min="0" max=+Inf value="{{arrival_time.upper_bound}}">
+            <br><br>
+
+            <h3> Transfers </h3>
+            <label>Weight:</label>
+            <input type="number" name="transfers-weight" min="0" max=+Inf value="{{transfers.weight}}">
+            <label>Max value:</label>
+            <input type="number" name="transfers-max" min="0" max=+Inf value="{{transfers.upper_bound}}">
+            <br><br>
+
+            <h3> CO2 </h3>
+            <label>Weight:</label>
+            <input type="number" name="co2-weight" min="0" max=+Inf value="{{co2.weight}}">
+            <label>Max value:</label>
+            <input type="number" name="co2-max" min="0" max=+Inf value="{{co2.upper_bound}}">
+            <br><br>
+
+            <input type="submit" value="Next">
+            </form>
+            <a href="/home">Back</a>
+        </div>
+    </body>
+
+</html>

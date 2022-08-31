@@ -3,35 +3,52 @@ from __future__ import annotations
 import json
 from abc import abstractmethod, ABC
 from collections.abc import Iterable, Mapping
+from dataclasses import dataclass
 from typing import List, Dict, Tuple
 from urllib.request import urlopen
 
 import attr
+from loguru import logger
 
-from pyraptor.model.timetable import Stop, Stops, TransportType, Transfers, Transfer, Coordinates, Station
-from pyraptor.util import MEAN_FOOT_SPEED
+from pyraptor.model.timetable import Stop, Stops, TransportType, Transfers, Transfer, Coordinates, Station, \
+    RaptorTimetable, TRANSPORT_TYPE_SPEEDS
+
+
+@dataclass
+class RaptorTimetableSM(RaptorTimetable):
+    """Timetable data"""
+
+    shared_mobility_feeds: List[SharedMobilityFeed] = None
+
+    def counts(self) -> None:
+        """Prints timetable counts"""
+        super().counts()
+        logger.debug([str(smf) for smf in self.shared_mobility_feeds])
 
 
 @attr.s(cmp=False, repr=False)
-class RentingStation(Stop):
+class RentingStation(Stop, ABC):
     """
     Interface representing a Renting Station used
     This class represents a Physical Renting Station used in urban network for shared mobility
     """
-    system_id: str = attr.ib(default=None)  # Shared mobility system identifier
-    transport_type: List[TransportType] = attr.ib(default=None)  # Types of vehicle rentable in the station
+    system_id: str = attr.ib(default=None)
+    """Shared mobility system identifier"""
+
+    transport_types: List[TransportType] = attr.ib(default=None)
+    """Types of vehicle rentable in the station"""
 
     @property
-    # @abstractmethod TODO check AttributeError
+    @abstractmethod
     def valid_source(self) -> bool:
         """ Returns true if the renting station is able to rent a vehicle, false otherwise """
-        return False
+        pass
 
     @property
-    # @abstractmethod
+    @abstractmethod
     def valid_destination(self) -> bool:
         """ Returns true if the renting station is able to accept a returning vehicle, false otherwise """
-        return False
+        pass
 
 
 @attr.s(cmp=False, repr=False)
@@ -41,7 +58,7 @@ class RentingStations(Stops, ABC):
     """
 
     system_id: str = attr.ib(default=None)
-    system_transport_type: List[TransportType] = attr.ib(default=None)
+    system_transport_types: List[TransportType] = attr.ib(default=None)
 
     @property
     def no_source(self) -> List[RentingStation]:
@@ -76,17 +93,17 @@ class PhysicalRentingStation(RentingStation):
     @property
     def valid_source(self) -> bool:
         """ Returns true if the renting station is able to rent a vehicle, false otherwise """
-        valid = self.vehicles_available > 0 and \
-                self.is_installed and \
-                self.is_renting
+        valid = (self.vehicles_available > 0 and
+                 self.is_installed and
+                 self.is_renting)
         return valid
 
     @property
     def valid_destination(self) -> bool:
         """ Returns true if the renting station is able to accept a returning vehicle, false otherwise """
-        valid = self.vehicles_available < self.capacity and \
-                self.docks_available > 0 and \
-                self.is_returning
+        valid = (self.vehicles_available < self.capacity and
+                 self.docks_available > 0 and
+                 self.is_returning)
         return valid
 
 
@@ -107,7 +124,7 @@ class PhysicalRentingStations(RentingStations):
 
     def get_by_index(self, stop_index) -> PhysicalRentingStation:
         """Get stop by index"""
-        return self.set_index[stop_index]
+        return super(PhysicalRentingStations, self).get_by_index(stop_index)
 
     def add_stop(self, stop: PhysicalRentingStation) -> PhysicalRentingStation:
         return super(PhysicalRentingStations, self).add_stop(stop)
@@ -128,7 +145,7 @@ class PhysicalRentingStations(RentingStations):
                 index=None,
                 geo=Coordinates(station['lat'], station['lon']),
                 system_id=self.system_id,
-                transport_type=self.system_transport_type,
+                transport_types=self.system_transport_types,
                 capacity=station['capacity']
             )
             new_station.add_stop(new_)
@@ -144,12 +161,9 @@ class PhysicalRentingStations(RentingStations):
             station.is_returning = state['is_returning']
             station.docks_available = state['num_docks_available']
 
-            # TODO check for possible vehicles names
-            v_name = 'bike' if \
-                TransportType.Bike in self.system_transport_type or \
-                TransportType.ElectricBike in self.system_transport_type \
-                else 'other'
-
+            # This is specific for bikemi gbfs, because it uses bikes.
+            # For other gbfs feeds, this code needs to be extended to handle other vehicles
+            v_name = 'bike'
             station.vehicles_available = state[f'num_{v_name}s_available']
 
 
@@ -180,7 +194,7 @@ class GeofenceAreas(RentingStations):
     """ Override superclass methods with stub, subsuming to RentingStations """
 
     def get_stop(self, stop_id) -> GeofenceArea:
-        return super(GeofenceAreas, self).get_stop(stop_id)
+        return self.set_idx[stop_id]
 
     def get_by_index(self, stop_index) -> GeofenceArea:
         """Get stop by index"""
@@ -200,23 +214,12 @@ class GeofenceAreas(RentingStations):
         pass
 
 
-VEHICLE_SPEED: Mapping[TransportType, float] = {
-    TransportType.Walk: MEAN_FOOT_SPEED,
-    TransportType.Bike: 20,
-    TransportType.ElectricBike: 15,
-    TransportType.Car: 50,
-}
-
-
 @attr.s
 class VehicleTransfer(Transfer):
     """
     This class represents a generic Transfer between two
     """
 
-    transport_type: TransportType = attr.ib(default=None)
-
-    # TODO can we override Transfer.get_vehicle?
     @staticmethod
     def get_vehicle_transfer(
             sa: RentingStation,
@@ -232,7 +235,10 @@ class VehicleTransfer(Transfer):
         dist: float = Stop.stop_distance(sa, sb)
 
         if speed is None:
-            speed: float = VEHICLE_SPEED[transport_type]
+            if transport_type not in TRANSPORT_TYPE_SPEEDS.keys():
+                raise ValueError(f"Unhandled transport type `{transport_type}`: average speed is not defined")
+
+            speed: float = TRANSPORT_TYPE_SPEEDS[transport_type]
 
         time: int = int(dist * 3600 / speed)
 
@@ -253,7 +259,8 @@ class VehicleTransfers(Transfers):
     def with_from_stop(self, from_: RentingStation) -> List[VehicleTransfer]:
         """ Returns all transfers with given departing stop  """
 
-        return super(VehicleTransfers, self).with_from_stop(from_)
+        x = super(VehicleTransfers, self).with_from_stop(from_)
+        return x
 
     def with_to_stop(self, to: Stop) -> List[VehicleTransfer]:
         """ Returns all transfers with given arrival stop  """
@@ -272,8 +279,11 @@ class SharedMobilityFeed:
         self.lang: str = lang  # lang of feed
         self.feeds_url: Mapping[str, str] = self._get_feeds_url()  # mapping between feed_name and url
         self.system_id: str = self._get_items_list(feed_name='system_information')['system_id']  # feed system_id
-        self.transport_type: List[TransportType] = self._get_transport_type()
+        self.transport_types: List[TransportType] = self._get_transport_types()
         self.renting_stations: RentingStations = self._get_station()
+
+    def __str__(self) -> str:
+        return f"{self.system_id}: {len(self.renting_stations)}"
 
     @property
     def feeds(self):
@@ -308,7 +318,7 @@ class SharedMobilityFeed:
         else:
             return datas  # in system_information datas is an items list
 
-    def _get_transport_type(self) -> List[TransportType]:
+    def _get_transport_types(self) -> List[TransportType]:
         """
         Retrieves vehicle type from associated feeds
         """
@@ -340,7 +350,8 @@ class SharedMobilityFeed:
 
             if 'geofencing_zones' in self.feeds and 'free_bike_status_url' in self.feeds:
                 stations: GeofenceAreas = GeofenceAreas(
-                    system_id=self.system_id, system_transport_type=self.transport_type,
+                    system_id=self.system_id,
+                    system_transport_types=self.transport_types,
                     geofencing_zones_url=self.feeds_url['geofencing_zones'],
                     free_bike_status_url=self.feeds_url['free_bike_status_url']
                 )
@@ -349,7 +360,7 @@ class SharedMobilityFeed:
         else:
             stations: PhysicalRentingStations = PhysicalRentingStations(
                 system_id=self.system_id,
-                system_transport_type=self.transport_type,
+                system_transport_types=self.transport_types,
                 station_info_url=self.feeds_url['station_information'],
                 station_status_url=self.feeds_url['station_status']
             )

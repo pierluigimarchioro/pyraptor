@@ -1,16 +1,116 @@
 <!DOCTYPE html>
 <html lang="en">
 
+    <style>
+
+        /* Background image */
+        html {
+            background: url("https://www.creativefabrica.com/wp-content/uploads/2020/07/02/Modern-City-Silhouette-Skyscrapers-Graphics-4523478-1.jpg") no-repeat center center fixed;
+            -webkit-background-size: cover;
+            -moz-background-size: cover;
+            -o-background-size: cover;
+            background-size: cover;
+        }
+
+        p {
+            color:rgb(44, 0, 30);
+            font-size: large;
+            font-family: Arial, Helvetica, sans-serif;
+        }
+
+        p span {
+            background-color: rgba(214, 0, 193, 0.582);
+        }
+
+        a[href] {
+            color:rgb(119, 56, 99);
+            font-size: large;
+            font-family:'Franklin Gothic Medium', 'Arial Narrow', Arial, sans-serif;
+        }
+
+        /* Tables */
+        #customers {
+            font-family: Arial, Helvetica, sans-serif;
+            border-collapse: collapse;
+            width: 100%;
+        }
+
+        #customers td, #customers th {
+            border: 1px solid rgb(42, 0, 34);
+            padding: 8px;
+        }
+
+        #customers tr:nth-child(even){
+            background-color: #242424e1;
+            color: #ffffff;
+        }
+
+        #customers tr:nth-child(odd){
+            background-color: #545454e1;
+            color: #ffffff;
+        }
+
+
+        #customers tr:not(:first-child):hover {
+            background-color: rgba(69, 0, 47, 0.863);
+        }
+
+        #customers th {
+            padding-top: 12px;
+            padding-bottom: 12px;
+            text-align: left;
+            background-color: #00000083;
+            color: white;
+        }
+
+    </style>
+
     <head>
-        <title>Journey Description</title>
+        <title>Journey Descriptions</title>
     </head>
 
     <body>
         <div class="container">
             {% for desc in descs %}
-                <p>{{desc}}</p>
+                <table id="customers">
+                <tr>
+                    <th>From stop</th>
+                    <th>At</th>
+                    <th>To stop</th>
+                    <th>At</th>
+                    <th>With</th>
+                    <th>Line</th>
+                    <th>Trip number</th>
+                </tr>
+                {% for d in desc.legs_descriptor %}
+                    <tr>
+                        <td>{{d.stop_start}}</td>
+                        <td>{{d.hour_start}}</td>
+                        <td>{{d.stop_end}}</td>
+                        <td>{{d.hour_end}}</td>
+                        <td>{{d.transport}}</td>
+                        <td>{{d.line}}</td>
+                        <td>{{d.trip_change}}</td>
+                    </tr>
+                {% endfor %}
+                </table>
+                <p><span> Arrival time: {{desc.arrival_time}}</span></p>
+                <p><span> Duration: {{desc.duration}}</span></p>
+                {% if desc.distance != '' %}
+                    <p><span> Distance: {{desc.distance}} [Km]</span></p>
+                {% endif %}
+                {% if desc.transfers != '' %}
+                    <p><span> Transfers: {{desc.transfers}}</span></p>
+                {% endif %}
+                {% if desc.emissions != '' %}
+                    <p><span> Emissions: {{desc.emissions}} [CO2 grams / passenger Km]</span></p>
+                {% endif %}
+                <br>
             {% endfor %}
-            <a href="home">Home</a>
+            <br>
+            <p><span>Elapsed time:  {{time}}</span></p>
+            <br>
+            <a href="/home">Home</a>
         </div>
     </body>
 

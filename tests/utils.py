@@ -18,7 +18,7 @@ from pyraptor.model.timetable import (
     Transfer,
     Transfers,
 )
-from pyraptor.util import TRANSFER_COST
+from pyraptor.util import DEFAULT_TRANSFER_COST
 
 
 def to_stops_and_trips(df: pd.DataFrame):
@@ -133,7 +133,7 @@ def to_timetable(stops_df, stop_times_df, trips_df) -> RaptorTimetable:
     for station in stations:
         station_stops = station.stops
         station_transfers = [
-            Transfer(from_stop=stop_i, to_stop=stop_j, transfer_time=TRANSFER_COST)
+            Transfer(from_stop=stop_i, to_stop=stop_j, transfer_time=DEFAULT_TRANSFER_COST)
             for stop_i in station_stops
             for stop_j in station_stops
             if stop_i != stop_j

@@ -21,7 +21,7 @@ from loguru import logger
 from pathos.helpers.pp_helper import ApplyResult
 from pathos.helpers import cpu_count
 
-from pyraptor.dao import write_timetable
+from pyraptor.timetable.io import write_timetable
 from pyraptor.model.timetable import (
     RaptorTimetable,
     Stop,
@@ -40,8 +40,9 @@ from pyraptor.model.timetable import (
     Coordinates,
     TransportType,
 )
-from pyraptor.model.shared_mobility import SharedMobilityFeed, public_transport_stop, shared_mobility_stops
-from pyraptor.util import mkdir_if_not_exists, str2sec, TRANSFER_COST, MIN_DIST
+from pyraptor.model.shared_mobility import SharedMobilityFeed, public_transport_stop, shared_mobility_stops, \
+    RaptorTimetableSM
+from pyraptor.util import mkdir_if_not_exists, str2sec, MIN_DIST
 
 
 @dataclass
@@ -56,6 +57,10 @@ class GtfsTimetable(TimetableInfo):
     transfers: pd.DataFrame = None
 
 
+TIMETABLE_FILENAME = "timetable"
+SHARED_MOB_TIMETABLE_FILENAME = "timetable_sm"
+
+
 def parse_arguments():
     """Parse command line arguments"""
     parser = argparse.ArgumentParser()
@@ -63,7 +68,7 @@ def parse_arguments():
         "-i",
         "--input",
         type=str,
-        default="data/input/NL-gtfs",
+        default="data/input/NL-timetable",
         help="Input directory",
     )
     parser.add_argument(
@@ -97,6 +102,8 @@ def parse_arguments():
         "-sm",
         "--shared_mobility",
         type=bool,
+        action=argparse.BooleanOptionalAction,   # --shared_mobility    evaluates True,
+                                                 # --no-shared_mobility evaluates False
         default=False,
         help="If True, shared-mobility data are included",
     )
@@ -112,7 +119,7 @@ def parse_arguments():
     return arguments
 
 
-def main(
+def generate_timetable(
         input_folder: str,
         output_folder: str,
         departure_date: str,
@@ -130,21 +137,28 @@ def main(
     logger.debug("Using shared-mobility             : {}", shared_mobility)
 
     if shared_mobility:
-        logger.debug("Path to shared-mobility feeds : {}", feeds_path)
+        logger.debug("Path to shared-mobility feeds     : {}", feeds_path)
 
     logger.debug("jobs                              : {}", n_jobs)
 
     logger.info("Parse timetable from GTFS files")
     mkdir_if_not_exists(output_folder)
 
-    gtfs_timetable = read_gtfs_timetable(input_folder, departure_date, agencies)
-    timetable = gtfs_to_pyraptor_timetable(gtfs_timetable, n_jobs)
+    gtfs_timetable: GtfsTimetable = read_gtfs_timetable(input_folder, departure_date, agencies)
+    timetable: RaptorTimetable = gtfs_to_pyraptor_timetable(gtfs_timetable, n_jobs)
 
     if shared_mobility:
-        add_shared_mobility_to_pyraptor_timetable(timetable, feeds_path, n_jobs)
+        timetable: RaptorTimetableSM = add_shared_mobility_to_pyraptor_timetable(timetable, feeds_path, n_jobs)
+
     timetable.counts()
 
-    write_timetable(output_folder, timetable)
+    # This is so there is no need to generate the timetable each time
+    #  we want/do not want sm data
+    if shared_mobility:
+        timetable_name = SHARED_MOB_TIMETABLE_FILENAME
+    else:
+        timetable_name = TIMETABLE_FILENAME
+    write_timetable(output_folder=output_folder, timetable=timetable, timetable_name=timetable_name)
 
 
 class CalendarHandler:
@@ -517,9 +531,9 @@ def gtfs_to_pyraptor_timetable(
         gtfs_timetable: GtfsTimetable,
         n_jobs: int) -> RaptorTimetable:
     """
-    Converts gtfs timetable to data structures suitable for the RAPTOR algorithm.
+    Converts timetable to data structures suitable for the RAPTOR algorithm.
 
-    :param gtfs_timetable: gtfs timetable instance
+    :param gtfs_timetable: timetable instance
     :param n_jobs: number of parallel jobs to run
     :return: RAPTOR timetable
     """
@@ -616,7 +630,8 @@ def _get_trips_and_stop_times(
             end = (start + interval_length) - 1  # -1 because the interval_length-th trip belongs to the next round
 
         job = _trips_processor_job(
-            trips_row_iterator=itertools.islice(gtfs_timetable.trips.itertuples(), start, end),
+            # +1 because end would not be included
+            trips_row_iterator=itertools.islice(gtfs_timetable.trips.itertuples(), start, end+1),
             stops_info=stops,
             trip_route_info=trip_route_info,
             stop_times_by_trip_id=stop_times,
@@ -643,7 +658,14 @@ def _get_trips_and_stop_times(
 def _get_routes(trips: Trips) -> Routes:
     routes = Routes()
     for trip in trips:
-        routes.add(trip)
+        trip_route = routes.add(trip)
+
+        # Update each trip with the actual route instance it refers to
+        trip.route_info = RouteInfo(
+            name=trip.route_info.name,
+            transport_type=trip.route_info.transport_type,
+            route=trip_route
+        )
 
     return routes
 
@@ -750,26 +772,26 @@ def _trips_processor_job(
     return job
 
 
-def add_shared_mobility_to_pyraptor_timetable(timetable: RaptorTimetable, feeds_path: str, n_jobs: int):
+def add_shared_mobility_to_pyraptor_timetable(timetable: RaptorTimetable, feeds: str, n_jobs: int) -> RaptorTimetableSM:
     """
     Adds shared mobility data to the provided timetable.
 
     :param timetable: timetable instance
-    :param feeds_path: path to the file containing shared mobility feed info
+    :param feeds: path to the file containing shared mobility feed info
     :param n_jobs: number of jobs to execute when processing shared mob data
     """
 
     logger.info("Adding shared mobility datas")
 
-    feed_infos: List[Dict] = json.load(open(feeds_path))['feeds']
-    feeds_path: List[SharedMobilityFeed] = [SharedMobilityFeed(feed_info['url'], feed_info['lang'])
-                                            for feed_info in feed_infos]
+    feed_infos: List[Dict] = json.load(open(feeds))['feeds']
+    feeds: List[SharedMobilityFeed] = [SharedMobilityFeed(feed_info['url'], feed_info['lang'])
+                                       for feed_info in feed_infos]
 
     logger.debug("Adding stations and renting-stations")
 
     stations_before_sm, stops_before_sm = len(timetable.stations), len(timetable.stops)  # debugging
 
-    for feed in feeds_path:
+    for feed in feeds:
         for renting_station in feed.renting_stations:
             timetable.stops.add_stop(renting_station)
             timetable.stations.add(renting_station.station)
@@ -802,7 +824,8 @@ def add_shared_mobility_to_pyraptor_timetable(timetable: RaptorTimetable, feeds_
             end = (start + interval_length) - 1  # -1 because the interval_length-th stop belongs to the next round
 
         job = _shared_mob_processor_job(
-            shared_mob_stops=list(itertools.islice(shared_mob_stops, start, end)),
+            # +1 because end would not be included
+            shared_mob_stops=list(itertools.islice(shared_mob_stops, start, end+1)),
             public_stops=public_stops,
             job_id=f"#{i}"
         )
@@ -818,6 +841,15 @@ def add_shared_mobility_to_pyraptor_timetable(timetable: RaptorTimetable, feeds_
     transfers_after_sm = len(timetable.transfers)
     logger.debug(f"Added new {transfers_after_sm - transfers_before_sm} vehicle-transfers "
                  f"between public and shared-mobility stops")
+    return RaptorTimetableSM(
+        stations=timetable.stations,
+        stops=timetable.stops,
+        trips=timetable.trips,
+        trip_stop_times=timetable.trip_stop_times,
+        routes=timetable.routes,
+        transfers=timetable.transfers,
+        shared_mobility_feeds=feeds
+    )
 
 
 def _shared_mob_processor_job(
@@ -881,7 +913,7 @@ def _execute_jobs(
 
 if __name__ == "__main__":
     args = parse_arguments()
-    main(input_folder=args.input, output_folder=args.output,
-         departure_date=args.date, agencies=args.agencies,
-         shared_mobility=args.shared_mobility, feeds_path=args.feeds,
-         n_jobs=args.jobs)
+    generate_timetable(input_folder=args.input, output_folder=args.output,
+                       departure_date=args.date, agencies=args.agencies,
+                       shared_mobility=args.shared_mobility, feeds_path=args.feeds,
+                       n_jobs=args.jobs)

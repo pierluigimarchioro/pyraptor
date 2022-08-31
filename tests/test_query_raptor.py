@@ -5,7 +5,7 @@ from pyraptor.model.timetable import RaptorTimetable
 
 def test_has_main():
     """Has main"""
-    assert query_raptor.main
+    assert query_raptor.generate_timetable
 
 
 def test_query_raptor(default_timetable: RaptorTimetable):

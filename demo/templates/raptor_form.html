@@ -1,0 +1,189 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<style>
+
+    html {
+        background: url('https://www.creativefabrica.com/wp-content/uploads/2020/07/02/Modern-City-Silhouette-Skyscrapers-Graphics-4523478-1.jpg') no-repeat center center fixed;
+        -webkit-background-size: cover;
+        -moz-background-size: cover;
+        -o-background-size: cover;
+        background-size: cover;
+    }
+
+    body {font-family: Arial, Helvetica, sans-serif;} * {box-sizing: border-box;}
+
+    input[type=time], select {
+        width: 100%;
+        padding: 12px;
+        border: 1px solid rgba(82, 40, 101, 0.86);
+        border-radius: 4px;
+        box-sizing: border-box;
+        margin-top: 6px;
+        margin-bottom: 16px;
+        resize: vertical;
+        color: #FF8FE0FF;
+        background-color: #5228658C;
+    }
+
+    label {
+        color: rgba(100, 50, 150, 0.90);
+    }
+
+    .title {
+        align-items: center;
+        display: flex;
+        justify-content: center;
+        color: rgba(204, 96, 239, 0.90);
+        font-family: sans-serif;
+        font-size: 36px;
+        font-weight: 600;
+        margin-top: 5px;
+        margin-bottom: 30px;
+    }
+
+    input[type=submit] {
+        background-color: #04AA6D;
+        color: white;
+        margin-left: 35%;
+        text-align: center;
+        width: 23%;
+        height: 100%;
+        font-size: large;
+        position: center;
+        border: none;
+        border-radius: 4px;
+        cursor: pointer;
+        alignment: center;
+        padding-top: 10px;
+        padding-bottom: 10px;
+    }
+
+    input[type=submit]:hover {
+        background-color: #45a049;
+    }
+
+    .container {
+        margin-left: auto;
+        margin-right: auto;
+        margin-top: 50px;
+        alignment: center;
+        height: 50%;
+        width: 50%;
+        border-radius: 5px;
+        background-image: linear-gradient(rgba(100, 100, 100, 0.975), rgba(130, 130, 130, 0.975));
+        padding: 20px;
+        border-color: rgba(0, 0, 0, 0.53);
+    }
+
+    .double {
+        zoom: 1.0;
+        transform: scale(2);
+        -ms-transform: scale(2);
+        -webkit-transform: scale(2);
+        -o-transform: scale(2);
+        -moz-transform: scale(2);
+        transform-origin: 0 0;
+        -ms-transform-origin: 0 0;
+        -webkit-transform-origin: 0 0;
+        -o-transform-origin: 0 0;
+        -moz-transform-origin: 0 0;
+    }
+
+</style>
+
+    <head>
+        <title>{{version_name}}</title>
+    </head>
+
+    <body>
+
+        <div class="container">
+            <form action="/{{action}}" method="POST">
+                <div class="title">{{version_name}}</div>
+                <div id="or">
+                    <label>Choose origin:</label>
+                    <select name="origin">
+                        {% for stop_name in stop_names %}
+                        <option  value="{{stop_name}}">{{stop_name}}</option>
+                        {% endfor %}
+                    </select>
+                    <br><br>
+                </div>
+
+                <div id="dest">
+                    <label>Choose destination:</label>
+                    <select name="destination">
+                        {% for stop_name in stop_names %}
+                            <option  value="{{stop_name}}">{{stop_name}}</option>
+                        {% endfor %}
+                    </select>
+                    <br><br>
+                </div>
+
+                <div id="t">
+                    <label>Choose departure time:</label>
+                    <input type="time" name="time" min="00:00" max="23:59" required>
+                    <br><br>
+                </div>
+
+                <!-- Show shared mob input only if shared mob is enabled-->
+                {% if enable_sm %}
+
+                <div id="p">
+                    <label>Choose preferred vehicle:</label>
+                        <select name="preferred">
+                            {% for vehicle in vehicles %}
+                                <option  value="{{vehicle.id_}}">{{vehicle.name}}</option>
+                            {% endfor %}
+                        </select>
+                    <br><br>
+                </div>
+
+                <div id="c">
+                    <label> Use car:
+                        <span class="double">
+                            <input type="checkbox" name="car" checked>
+                        </span>
+                    </label>
+                    <br><br>
+                </div>
+
+                {% endif %}
+
+                <input type="submit" value="Run">
+            </form>
+            <br>
+            <a href="/home">Back</a>
+        </div>
+    </body>
+
+</html>
+
+<script>
+    // Set default value of time inputs to current time
+    let date = new Date();
+    let curr_time = String(date.getHours()).padStart(2, '0') + ":" + String(date.getMinutes()).padStart(2, '0');
+
+    let inputs = document.getElementsByTagName('input')
+    inputs = [].slice.call(inputs); // cast to array
+    let time_inputs = inputs.filter(el => el.type === 'time')
+    for(let time of time_inputs) {
+        time.value = curr_time;
+    }
+
+    if ({{enable_sm|tojson}}) {
+        let select = document.createElement("select");
+        select.id = "t";
+        select.name = "time"
+        option = document.createElement("option");
+        option.value = curr_time;
+        option.text = curr_time;
+        select.appendChild(option);
+        for(let time of time_inputs) {
+            time.parentNode.insertBefore(select, time.nextSibling);
+            time.parentNode.removeChild(time)
+        }
+
+    }
+</script>

@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import argparse
 import webbrowser
-from datetime import timedelta, datetime
 from enum import Enum
 from statistics import mean
 from typing import List, Tuple, Mapping, Callable
@@ -13,26 +12,9 @@ from folium import Map, Marker, PolyLine
 from loguru import logger
 from os import path
 
-from pyraptor.dao import read_timetable
 from pyraptor.model.timetable import Stop, Coordinates, TransportType, SHARED_MOBILITY_TYPES, PUBLIC_TRANSPORT_TYPES
 from pyraptor.model.output import AlgorithmOutput, Leg
-from pyraptor.util import TRANSFER_COST
-
-FILE_NAME = 'algo_output.html'
-
-
-def seconds_to_hour(seconds: int) -> str:
-    """ Convert number of seconds to hour string"""
-    if seconds is not None:
-        return str(timedelta(seconds=int(seconds)))
-
-
-def hour_to_seconds(hour: str) -> int:
-    """ Convert hour string to number of seconds"""
-    date_time = datetime.strptime(hour, "%H:%M:%S")
-    a_timedelta = date_time - datetime(1900, 1, 1)
-    seconds = a_timedelta.total_seconds()
-    return int(seconds)
+from pyraptor.util import sec2str
 
 
 """ Marker and Line Types"""
@@ -53,7 +35,7 @@ class LineType(Enum):
     Walk = 'walk'
 
 
-""" Marker and Line Setting """
+""" Marker and Line Settings """
 
 COLOR_DEPARTURE = 'blue'  # default color for departure
 COLOR_ARRIVAL = 'darkblue'  # default color for arrival
@@ -97,8 +79,10 @@ LINE_SETTINGS: Mapping[LineType, LineSetting] = {
 """ Visualizers """
 
 
-class StopVisualizer(object):
-    """  This class represents a Stop on the map """
+class StopVisualization(object):
+    """
+    This class represents the visualization of a Stop on the map
+    """
 
     def __init__(self, stop: Stop):
         self.stop: Stop = stop
@@ -116,14 +100,14 @@ class StopVisualizer(object):
     @property
     def is_start(self) -> bool:
         """ Is the stop the first stop of the journey """
-        return self.arr is None and \
-               self.dep is not None
+        return (self.arr is None and
+                self.dep is not None)
 
     @property
     def is_end(self) -> bool:
         """ Is the stop the last stop of the journey """
-        return self.arr is not None and \
-               self.dep is None
+        return (self.arr is not None and
+                self.dep is None)
 
     @property
     def arrival_departure_info(self) -> str:
@@ -145,13 +129,13 @@ class StopVisualizer(object):
     @property
     def setting(self) -> MarkerSetting:
         """ Returns setting basing on stop infos """
-        mtype: MarkerType = MarkerType.PublicStop if type(self.stop) == Stop else MarkerType.RentingStation
-        msetting: MarkerSetting = MARKER_SETTINGS[mtype]()
+        m_type: MarkerType = MarkerType.PublicStop if type(self.stop) == Stop else MarkerType.RentingStation
+        m_setting: MarkerSetting = MARKER_SETTINGS[m_type]()
         if self.is_start:
-            msetting.icon.options['markerColor'] = COLOR_DEPARTURE
+            m_setting.icon.options['markerColor'] = COLOR_DEPARTURE
         if self.is_end:
-            msetting.icon.options['markerColor'] = COLOR_ARRIVAL
-        return msetting
+            m_setting.icon.options['markerColor'] = COLOR_ARRIVAL
+        return m_setting
 
     @property
     def dep(self):
@@ -164,23 +148,25 @@ class StopVisualizer(object):
     @arr.setter
     def arr(self, seconds: int):
         """ Convert seconds number to hour """
-        self._arr = seconds_to_hour(seconds)
+        self._arr = sec2str(seconds) if seconds is not None else None
 
     @dep.setter
     def dep(self, seconds: int):
         """ Convert seconds number to hour """
-        self._dep = seconds_to_hour(seconds)
+        self._dep = sec2str(seconds) if seconds is not None else None
 
-    def add_to(self, map_visualizer: MapVisualizer):
-        map_visualizer.put_marker(
+    def add_to(self, trip_visualization: TripVisualization):
+        trip_visualization.put_marker(
             coord=self.geo,
             text=self.info,
             marker_setting=self.setting
         )
 
 
-class MovementVisualizer:
-    """  This class represents a Movement on the map between two stops """
+class MovementVisualization:
+    """
+    This class represents the map visualization of a movement between two stops
+    """
 
     def __init__(self, leg: Leg):
         self.leg: Leg = leg
@@ -210,22 +196,22 @@ class MovementVisualizer:
 
     @property
     def line_type(self) -> LineType:
-        tt = self.transport_type
-        if tt == TransportType.Walk:
+        t_type = self.transport_type
+        if t_type == TransportType.Walk:
             return LineType.Walk
-        elif tt in SHARED_MOBILITY_TYPES:
+        elif t_type in SHARED_MOBILITY_TYPES:
             return LineType.ShareMobility
-        elif tt in PUBLIC_TRANSPORT_TYPES:
+        elif t_type in PUBLIC_TRANSPORT_TYPES:
             return LineType.PublicTransport
         else:
-            raise ValueError(f"No valid {tt} transport")
+            raise ValueError(f"`{t_type}` is not a valid transport type")
 
     @property
     def setting(self) -> LineSetting:
         return LINE_SETTINGS[self.line_type]
 
-    def add_to(self, map_visualizer: MapVisualizer):
-        map_visualizer.draw_line(
+    def add_to(self, trip_visualization: TripVisualization):
+        trip_visualization.draw_line(
             coord1=self.from_coord,
             coord2=self.to_coord,
             text=self.info,
@@ -233,18 +219,22 @@ class MovementVisualizer:
         )
 
 
-class MapVisualizer:
-    """ Map to visualize the trip """
+class TripVisualization:
+    """
+    Class that represents a trip visualization on a map
+    """
 
     def __init__(self, legs: List[Leg]):
         self.legs: List[Leg] = legs
         self.map_: Map = Map(location=list(self._mean_point))
         self.map_.fit_bounds(self.bounds)  # to visualize
+        self._add_stops()
+        self._add_moves()
 
     @property
     def stops(self) -> List[Stop]:
         """ Returns all journeys stops """
-        return list(set([l.from_stop for l in self.legs]).union([l.to_stop for l in self.legs]))
+        return list(set([leg.from_stop for leg in self.legs]).union([leg.to_stop for leg in self.legs]))
 
     @property
     def bounds(self) -> [[float, float], [float, float]]:
@@ -256,26 +246,32 @@ class MapVisualizer:
     def _mean_point(self) -> Tuple[float, float]:
         """ Returns mean latitude and longitude of journey stops"""
         lats = [stop.geo.lat for stop in self.stops]
-        lons = [stop.geo.lon for stop in self.stops]
-        return mean(lats), mean(lons)
+        longs = [stop.geo.lon for stop in self.stops]
+        return mean(lats), mean(longs)
 
-    def add_stops(self):
+    def _add_stops(self):
         """ Adds journey stops to map """
-        visualizers: Mapping[Stop, StopVisualizer] = {stop: StopVisualizer(stop) for stop in self.stops}
+        visualizers: Mapping[Stop, StopVisualization] = {stop: StopVisualization(stop) for stop in self.stops}
+
         for leg in self.legs:
             visualizers[leg.from_stop].dep = leg.dep
             visualizers[leg.to_stop].arr = leg.arr
-        for vis in visualizers.values():
-            vis.add_to(map_visualizer=self)
 
-    def add_moves(self):
+        for vis in visualizers.values():
+            vis.add_to(trip_visualization=self)
+
+    def _add_moves(self):
         """ Adds movement between stops to map """
-        visualizers: List[MovementVisualizer] = [MovementVisualizer(leg) for leg in self.legs]
+        visualizers: List[MovementVisualization] = [MovementVisualization(leg) for leg in self.legs]
         for vis in visualizers:
             vis.add_to(self)
 
-    def put_marker(self, coord: Coordinates,
-                   text: str | None = None, marker_setting: MarkerSetting = None):
+    def put_marker(
+            self,
+            coord: Coordinates,
+            text: str | None = None,
+            marker_setting: MarkerSetting = None
+    ):
         """ Creates a marker on the map """
         if marker_setting is None:
             marker_setting = MarkerSetting()
@@ -287,8 +283,12 @@ class MapVisualizer:
         )
         marker.add_to(self.map_)
 
-    def draw_line(self, coord1: Coordinates, coord2: Coordinates,
-                  text: str | None = None, line_setting: LineSetting = LineSetting()):
+    def draw_line(
+            self, coord1: Coordinates,
+            coord2: Coordinates,
+            text: str | None = None,
+            line_setting: LineSetting = LineSetting()
+    ):
         """ Creates a line on the map """
         line = PolyLine(
             locations=[coord1.to_list, coord2.to_list],
@@ -300,12 +300,15 @@ class MapVisualizer:
         )
         line.add_to(self.map_)
 
-    def save(self, path_: str, open_: bool = False):
+    def save(self, path_: str, open_browser: bool = False):
         folium.TileLayer('openstreetmap').add_to(self.map_)
         folium.TileLayer('cartodbpositron').add_to(self.map_)
         folium.LayerControl().add_to(self.map_)
+
+        logger.debug(f"Saving visualization to {path_}")
         self.map_.save(path_)
-        if open_:
+        if open_browser:
+            logger.debug("Opening visualization in the browser")
             path_url = 'file:///' + path.abspath(path_)
             webbrowser.open(url=path_url, new=1)
 
@@ -339,35 +342,43 @@ def parse_arguments():
     return arguments
 
 
-def main(
-        algo_output: str,
-        output_dir: str,
-        open_: bool
+def visualize_output(
+        algo_output_path: str,
+        visualization_dir: str,
+        open_browser: bool
 ):
-    logger.debug("Algorythm path      : {}", algo_output)
-    logger.debug("Output directory    : {}", output_dir)
-    logger.debug("Open in browser     : {}", open_)
+    """
+    Saves the visualization of the provided output.
 
-    logger.info(algo_output)
+    :param algo_output_path: output to visualize
+    :param visualization_dir: directory to save the visualizations in
+    :param open_browser: if True, the visualization are opened on the browser
+    """
+
+    logger.debug("Algorithm path      : {}", algo_output_path)
+    logger.debug("Output directory    : {}", visualization_dir)
+    logger.debug("Open in browser     : {}", open_browser)
+
+    logger.info(f"Visualizing {algo_output_path}")
 
     try:
-        output: AlgorithmOutput = AlgorithmOutput.read_from_file(filepath=algo_output)
-    except:
-        raise Exception(f"No algo_output.pcl found in {algo_output}")
+        output: AlgorithmOutput = AlgorithmOutput.read_from_file(filepath=algo_output_path)
+    except IOError as ex:
+        raise Exception(f"An error occurred while trying to read {algo_output_path}: {ex}")
 
-    visualizer = MapVisualizer(legs=output.journey.legs)
+    for i, jrny in enumerate(output.journeys):
+        visualization = TripVisualization(legs=jrny.legs)
+        dep = jrny.legs[0].from_stop.name
+        arr = jrny.legs[-1].to_stop.name
 
-    visualizer.add_stops()
-    visualizer.add_moves()
-
-    out_file_path = path.join(output_dir, FILE_NAME)
-    visualizer.save(path_=out_file_path, open_=open_)
+        out_file_path = path.join(visualization_dir, f"{dep}-{arr}_{i}.html")
+        visualization.save(path_=out_file_path, open_browser=open_browser)
 
 
 if __name__ == "__main__":
     args = parse_arguments()
-    main(
-        algo_output=args.algo_output,
-        output_dir=args.output_dir,
-        open_=args.browser
+    visualize_output(
+        algo_output_path=args.algo_output,
+        visualization_dir=args.output_dir,
+        open_browser=args.browser
     )

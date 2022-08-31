@@ -3,17 +3,25 @@ from __future__ import annotations
 import os
 import uuid
 from collections import defaultdict
+from collections.abc import Mapping
 from dataclasses import dataclass
 from enum import Enum
 from operator import attrgetter
-from typing import Tuple, Dict, Any, List
+from typing import Tuple, Dict, Any, List, TypeVar, Generic
 
 import attr
 import numpy as np
 from geopy.distance import geodesic
 from loguru import logger
 
-from pyraptor.util import TRANSFER_COST, MEAN_FOOT_SPEED
+from pyraptor.util import (
+    DEFAULT_TRANSFER_COST,
+    MEAN_FOOT_SPEED,
+    MEAN_BIKE_SPEED,
+    MEAN_ELECTRIC_BIKE_SPEED,
+    MEAN_CAR_SPEED,
+    sec2str
+)
 
 
 def same_type_and_id(first, second):
@@ -118,7 +126,10 @@ class Stop:
         return Stop.stop_distance(self, s)
 
 
-class Stops:
+_Stop = TypeVar("_Stop", bound=Stop)
+
+
+class Stops(Generic[_Stop]):
     """Stops"""
 
     def __init__(self):
@@ -138,18 +149,18 @@ class Stops:
     def __iter__(self):
         return iter(self.set_idx.values())
 
-    def get_stop(self, stop_id) -> Stop:
+    def get_stop(self, stop_id) -> _Stop:
         """Get stop"""
         if stop_id not in self.set_idx:
             raise ValueError(f"Stop ID {stop_id} not present in Stops")
-        stop: Stop = self.set_idx[stop_id]
+        stop: _Stop = self.set_idx[stop_id]
         return stop
 
-    def get_by_index(self, stop_index) -> Stop:
+    def get_by_index(self, stop_index) -> _Stop:
         """Get stop by index"""
         return self.set_index[stop_index]
 
-    def add_stop(self, stop: Stop) -> Stop:
+    def add_stop(self, stop: _Stop) -> _Stop:
         """Add stop"""
         if stop.id in self.set_idx:
             stop = self.set_idx[stop.id]
@@ -241,10 +252,6 @@ class TripStopTime:
     dts_dep: int = attr.ib(default=attr.NOTHING)
     """Time of departure in seconds past midnight"""
 
-    # TODO remove since it is never set; also remove from Leg and Trip.get_fare()
-    #   Substitute with co2 and distance related attributes/getters
-    fare: float = attr.ib(default=0.0)
-
     travelled_distance: float = attr.ib(default=0.0)
     """Distance in km covered by the trip from its beginning"""
 
@@ -254,7 +261,8 @@ class TripStopTime:
     def __repr__(self):
         return (
             "TripStopTime(trip_id={hint}{trip_id}, stop_idx={0.stop_idx},"
-            " stop_id={0.stop.id}, dts_arr={0.dts_arr}, dts_dep={0.dts_dep}, fare={0.fare})"
+            " stop={0.stop}, dts_arr={0.dts_arr}, dts_dep={0.dts_dep},"
+            "travelled_distance={0.travelled_distance})"
         ).format(
             self,
             trip_id=self.trip.id if self.trip else None,
@@ -270,7 +278,7 @@ class TripStopTimes:
         self.stop_trip_idx: Dict[Stop, List[TripStopTime]] = defaultdict(list)
 
     def __repr__(self):
-        return f"{TripStopTimes.__name__}(n_tripstoptimes={len(self.set_idx)})"
+        return f"{TripStopTimes.__name__}(n_stop_times={len(self.set_idx)})"
 
     def __getitem__(self, trip_id):
         return self.set_idx[trip_id]
@@ -346,7 +354,7 @@ class TransportType(Enum):
             tt.Bus: 'Bus',
             tt.Ferry: 'Ferry',
             tt.CableTram: 'Cable Tram',
-            tt.AerialLift: 'Aerail Lift',
+            tt.AerialLift: 'Aerial Lift',
             tt.Funicular: 'Funicular',
             tt.TrolleyBus: 'Trolley Bus',
             tt.Monorail: 'Monorail'
@@ -379,6 +387,7 @@ SHARED_MOBILITY_TYPES: List[TransportType] = [TransportType.Bike, TransportType.
 class RouteInfo:
     transport_type: TransportType = None
     name: str = None
+    route: Route = None
 
     def __str__(self):
         return f"Transport: {self.transport_type.get_description()} | Route Name: {self.name}"
@@ -414,11 +423,13 @@ class Trip:
     Class that represents a Trip, which is a sequence of consecutive stops
     """
 
-    def __init__(self,
-                 id_: Any = None,
-                 long_name: str = None,
-                 route_info: RouteInfo = None,
-                 hint: str = None):
+    def __init__(
+            self,
+            id_: Any = None,
+            long_name: str = None,
+            route_info: RouteInfo = None,
+            hint: str = None
+    ):
         """
         :param id_: id of the trip
         :param long_name: long name of the trip
@@ -431,7 +442,7 @@ class Trip:
         self.long_name: str = long_name
         self.route_info: RouteInfo = route_info
 
-        self.hint: str = str(route_info) if hint is None else hint
+        self.hint: str = f"{str(route_info)} | Trip_id: {id_}" if hint is None else hint
         self.stop_times: List[TripStopTime] = []
         self.stop_times_index: Dict[Stop, int] = {}
 
@@ -442,12 +453,13 @@ class Trip:
         return same_type_and_id(self, trip)
 
     def __repr__(self):
-        return "Trip(hint={hint}, stop_times={stop_times})".format(
+        return "Trip(id={trip_id}, hint={hint}, stop_times={stop_times})".format(
+            trip_id=self.id,
             hint=self.hint if self.hint is not None else self.id,
             stop_times=len(self.stop_times),
         )
 
-    def __getitem__(self, n):
+    def __getitem__(self, n: int) -> TripStopTime:
         return self.stop_times[n]
 
     def __len__(self):
@@ -472,18 +484,17 @@ class Trip:
         self.stop_times.append(stop_time)
         self.stop_times_index[stop_time.stop] = len(self.stop_times) - 1
 
-    def get_stop(self, stop: Stop) -> TripStopTime:
-        """Get stop"""
-        return self.stop_times[self.stop_times_index[stop]]
-
     def get_stop_time(self, stop: Stop) -> TripStopTime:
         """Get stop"""
         return self.stop_times[self.stop_times_index[stop]]
 
-    def get_fare(self, depart_stop: Stop) -> float:
-        """Get fare from depart_stop"""
-        stop_time = self.get_stop_time(depart_stop)
-        return 0 if stop_time is None else stop_time.fare
+
+TRANSPORT_TYPE_SPEEDS: Mapping[TransportType, float] = {
+    TransportType.Walk: MEAN_FOOT_SPEED,
+    TransportType.Bike: MEAN_BIKE_SPEED,
+    TransportType.ElectricBike: MEAN_ELECTRIC_BIKE_SPEED,
+    TransportType.Car: MEAN_CAR_SPEED,
+}
 
 
 class TransferTrip(Trip):
@@ -491,12 +502,14 @@ class TransferTrip(Trip):
     Class that represents a transfer trip made between to stops
     """
 
-    def __init__(self,
-                 from_stop: Stop,
-                 to_stop: Stop,
-                 dep_time: int,
-                 arr_time: int,
-                 transport_type: TransportType):
+    def __init__(
+            self,
+            from_stop: Stop,
+            to_stop: Stop,
+            dep_time: int,
+            arr_time: int,
+            transport_type: TransportType
+    ):
         """
         :param from_stop: stop that the transfer starts from
         :param to_stop: stop that the transfer ends at
@@ -506,33 +519,43 @@ class TransferTrip(Trip):
         """
 
         transfer_route = TransferRouteInfo(transport_type=transport_type)
-        super(TransferTrip, self).__init__(id_=f"Transfer Trip - {uuid.uuid4()}",
-                                           long_name=f"Transfer from {from_stop.name} to {to_stop.name}",
-                                           route_info=transfer_route)
+        super(TransferTrip, self).__init__(
+            id_=f"Transfer Trip {uuid.uuid4()} | dep @ {sec2str(dep_time)} - arr @ {sec2str(arr_time)}",
+            long_name=f"Transfer from {from_stop.name} to {to_stop.name}",
+            route_info=transfer_route
+        )
+
+        dep_stop_time = TripStopTime(
+            trip=self, stop_idx=0, stop=from_stop, dts_arr=dep_time, dts_dep=dep_time,
+            travelled_distance=0.0
+        )
+        super(TransferTrip, self).add_stop_time(dep_stop_time)
 
         # Add stop times for both origin and end stops
-        dep_stop_time = TripStopTime(
-            trip=self, stop_idx=0, stop=from_stop, dts_arr=dep_time, dts_dep=dep_time
-        )
-        self.add_stop_time(dep_stop_time)
+        travelling_time = arr_time - dep_time
 
+        if transport_type not in TRANSPORT_TYPE_SPEEDS.keys():
+            raise ValueError(f"Unhandled transport type `{transport_type}`: average speed is not defined")
+
+        travelled_distance = (travelling_time / 3600) * TRANSPORT_TYPE_SPEEDS[transport_type]
         arr_stop_time = TripStopTime(
-            trip=self, stop_idx=1, stop=to_stop, dts_arr=arr_time, dts_dep=arr_time
+            trip=self, stop_idx=1, stop=to_stop, dts_arr=arr_time, dts_dep=arr_time,
+            travelled_distance=travelled_distance
         )
-        self.add_stop_time(arr_stop_time)
+        super(TransferTrip, self).add_stop_time(arr_stop_time)
 
 
 class Trips:
     """Trips"""
 
     def __init__(self):
-        self.set_idx = dict()
+        self.set_idx: Dict[Any, Trip] = dict()
         self.last_id = 1
 
     def __repr__(self):
         return f"Trips(n_trips={len(self.set_idx)})"
 
-    def __getitem__(self, trip_id):
+    def __getitem__(self, trip_id) -> Trip:
         return self.set_idx[trip_id]
 
     def __len__(self):
@@ -678,15 +701,18 @@ class Routes:
 
 
 @attr.s(repr=False, cmp=False)
-class Transfer:
+class Transfer(Generic[_Stop]):
     """Transfer"""
 
     id: str | None = attr.ib(default=None)
-    from_stop: Stop | None = attr.ib(default=None)
-    to_stop: Stop | None = attr.ib(default=None)
+    from_stop: _Stop | None = attr.ib(default=None)
+    to_stop: _Stop | None = attr.ib(default=None)
 
-    # Time in seconds that the transfer takes to complete
-    transfer_time = attr.ib(default=TRANSFER_COST)
+    transfer_time: int = attr.ib(default=DEFAULT_TRANSFER_COST)
+    """Time in seconds that the transfer takes to complete"""
+
+    transport_type: TransportType = attr.ib(default=TransportType.Walk)
+    """Transport type that the transfer is carried out with"""
 
     def __hash__(self):
         return hash(self.id)
@@ -695,10 +721,12 @@ class Transfer:
         return same_type_and_id(self, trip)
 
     def __repr__(self):
-        return f"Transfer(from_stop={self.from_stop}, to_stop={self.to_stop}, transfer_time={self.transfer_time})"
+        return (f"Transfer(from_stop={self.from_stop}, "
+                f"to_stop={self.to_stop}, "
+                f"transfer_time={self.transfer_time})")
 
     @staticmethod
-    def get_transfer(sa: Stop, sb: Stop) -> Tuple[Transfer, Transfer]:
+    def get_transfer(sa: _Stop, sb: _Stop) -> Tuple[Transfer, Transfer]:
         """
         Given two stops compute both inbound and outbound transfers
         Transfer time is approximated dividing computed distance by a constant speed
@@ -712,16 +740,19 @@ class Transfer:
         )
 
 
-class Transfers:
+_Transfer = TypeVar("_Transfer", bound=Transfer)
+
+
+class Transfers(Generic[_Transfer]):
     """
     Class that represents a transfer collection with some additional easier to use access methods.
     """
 
     def __init__(self):
-        self.set_idx: Dict[Any, Transfer] = dict()
+        self.set_idx: Dict[Any, _Transfer] = dict()
         """Dictionary that maps transfer ids with the corresponding transfer instance"""
 
-        self.stop_to_stop_idx: Dict[Tuple[Stop, Stop], Transfer] = dict()
+        self.stop_to_stop_idx: Dict[Tuple[Stop, Stop], _Transfer] = dict()
         """Dictionary that maps (from_stop, to_stop) pairs with the corresponding transfer instance"""
 
         self.last_id: int = 1
@@ -742,25 +773,25 @@ class Transfers:
     def __iter__(self):
         return iter(self.set_idx.values())
 
-    def add(self, transfer: Transfer):
+    def add(self, transfer: _Transfer):
         """Add trip"""
         transfer.id = self.last_id
         self.set_idx[transfer.id] = transfer
         self.stop_to_stop_idx[(transfer.from_stop, transfer.to_stop)] = transfer
         self.last_id += 1
 
-    def with_from_stop(self, from_: Stop) -> List[Transfer]:
+    def with_from_stop(self, from_: Stop) -> List[_Transfer]:
         """ Returns all transfers with given departing stop  """
         return [
             self.stop_to_stop_idx[(f, t)] for f, t in self.stop_to_stop_idx.keys() if f == from_
         ]
 
-    def with_to_stop(self, to: Stop) -> List[Transfer]:
+    def with_to_stop(self, to: Stop) -> List[_Transfer]:
         """ Returns all transfers with given arrival stop  """
         return [
             self.stop_to_stop_idx[(f, t)] for f, t in self.stop_to_stop_idx.keys() if t == to
         ]
 
-    def with_stop(self, s) -> List[Transfer]:
+    def with_stop(self, s) -> List[_Transfer]:
         """ Returns all transfers with given stop as departing or arrival  """
         return self.with_from_stop(s) + self.with_to_stop(s)
