@@ -278,6 +278,7 @@ class BaseSharedMobRaptor(BaseRaptorAlgorithm[_BagType, _LabelType], ABC):
         self.no_dest = []
         self.vehicle_transfers = VehicleTransfers()
 
+    # TODO improve logging statements
     def run(
             self,
             from_stops: Iterable[Stop],
@@ -364,7 +365,14 @@ class BaseSharedMobRaptor(BaseRaptorAlgorithm[_BagType, _LabelType], ABC):
 
             marked_stops = set(marked_trip_stops).union(marked_transfer_stops)
 
-            logger.debug(f"{len(marked_stops)} stops to evaluate in next round")
+            if len(marked_stops) == 0:
+                logger.debug("No more stops to evaluate in the following rounds. Terminating...")
+
+                # Since there are no more stops to evaluate, the current round has found
+                # reached the best paths, so return it
+                return self.bag_round_stop[k]
+            else:
+                logger.debug(f"{len(marked_stops)} stops to evaluate in next round")
 
         return self.bag_round_stop[rounds]
 
