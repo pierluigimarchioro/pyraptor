@@ -6,6 +6,7 @@ It computes journeys with different:
 """
 import argparse
 import json
+import os
 from os import path
 from typing import Dict, List, Mapping
 
@@ -177,6 +178,10 @@ def main(input_: str, output: str, config: str):
                     str(journey)].append(time)
 
     _dict_to_json({'rounds': out_dict}, path.join(output, OUT_FILE))
+
+    os.remove(path.join(output, "algo-output.pcl"))
+    os.remove(path.join(tmp_dir, WMC_CONFIG))
+    os.rmdir(tmp_dir)
 
 
 def _parse_arguments():
