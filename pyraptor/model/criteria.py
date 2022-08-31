@@ -120,6 +120,9 @@ class MultiCriteriaLabel(BaseLabel):
     criteria: Sequence[Criterion] = attr.ib(default=list)
     """Collection of criteria used to compare labels"""
 
+    # TODO debug
+    updated_at_round: int = attr.ib(default=-1)
+
     @staticmethod
     def from_base_raptor_label(label: BasicRaptorLabel) -> MultiCriteriaLabel:
         """
@@ -192,7 +195,9 @@ class MultiCriteriaLabel(BaseLabel):
             arrival_stop=data.arrival_stop if data.arrival_stop is not None else self.arrival_stop,
             criteria=updated_criteria,
             trip=updated_trip,
-            criteria=updated_criteria
+
+            # TODO debug
+            updated_at_round=data.current_round
         )
 
     def is_dominating(self, other: MultiCriteriaLabel) -> bool:
@@ -675,6 +680,9 @@ class LabelUpdate(Generic[_LabelType]):
     This data is needed by criteria that have a dependency on other labels to calculate their cost.
     (e.g. the distance cost of label x+1 depends on the distance cost of label x)
     """
+
+    # TODO debug
+    current_round: int
 
 
 @dataclass(frozen=True)

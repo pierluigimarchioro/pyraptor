@@ -440,7 +440,7 @@ class Trip:
         self.long_name: str = long_name
         self.route_info: RouteInfo = route_info
 
-        self.hint: str = str(route_info) if hint is None else hint
+        self.hint: str = f"{str(route_info)}  | Trip_id: {id_}" if hint is None else hint
         self.stop_times: List[TripStopTime] = []
         self.stop_times_index: Dict[Stop, int] = {}
 
