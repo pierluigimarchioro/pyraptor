@@ -270,7 +270,7 @@ def wmc_raptor_run():
 
         timetable = TIMETABLE_SM if ENABLE_SM else TIMETABLE
 
-        query_raptor(
+        elapsed_time = query_raptor(
             timetable=timetable,
             output_folder=MC_RAPTOR_OUT_DIR,
             origin_station=origin,
@@ -285,7 +285,8 @@ def wmc_raptor_run():
         )
 
         visualize(MC_RAPTOR_OUT_DIR)
-        return show_journey_descriptions(MC_RAPTOR_OUT_DIR)
+
+        return show_journey_descriptions(MC_RAPTOR_OUT_DIR, time=elapsed_time)
 
 
 """Visualization utils"""

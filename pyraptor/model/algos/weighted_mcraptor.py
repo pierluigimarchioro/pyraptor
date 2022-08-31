@@ -14,7 +14,7 @@ from __future__ import annotations
 
 import os.path
 from collections import ChainMap
-from collections.abc import Iterable, Mapping, MutableMapping
+from collections.abc import Iterable, MutableMapping
 from copy import copy
 from typing import List, Tuple, Dict, Set
 
@@ -81,141 +81,6 @@ class WeightedMcRaptorAlgorithm(BaseSharedMobRaptor[Bag, MultiCriteriaLabel]):
         """Dictionary that pairs each stop with the list of stops that depend on it. 
         For example, in a journey x1, x2, ..., xn, stop x2 depends on
         stop x1 because it comes later, hence the name 'forward' dependency"""
-
-    # TODO after the debugging/testing phase where it is useful to show the output of each round,
-    #   this run() implementation becomes the same as the one of the base class, hence it can be removed
-    def run(
-            self,
-            from_stops: Iterable[Stop],
-            dep_secs: int,
-            rounds: int
-    ) -> Mapping[Stop, Bag]:
-        initial_marked_stops = self._initialization(
-            from_stops=from_stops,
-            dep_secs=dep_secs,
-            rounds=rounds
-        )
-
-        # TODO debug - is stability important?
-        initial_marked_stops = list(sorted(initial_marked_stops, key=lambda x: x.id))
-
-        # Setup shared mob data only if enabled
-        # Important to do this BEFORE calculating immediate transfers,
-        # else there is a possibility that available shared mob station won't be included
-        if self.enable_sm:
-            self._initialize_shared_mob(origin_stops=initial_marked_stops)
-
-        # Get stops immediately reachable with a transfer
-        # and add them to the marked stops list
-        logger.debug("Computing immediate transfers from origin stops")
-        immediately_reachable_stops = self._improve_with_transfers(
-            k=0,  # still initialization round
-            marked_stops=initial_marked_stops,
-            transfers=self.timetable.transfers
-        )
-
-        # Add any immediately reachable via transfer
-        if self.enable_sm:
-            self._update_visited_renting_stations(stops=immediately_reachable_stops)
-
-        n_stops_1 = len(initial_marked_stops)  # debugging
-
-        marked_stops = list(
-            set(initial_marked_stops).union(immediately_reachable_stops)
-        )
-
-        # TODO debug - is stability important?
-        marked_stops = list(sorted(marked_stops, key=lambda x: x.id))
-
-        n_stops_2 = len(marked_stops)  # debugging
-        logger.debug(f"Added {n_stops_2 - n_stops_1} immediate stops:\n"
-                     f"{immediately_reachable_stops}")
-
-        # Run rounds
-        for k in range(1, rounds + 1):
-            logger.info(f"Analyzing possibilities at round {k}")
-
-            # Initialize round k (current) with the labels of round k-1 (previous)
-            self.bag_round_stop[k] = copy(self.bag_round_stop[k - 1])
-
-            # Get list of stops to evaluate in the process
-            logger.debug(f"Stops to evaluate: {len(marked_stops)}")
-
-            # Get (route, marked stop) pairs, where marked stop
-            # is the first reachable stop of the route
-            route_marked_stops = self._accumulate_routes(marked_stops)
-
-            # TODO debug - is stability important?
-            route_marked_stops = list(sorted(route_marked_stops, key=lambda x: x[1].id))
-
-            # Update stop arrival times calculated basing on reachable stops
-            marked_trip_stops = self._traverse_routes(
-                k=k,
-                route_marked_stops=route_marked_stops
-            )
-            logger.debug(f"{len(marked_trip_stops)} reachable stops added")
-
-            # TODO debug - is stability important?
-            marked_trip_stops = list(sorted(marked_trip_stops, key=lambda x: x.id))
-
-            # Add footpath transfers and update
-            marked_transfer_stops = self._improve_with_transfers(
-                k=k,
-                marked_stops=marked_trip_stops,
-                transfers=self.timetable.transfers
-            )
-            logger.debug(f"{len(marked_transfer_stops)} transferable stops added")
-
-            # TODO debug - is stability important?
-            marked_transfer_stops = list(sorted(marked_transfer_stops, key=lambda x: x.id))
-
-            if self.enable_sm:
-                # Mark stops that were improved with shared mob data
-                shared_mob_marked_stops = self._improve_with_sm_transfers(
-                    k=k,
-
-                    # Only transfer stops can be passed because shared mob stations
-                    # are reachable just by foot transfers
-                    marked_stops=marked_transfer_stops
-                )
-                logger.debug(f"{len(shared_mob_marked_stops)} shared mob transferable stops added")
-
-                # Shared mob legs are a special kind of transfer legs
-                marked_transfer_stops = set(marked_transfer_stops).union(shared_mob_marked_stops)
-
-            marked_stops = set(marked_trip_stops).union(marked_transfer_stops)
-
-            # TODO debug - is stability important?
-            marked_stops = list(sorted(marked_stops, key=lambda x: x.id))
-
-            logger.debug(f"{len(marked_stops)} stops to evaluate in next round")
-
-            # TODO debug - print the journey for each round before converging
-            if k == rounds:
-                dest_name = 'MANTOVA'
-                logger.warning("Printing best journey for each round")
-                from pyraptor.model.output import get_journeys_to_destinations
-                dest_stops = {
-                    st.name: self.timetable.stations.get_stops(st.name) for st in self.timetable.stations
-                    if st.name == dest_name  # only true destination stops
-                }
-                for k_j in range(1, rounds + 1):
-                    logger.warning(f"------ Round {k_j}: ------\n")
-                    journeys = get_journeys_to_destinations(
-                        origin_stops=from_stops,
-                        destination_stops=dest_stops,
-                        best_labels=self.bag_round_stop[k_j]
-                    )
-
-                    if dest_name not in journeys:
-                        logger.debug(f"No journeys at round {k_j}")
-                        continue
-
-                    for j in journeys[dest_name]:
-                        j.print()
-                        logger.debug("\n")
-
-        return self.bag_round_stop[rounds]
 
     def _initialization(
             self,
@@ -298,10 +163,7 @@ class WeightedMcRaptorAlgorithm(BaseSharedMobRaptor[Bag, MultiCriteriaLabel]):
                         arrival_stop=current_stop,  # New visited stop to associate the label to
                         old_trip=label.trip,
                         new_trip=label.trip,
-                        best_labels=self.best_bag,
-
-                        # TODO debug
-                        current_round=k
+                        best_labels=self.best_bag
                     )
                     label = label.update(data=update_data)
 
@@ -360,10 +222,7 @@ class WeightedMcRaptorAlgorithm(BaseSharedMobRaptor[Bag, MultiCriteriaLabel]):
                             arrival_stop=current_stop,
                             old_trip=label.trip,
                             new_trip=earliest_trip,
-                            best_labels=self.best_bag,
-
-                            # TODO debug
-                            current_round=k
+                            best_labels=self.best_bag
                         )
                         label = label.update(data=update_data)
 
@@ -414,10 +273,7 @@ class WeightedMcRaptorAlgorithm(BaseSharedMobRaptor[Bag, MultiCriteriaLabel]):
                         arrival_stop=stop_to_improve,
                         old_trip=label.trip,
                         new_trip=transfer_trip,
-                        best_labels=self.best_bag,
-
-                        # TODO debug
-                        current_round=k
+                        best_labels=self.best_bag
                     )
                     label = label.update(data=update_data)
 
@@ -539,11 +395,9 @@ class WeightedMcRaptorAlgorithm(BaseSharedMobRaptor[Bag, MultiCriteriaLabel]):
             for fwd_dep_stop in fwd_dependent_stops:
                 # It is certain that a dependent stop has at least one label assigned to it:
                 # since it is dependent, it means that it has been reached by the algorithm
-                # TODO what if there are two or more labels with the boarding stop == updated_stop?
-                #   i think it is fine, since it is not a problem if only one label is kept, updated
-                #   and then be the only one assigned back to the original dep_stop: it would mean that
-                #   some good paths would be overwritten, but it is an edge case that can be solved
-                #   this way since the algorithm is greedy
+                # NOTE: if there are two or more labels with the boarding stop == updated_stop,
+                #   just one is kept, meaning that some potential paths are discarded.
+                #   This is fine since the algorithm is just pareto-optimal.
                 fwd_dep_label = next(
                     filter(
                         lambda lbl: lbl.boarding_stop == updated_stop,
@@ -584,10 +438,7 @@ class WeightedMcRaptorAlgorithm(BaseSharedMobRaptor[Bag, MultiCriteriaLabel]):
                         arrival_stop=fwd_dep_stop,
                         old_trip=fwd_dep_label.trip,
                         new_trip=new_transfer_trip,
-                        best_labels=temp_best_bag,
-
-                        # TODO debug - minus sign to signal update happens in this method
-                        current_round=-k
+                        best_labels=temp_best_bag
                     )
                 else:
                     current_route = fwd_dep_label.trip.route_info.route
@@ -606,10 +457,7 @@ class WeightedMcRaptorAlgorithm(BaseSharedMobRaptor[Bag, MultiCriteriaLabel]):
                             arrival_stop=fwd_dep_stop,
                             old_trip=fwd_dep_label.trip,
                             new_trip=new_earliest_trip,
-                            best_labels=temp_best_bag,
-
-                            # TODO debug - minus sign to signal that update happens in this method
-                            current_round=-k
+                            best_labels=temp_best_bag
                         )
 
                 updated_fwd_dep_label = fwd_dep_label.update(data=update_data)

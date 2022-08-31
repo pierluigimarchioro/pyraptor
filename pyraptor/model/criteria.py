@@ -114,14 +114,11 @@ class MultiCriteriaLabel(BaseLabel):
     (https://www.microsoft.com/en-us/research/wp-content/uploads/2012/01/raptor_alenex.pdf)
     """
 
-    # TODO testing: it might be necessary to know this value in the traverse routes step
     arrival_stop: Stop = attr.ib(default=None)
+    """Stop that this label is associated to"""
 
     criteria: Sequence[Criterion] = attr.ib(default=list)
     """Collection of criteria used to compare labels"""
-
-    # TODO debug
-    updated_at_round: int = -999
 
     @staticmethod
     def from_base_raptor_label(label: BasicRaptorLabel) -> MultiCriteriaLabel:
@@ -186,18 +183,14 @@ class MultiCriteriaLabel(BaseLabel):
             updated_criteria.append(updated_c)
 
         updated_trip = data.new_trip if data.new_trip is not None else data.old_trip
-        updated_stop = data.boarding_stop if data.boarding_stop is not None else self.boarding_stop
+        updated_dep_stop = data.boarding_stop if data.boarding_stop is not None else self.boarding_stop
+        updated_arr_stop = data.arrival_stop if data.arrival_stop is not None else self.arrival_stop
 
         return MultiCriteriaLabel(
-            boarding_stop=updated_stop,
-
-            # TODO arrival stop
-            arrival_stop=data.arrival_stop if data.arrival_stop is not None else self.arrival_stop,
+            boarding_stop=updated_dep_stop,
+            arrival_stop=updated_arr_stop,
             criteria=updated_criteria,
             trip=updated_trip,
-
-            # TODO debug
-            updated_at_round=data.current_round
         )
 
     def is_dominating(self, other: MultiCriteriaLabel) -> bool:
@@ -222,11 +215,15 @@ class Criterion(ABC):
     This value maintains is expressed in the original unit of measurement.
     """
 
-    # TODO explain the two ways the upper_bound can be used
     upper_bound: float = field(default=LARGE_NUMBER)
     """
     Maximum value allowed for this criterion.
-    Such threshold is also used to scale the raw value into the [0,1] range.
+    Such threshold has two main purposes:
+    
+    - to scale the raw value into the [0,1] range;
+    - to represent the maximum accepted raw value for the criteria, over which
+        the label is considered very unfavorable (the cost becomes artificially very large)
+        or discarded completely.
     """
 
     @property
@@ -665,7 +662,7 @@ class LabelUpdate(Generic[_LabelType]):
     """Stop at which the trip is hopped off"""
 
     # TODO since transfers now works by getting the criteria from the boarding stop label,
-    # i think this attribute isn't needed anymore
+    #   i think this attribute isn't needed anymore
     old_trip: Trip
     """Trip currently used to get from `boarding_stop` to `arrival_stop`"""
 
@@ -680,9 +677,6 @@ class LabelUpdate(Generic[_LabelType]):
     This data is needed by criteria that have a dependency on other labels to calculate their cost.
     (e.g. the distance cost of label x+1 depends on the distance cost of label x)
     """
-
-    # TODO debug
-    current_round: int = -999
 
 
 @dataclass(frozen=True)
