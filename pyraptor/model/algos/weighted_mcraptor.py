@@ -2,9 +2,9 @@
 Weighted implementation of the McRAPTOR algorithm described in the Microsoft paper.
 In this implementation, each label has a cost, which is defined as the weighted sum
 of all the criteria (i.e. distance, emissions, arrival time, etc.).
-This means that the `dominates` changes as follows:
-X1 dominates X2 if X1 hasn't got a worse cost than X2,
-where both X1 and X2 are either Labels or Journeys.
+This means that the `dominates` relationship changes as follows:
+X1 dominates X2 if X1 hasn't got a worse total cost than X2, where both
+X1 and X2 are either Labels or Journeys.
 This differs from the original implementation of McRAPTOR described in the paper,
 which instead says that a label L1 dominates a label L2 if L1 is not worse
 than L2 in any criterion.
@@ -53,11 +53,13 @@ class WeightedMcRaptorAlgorithm(BaseSharedMobRaptor[Bag, MultiCriteriaLabel]):
     criteria_file_path: str | bytes | os.PathLike
     """Path to the criteria configuration file"""
 
-    def __init__(self,
-                 timetable: RaptorTimetable | RaptorTimetableSM,
-                 enable_sm: bool,
-                 sm_config: SharedMobilityConfig,
-                 criteria_file_path: str | bytes | os.PathLike):
+    def __init__(
+            self,
+            timetable: RaptorTimetable | RaptorTimetableSM,
+            enable_sm: bool,
+            sm_config: SharedMobilityConfig,
+            criteria_file_path: str | bytes | os.PathLike
+    ):
         """
         :param timetable: object containing the data that will be used by the algorithm
         :param criteria_file_path: path to the criteria configuration file
@@ -80,6 +82,8 @@ class WeightedMcRaptorAlgorithm(BaseSharedMobRaptor[Bag, MultiCriteriaLabel]):
         For example, in a journey x1, x2, ..., xn, stop x2 depends on
         stop x1 because it comes later, hence the name 'forward' dependency"""
 
+    # TODO after the debugging/testing phase where it is useful to show the output of each round,
+    #   this run() implementation becomes the same as the one of the base class, hence it can be removed
     def run(
             self,
             from_stops: Iterable[Stop],
@@ -186,13 +190,6 @@ class WeightedMcRaptorAlgorithm(BaseSharedMobRaptor[Bag, MultiCriteriaLabel]):
 
             logger.debug(f"{len(marked_stops)} stops to evaluate in next round")
 
-            # TODO I don't know how to refactor code to avoid duplicating the 80 lines above this part.
-            #   this method is in fact the copy of the base class method, except for this part below.
-            #   However, the below step needs to be performed strictly on the stops marked
-            #   by the transfer step, and is specific to the Weighted MC variant.
-            #   ANSWER: since the convergence part is removed, i can remove the run method implementation:
-            #       fwd dependency updates are handled in the overridden methods
-
             # TODO debug - print the journey for each round before converging
             if k == rounds:
                 dest_name = 'MANTOVA'
@@ -225,7 +222,7 @@ class WeightedMcRaptorAlgorithm(BaseSharedMobRaptor[Bag, MultiCriteriaLabel]):
             from_stops: Iterable[Stop],
             dep_secs: int,
             rounds: int) -> List[Stop]:
-        # Initialize empty bag, i.e. B_k(p) = [] for every k and p
+        # Initialize each stop, for each round, with an empty bag
         self.bag_round_stop: Dict[int, Dict[Stop, Bag]] = {}
         for k in range(0, rounds + 1):
             self.bag_round_stop[k] = {}
@@ -239,13 +236,12 @@ class WeightedMcRaptorAlgorithm(BaseSharedMobRaptor[Bag, MultiCriteriaLabel]):
 
         logger.debug(f"Starting from Stop IDs: {str(from_stops)}")
 
-        criteria_provider = CriteriaProvider(criteria_config_path=self.criteria_file_path)
-
         logger.debug("Criteria Configuration:")
+        criteria_provider = CriteriaProvider(criteria_config_path=self.criteria_file_path)
         for c in criteria_provider.get_criteria():
             logger.debug(repr(c))
 
-        # Add to bag multi-criterion label for origin stops
+        # Initialize origin stops labels, bags and dependencies
         for from_stop in from_stops:
             with_departure_time = criteria_provider.get_criteria(
                 defaults={
@@ -284,7 +280,7 @@ class WeightedMcRaptorAlgorithm(BaseSharedMobRaptor[Bag, MultiCriteriaLabel]):
             remaining_stops_in_route = marked_route.stops[marked_stop_index:]
 
             # The following steps refer to the three-part processing done for each stop,
-            # described in the McRAPTOR section of the MSFT paper.
+            # described in the MC RAPTOR section of the MSFT paper.
             route_bag = Bag()
             for current_stop_idx, current_stop in enumerate(remaining_stops_in_route):
 
@@ -298,10 +294,10 @@ class WeightedMcRaptorAlgorithm(BaseSharedMobRaptor[Bag, MultiCriteriaLabel]):
                     #  - we are still in the same route, so they are compatible with the
                     #       currently considered stop
                     update_data = LabelUpdate(
-                        boarding_stop=label.boarding_stop,  # Boarding stop stays the same
-                        arrival_stop=current_stop,
+                        boarding_stop=label.boarding_stop,
+                        arrival_stop=current_stop,  # New visited stop to associate the label to
                         old_trip=label.trip,
-                        new_trip=label.trip,  # Trip stays the same
+                        new_trip=label.trip,
                         best_labels=self.best_bag,
 
                         # TODO debug
@@ -358,8 +354,7 @@ class WeightedMcRaptorAlgorithm(BaseSharedMobRaptor[Bag, MultiCriteriaLabel]):
                         else:
                             boarding_stop = label.boarding_stop
 
-                        # Update the current label with the new trip and
-                        # associated boarding stop
+                        # Update the current label with the new trip and associated boarding stop
                         update_data = LabelUpdate(
                             boarding_stop=boarding_stop,
                             arrival_stop=current_stop,
