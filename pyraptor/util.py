@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import os
+from math import floor
 
 import numpy as np
 
@@ -53,3 +54,16 @@ def sec2str(scnds: int, show_sec: bool = False) -> str:
         if show_sec
         else "{:02d}:{:02d}".format(hours, minutes)
     )
+
+
+def sec2minutes(scnds: float) -> str:
+    """
+    Returns a string
+    :param scnds: number of seconds
+    :return: minutes if not equal to zero and seconds
+    """
+
+    scnds: int = round(scnds)
+    min_: int = floor(scnds/60)
+    sec: int = scnds%60
+    return f"{f'{min_} minutes and ' if min_>0 else ''}{sec} seconds"

@@ -21,7 +21,7 @@ from pyraptor.model.shared_mobility import RaptorTimetableSM
 from pyraptor.model.timetable import RaptorTimetable, Stop, TransportType
 from pyraptor.timetable.io import read_timetable
 from pyraptor.timetable.timetable import TIMETABLE_FILENAME, SHARED_MOB_TIMETABLE_FILENAME
-from pyraptor.util import str2sec
+from pyraptor.util import str2sec, sec2minutes
 
 
 class RaptorVariants(Enum):
@@ -350,6 +350,7 @@ def _load_timetable(input_folder: str, enable_sm: bool) -> RaptorTimetable:
 
 
 if __name__ == "__main__":
+
     args = _parse_arguments()
 
     timetable = _load_timetable(args.input, args.enable_sm)
@@ -368,4 +369,4 @@ if __name__ == "__main__":
         enable_car=args.car
     )
 
-    logger.info(f"Execution time: {elapsed_time} sec")
+    logger.info(f"Elapsed time: {elapsed_time} sec ({sec2minutes(elapsed_time)})")
