@@ -71,9 +71,24 @@
     let curr_time = String(date.getHours()).padStart(2, '0') + ":" + String(date.getMinutes()).padStart(2, '0');
 
     let inputs = document.getElementsByTagName('input')
-    inputs = [].slice.call(inputs) // cast to array
+    inputs = [].slice.call(inputs); // cast to array
     let time_inputs = inputs.filter(el => el.type === 'time')
     for(let time of time_inputs) {
-        time.value = curr_time
+        time.value = curr_time;
+    }
+
+    if ({{enable_sm|tojson}}) {
+        let select = document.createElement("select");
+        select.id = "t";
+        select.name = "time"
+        option = document.createElement("option");
+        option.value = curr_time;
+        option.text = curr_time;
+        select.appendChild(option);
+        for(let time of time_inputs) {
+            time.parentNode.insertBefore(select, time.nextSibling);
+            time.parentNode.removeChild(time)
+        }
+
     }
 </script>
