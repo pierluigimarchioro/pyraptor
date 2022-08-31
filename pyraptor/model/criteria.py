@@ -543,12 +543,19 @@ class TransfersCriterion(Criterion):
         # The transfer counter is updated only if:
         # - there is a trip change (new != old) and
         #       the old isn't the initial trip (origin trip)
-        add_new_leg = data.new_trip != data.old_trip and data.old_trip != DEFAULT_ORIGIN_TRIP
+        best_boarding_label = data.best_labels[data.boarding_stop]
+        add_new_transfer = data.new_trip != best_boarding_label.trip and best_boarding_label.trip != DEFAULT_ORIGIN_TRIP
+
+        transfers_at_boarding = _get_best_stop_criterion(
+            criterion_class=TransfersCriterion,
+            stop=data.boarding_stop,
+            best_labels=data.best_labels
+        )
 
         return TransfersCriterion(
             name=self.name,
             weight=self.weight,
-            raw_value=self.raw_value if not add_new_leg else self.raw_value + 1,
+            raw_value=transfers_at_boarding.raw_value if not add_new_transfer else transfers_at_boarding.raw_value + 1,
             upper_bound=self.upper_bound
         )
 
