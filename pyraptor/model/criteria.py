@@ -182,7 +182,7 @@ class MultiCriteriaLabel(BaseLabel):
             updated_c = c.update(data=data)
             updated_criteria.append(updated_c)
 
-        updated_trip = data.new_trip if data.new_trip is not None else data.old_trip
+        updated_trip = data.new_trip if data.new_trip is not None else self.trip
         updated_dep_stop = data.boarding_stop if data.boarding_stop is not None else self.boarding_stop
         updated_arr_stop = data.arrival_stop if data.arrival_stop is not None else self.arrival_stop
 
@@ -320,6 +320,16 @@ _C = TypeVar('_C', bound=Criterion)
 _LabelType = TypeVar("_LabelType", bound=BaseLabel)
 
 
+# NOTE: what if `stop` is associated with two labels with an equal cost?
+# In that case, `best_label` would contain just one of the two, with the choice
+# being non-deterministic. This could create errors when calculating the criteria
+# and reconstructing the journey. In this implementation, however, it is certain that at most
+# one label is associated with each stop at any given time, because pareto_set() and Bag.merge()
+# implementations just keep the best one (keep_equal arg is False), and non-deterministically choose
+# one between labels with the same cost. It is however worthy to point out this potential breaking point.
+# A possible solution would be to remove the concept of Bag and keeping just a single label,
+# therefore forcing the above situation to happen (instead of relying on the implementation details
+# of the Bag.merge() method)
 def _get_best_stop_criterion(
         criterion_class: Type[_C],
         stop: Stop,
@@ -337,23 +347,9 @@ def _get_best_stop_criterion(
     """
 
     # Criteria can be retrieved only from MultiCriteriaLabel instances
-    # TODO I think there is an unhandled edge case: if there are actually 2 best labels
-    #   for the same stop and only the first is kept, the criteria of the potential journey that
-    #   is reconstructed through the second label would be wrong. Which one to use?
-    #   I think at this point it is better to just keep one single label and non-deterministically
-    #   choose the one with the same score -> pareto_set already has the parameter keep_equal, which is
-    #   turned off in WMC RAPTOR. Denoting this problems puts the whole existence of a Bag in perspective:
-    #   why can't I just use labels and directly compare them?
-    #   Answer: this is just an implementation problem: this wouldn't be a thing with criteria that
-    #       weren't dependent on the previous stop, or if there was another way to calculate said criteria.
-    #       This means that my algorithm isn't wrong.
-    #       IMPORTANT: If I want to talk about implementation details of criteria
-    #       reliant on the reference to the labels assigned to the prev stop, I have to say that
-    #       handling more than one label per previous stop is not possible with the cascade mechanism,
-    #       hence we decided to skip this edge case by just taking one single label with the best score
-    stop_lbl = best_labels[stop]
+    best_label = best_labels[stop]
     criterion = next(
-        filter(lambda c: isinstance(c, criterion_class), stop_lbl.criteria),
+        filter(lambda c: isinstance(c, criterion_class), best_label.criteria),
         None
     )
     if criterion is None:
@@ -529,7 +525,7 @@ class ArrivalTimeCriterion(Criterion):
     """
 
     def __str__(self):
-        return f"Arrival Time: {sec2str(scnds=int(self.raw_value))}"
+        return f"Arrival Time: {sec2str(seconds=int(self.raw_value))}"
 
     def update(self, data: LabelUpdate) -> ArrivalTimeCriterion:
         new_arrival_time = data.new_trip.get_stop_time(data.arrival_stop).dts_arr
@@ -661,16 +657,9 @@ class LabelUpdate(Generic[_LabelType]):
     arrival_stop: Stop
     """Stop at which the trip is hopped off"""
 
-    # TODO since transfers now works by getting the criteria from the boarding stop label,
-    #   i think this attribute isn't needed anymore
-    old_trip: Trip
-    """Trip currently used to get from `boarding_stop` to `arrival_stop`"""
-
     new_trip: Trip
     """New trip to board to get from `boarding_stop` to `arrival_stop`."""
 
-    # TODO what if instead of passing all the best labels i pass only the best label
-    #   of the boarding stop? i.e. a boarding_stop_label field to calculate dependencies with
     best_labels: MutableMapping[Stop, _LabelType]
     """
     Reference to the best labels for each stop, independent from the number of rounds.

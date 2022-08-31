@@ -95,11 +95,9 @@ class RaptorAlgorithm(BaseSharedMobRaptor[BasicRaptorLabel, BasicRaptorLabel]):
                         #   t_k(next_stop) = t_arr(t, pi)
                         #   t_star(p_i) = t_arr(t, pi)
 
-                        arrival_label = self.bag_round_stop[k][current_stop]
                         update_data = LabelUpdate(
                             boarding_stop=boarding_stop,
                             arrival_stop=current_stop,
-                            old_trip=arrival_label.trip,
                             new_trip=current_trip,
                             best_labels=self.best_bag
                         )
@@ -182,11 +180,9 @@ class RaptorAlgorithm(BaseSharedMobRaptor[BasicRaptorLabel, BasicRaptorLabel]):
                     )
 
                     # Update the label
-                    arrival_label = self.bag_round_stop[k][arrival_stop]
                     update_data = LabelUpdate(
                         boarding_stop=current_stop,
                         arrival_stop=arrival_stop,
-                        old_trip=arrival_label.trip,
                         new_trip=transfer_trip,
                         best_labels=self.best_bag
                     )

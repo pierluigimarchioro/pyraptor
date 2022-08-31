@@ -160,8 +160,7 @@ class WeightedMcRaptorAlgorithm(BaseSharedMobRaptor[Bag, MultiCriteriaLabel]):
                     #       currently considered stop
                     update_data = LabelUpdate(
                         boarding_stop=label.boarding_stop,
-                        arrival_stop=current_stop,  # New visited stop to associate the label to
-                        old_trip=label.trip,
+                        arrival_stop=current_stop,
                         new_trip=label.trip,
                         best_labels=self.best_bag
                     )
@@ -220,7 +219,6 @@ class WeightedMcRaptorAlgorithm(BaseSharedMobRaptor[Bag, MultiCriteriaLabel]):
                         update_data = LabelUpdate(
                             boarding_stop=boarding_stop,
                             arrival_stop=current_stop,
-                            old_trip=label.trip,
                             new_trip=earliest_trip,
                             best_labels=self.best_bag
                         )
@@ -271,7 +269,6 @@ class WeightedMcRaptorAlgorithm(BaseSharedMobRaptor[Bag, MultiCriteriaLabel]):
                     update_data = LabelUpdate(
                         boarding_stop=current_stop,
                         arrival_stop=stop_to_improve,
-                        old_trip=label.trip,
                         new_trip=transfer_trip,
                         best_labels=self.best_bag
                     )
@@ -436,7 +433,6 @@ class WeightedMcRaptorAlgorithm(BaseSharedMobRaptor[Bag, MultiCriteriaLabel]):
                     update_data = LabelUpdate(
                         boarding_stop=updated_stop,
                         arrival_stop=fwd_dep_stop,
-                        old_trip=fwd_dep_label.trip,
                         new_trip=new_transfer_trip,
                         best_labels=temp_best_bag
                     )
@@ -455,7 +451,6 @@ class WeightedMcRaptorAlgorithm(BaseSharedMobRaptor[Bag, MultiCriteriaLabel]):
                         update_data = LabelUpdate(
                             boarding_stop=updated_stop,
                             arrival_stop=fwd_dep_stop,
-                            old_trip=fwd_dep_label.trip,
                             new_trip=new_earliest_trip,
                             best_labels=temp_best_bag
                         )
