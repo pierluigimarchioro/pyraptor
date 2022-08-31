@@ -23,6 +23,7 @@ from pyraptor.model.criteria import (
 )
 from pyraptor.model.timetable import RaptorTimetable
 from pyraptor.query import query_raptor, RaptorVariants
+from pyraptor.util import sec2minutes
 from pyraptor.visualization.folium_visualizer import visualize_output
 from pyraptor.model.output import AlgorithmOutput
 
@@ -182,7 +183,7 @@ def basic_raptor_run():
 
         timetable = TIMETABLE_SM if ENABLE_SM else TIMETABLE
 
-        query_raptor(
+        elapsed_time = query_raptor(
             timetable=timetable,
             output_folder=BASIC_RAPTOR_OUT_DIR,
             origin_station=origin,
@@ -197,7 +198,7 @@ def basic_raptor_run():
 
         visualize(BASIC_RAPTOR_OUT_DIR)
 
-        return show_journey_descriptions(algo_output_dir=BASIC_RAPTOR_OUT_DIR)
+        return show_journey_descriptions(algo_output_dir=BASIC_RAPTOR_OUT_DIR, time=elapsed_time)
 
 
 """ WEIGHTED MULTICRITERIA RAPTOR """
@@ -299,7 +300,7 @@ def visualize(algo_output_dir: str, open_browser: bool = True):
     )
 
 
-def show_journey_descriptions(algo_output_dir: str) -> flask.templating:
+def show_journey_descriptions(algo_output_dir: str, time: float) -> flask.templating:
     algo_file: str = path.join(algo_output_dir, ALGO_OUTPUT_FILENAME)
     algo_output = AlgorithmOutput.read_from_file(filepath=algo_file)
 
@@ -308,7 +309,9 @@ def show_journey_descriptions(algo_output_dir: str) -> flask.templating:
     for jrny in algo_output.journeys:
         descriptions.append(_handle_journey_description(str(jrny)))
 
-    return render_template("journey_desc.html", descs=descriptions)
+    elapsed_time: str = f"{time} sec ({sec2minutes(time)})"
+
+    return render_template("journey_desc.html", descs=descriptions, time=elapsed_time)
 
 
 """Running the demo"""
