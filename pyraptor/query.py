@@ -217,11 +217,16 @@ def query_raptor(
         best_labels=best_labels
     )
 
-    # Print all the journeys to the specified destination
-    destination_journeys = journeys_to_all_destinations[destination_station]
+    if destination_station not in journeys_to_all_destinations:
+        logger.warning(f"Destination `{destination_station}` is unreachable")
+
+        destination_journeys = []
+    else:
+        # Print all the journeys to the specified destination
+        destination_journeys = journeys_to_all_destinations[destination_station]
 
     if len(destination_journeys) == 0:
-        logger.warning(f"No journeys found for destination `{destination_station}`")
+        logger.warning(f"No valid journeys found for destination `{destination_station}`")
     else:
         for j in destination_journeys:
             j.print()

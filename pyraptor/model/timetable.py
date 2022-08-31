@@ -14,8 +14,14 @@ import numpy as np
 from geopy.distance import geodesic
 from loguru import logger
 
-from pyraptor.util import DEFAULT_TRANSFER_COST, MEAN_FOOT_SPEED, MEAN_BIKE_SPEED, MEAN_ELECTRIC_BIKE_SPEED, \
-    MEAN_CAR_SPEED
+from pyraptor.util import (
+    DEFAULT_TRANSFER_COST,
+    MEAN_FOOT_SPEED,
+    MEAN_BIKE_SPEED,
+    MEAN_ELECTRIC_BIKE_SPEED,
+    MEAN_CAR_SPEED,
+    sec2str
+)
 
 
 def same_type_and_id(first, second):
@@ -255,7 +261,7 @@ class TripStopTime:
     def __repr__(self):
         return (
             "TripStopTime(trip_id={hint}{trip_id}, stop_idx={0.stop_idx},"
-            " stop_id={0.stop.id}, dts_arr={0.dts_arr}, dts_dep={0.dts_dep},"
+            " stop={0.stop}, dts_arr={0.dts_arr}, dts_dep={0.dts_dep},"
             "travelled_distance={0.travelled_distance})"
         ).format(
             self,
@@ -381,6 +387,7 @@ SHARED_MOBILITY_TYPES: List[TransportType] = [TransportType.Bike, TransportType.
 class RouteInfo:
     transport_type: TransportType = None
     name: str = None
+    route: Route = None
 
     def __str__(self):
         return f"Transport: {self.transport_type.get_description()} | Route Name: {self.name}"
@@ -433,7 +440,7 @@ class Trip:
         self.long_name: str = long_name
         self.route_info: RouteInfo = route_info
 
-        self.hint: str = str(route_info) if hint is None else hint
+        self.hint: str = f"{str(route_info)}  | Trip_id: {id_}" if hint is None else hint
         self.stop_times: List[TripStopTime] = []
         self.stop_times_index: Dict[Stop, int] = {}
 
@@ -510,9 +517,11 @@ class TransferTrip(Trip):
         """
 
         transfer_route = TransferRouteInfo(transport_type=transport_type)
-        super(TransferTrip, self).__init__(id_=f"Transfer Trip - {uuid.uuid4()}",
-                                           long_name=f"Transfer from {from_stop.name} to {to_stop.name}",
-                                           route_info=transfer_route)
+        super(TransferTrip, self).__init__(
+            id_=f"Transfer Trip {uuid.uuid4()} | dep @ {sec2str(dep_time)} - arr @ {sec2str(arr_time)}",
+            long_name=f"Transfer from {from_stop.name} to {to_stop.name}",
+            route_info=transfer_route
+        )
 
         dep_stop_time = TripStopTime(
             trip=self, stop_idx=0, stop=from_stop, dts_arr=dep_time, dts_dep=dep_time,
@@ -538,13 +547,13 @@ class Trips:
     """Trips"""
 
     def __init__(self):
-        self.set_idx = dict()
+        self.set_idx: Dict[Any, Trip] = dict()
         self.last_id = 1
 
     def __repr__(self):
         return f"Trips(n_trips={len(self.set_idx)})"
 
-    def __getitem__(self, trip_id):
+    def __getitem__(self, trip_id) -> Trip:
         return self.set_idx[trip_id]
 
     def __len__(self):
