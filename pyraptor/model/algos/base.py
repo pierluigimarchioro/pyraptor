@@ -317,7 +317,7 @@ class BaseSharedMobRaptor(BaseRaptorAlgorithm[_BagType, _LabelType], ABC):
 
         n_stops_2 = len(marked_stops)  # debugging
         logger.debug(f"Added {n_stops_2 - n_stops_1} immediate stops:\n"
-                     f"{immediately_reachable_stops}")
+                     f"{list(set(immediately_reachable_stops))}")
 
         # Run rounds
         for k in range(1, rounds + 1):
