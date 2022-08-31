@@ -25,9 +25,6 @@ class Leg:
     trip: Trip
     criteria: Iterable[Criterion]
 
-    # TODO debug
-    last_update_at: int
-
     @property
     def dep(self) -> int:
         """Departure time in seconds past midnight"""
@@ -83,15 +80,7 @@ class Leg:
 
         arrival_before_departure = self.arr <= other_leg.dep
 
-        # TODO debug
-        #return all([criteria_compatible])
-        x = all([criteria_compatible, arrival_before_departure])
-        if not x:
-            logger.error("Legs not compatible:")
-            logger.error(f"[Earlier Leg] {self}:")
-            logger.error(f"[Later Leg] {other_leg}:")
-
-        return True
+        return all([criteria_compatible, arrival_before_departure])
 
     def to_dict(self, leg_index: int = None) -> Dict:
         """Leg to readable dictionary"""
@@ -171,23 +160,15 @@ class Journey:
             msg = (
                     str(sec2str(leg.dep))
                     + " "
-                    # TODO original
-                    #+ leg.from_stop.station.name.ljust(20)
-                    + f" {str(leg.from_stop)} ".ljust(20)
+                    + leg.from_stop.station.name.ljust(20)
                     + " TO "
                     + str(sec2str(leg.arr))
-                    # TODO original
-                    #+ leg.to_stop.station.name.ljust(20)
-                    + f" {str(leg.to_stop)} ".ljust(20)
+                    + " "
+                    + leg.to_stop.station.name.ljust(20)
                     + " WITH "
                     + str(hint)
             )
             update_(msg)
-
-            # TODO debug
-            update_(f"[Leg] Last updated at: {leg.last_update_at}")
-            for c in leg.criteria:
-                update_(f"[Leg] {str(c)}")
 
         update_("")
         for c in self.criteria():
@@ -343,7 +324,6 @@ def _best_legs_to_destination_station(
         (stop, label) for stop in to_stops for label in last_round_bag[stop].labels
     ]
 
-    # TODO Use merge function on Bag
     # Pareto optimal labels
     pareto_optimal_labels = pareto_set([label for (_, label) in best_labels])
     pareto_optimal_labels: List[Tuple[Stop, MultiCriteriaLabel]] = [
@@ -356,10 +336,7 @@ def _best_legs_to_destination_station(
             from_stop=label.boarding_stop,
             to_stop=to_stop,
             trip=label.trip,
-            criteria=label.criteria,
-
-            # TODO debug
-            last_update_at=label.updated_at_round
+            criteria=label.criteria
         )
         for to_stop, label in pareto_optimal_labels
     ]
@@ -370,7 +347,7 @@ def _reconstruct_journeys(
         from_stops: Iterable[Stop],
         destination_legs: Iterable[Leg],
         best_labels: Mapping[Stop, Bag],
-        add_intermediate_legs: bool = False
+        add_intermediate_legs: bool = True
 ) -> List[Journey]:
     """
     Construct Journeys for destinations from bags by recursively
@@ -382,13 +359,6 @@ def _reconstruct_journeys(
 
         for jrny in journeys:
             later_leg = jrny[0]
-
-            # TODO debug
-
-            try:
-                logger.warning(f"[Later leg] From {later_leg.from_stop} To {later_leg.to_stop} @{later_leg.arr}")
-            except Exception:
-                logger.warning("Can't show Later Leg Description")
 
             # End of journey if we are at origin stop or journey is not feasible
             if later_leg.trip is None or later_leg.from_stop in from_stops:
@@ -407,10 +377,7 @@ def _reconstruct_journeys(
                     from_stop=new_label.boarding_stop,
                     to_stop=later_leg.from_stop,
                     trip=new_label.trip,
-                    criteria=new_label.criteria,
-
-                    # TODO debug
-                    last_update_at=new_label.updated_at_round
+                    criteria=new_label.criteria
                 )
 
                 # Only add the new leg if compatible before current leg, e.g. earlier arrival time, etc.
@@ -458,11 +425,6 @@ def _generate_intermediate_legs(full_leg: Leg) -> List[Leg]:
     # these are the intermediate legs
     prev_dep_stop: Stop = full_leg.to_stop
 
-    # TODO debug
-    logger.warning(f"Reconstructing intermediate leg from trip {full_leg.trip.hint}")
-    logger.warning(f"Trip starts at {full_leg.trip.stop_times[0].dts_dep} "
-                   f"and ends at {full_leg.trip.stop_times[len(full_leg.trip.stop_times) - 1].dts_arr}")
-
     first_stop_reached: bool = False
     legs = []
     while not first_stop_reached:
@@ -479,10 +441,7 @@ def _generate_intermediate_legs(full_leg: Leg) -> List[Leg]:
             # currently being reconstructed (the earlier one)
             # and not specifically retrieving them from best labels is fine,
             # since the compatibility between consecutive legs is maintained
-            criteria=full_leg.criteria,
-
-            # TODO debug
-            last_update_at=full_leg.last_update_at
+            criteria=full_leg.criteria
         )
         legs.append(intermediate_leg)
 

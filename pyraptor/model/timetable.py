@@ -423,11 +423,13 @@ class Trip:
     Class that represents a Trip, which is a sequence of consecutive stops
     """
 
-    def __init__(self,
-                 id_: Any = None,
-                 long_name: str = None,
-                 route_info: RouteInfo = None,
-                 hint: str = None):
+    def __init__(
+            self,
+            id_: Any = None,
+            long_name: str = None,
+            route_info: RouteInfo = None,
+            hint: str = None
+    ):
         """
         :param id_: id of the trip
         :param long_name: long name of the trip
@@ -440,7 +442,7 @@ class Trip:
         self.long_name: str = long_name
         self.route_info: RouteInfo = route_info
 
-        self.hint: str = f"{str(route_info)}  | Trip_id: {id_}" if hint is None else hint
+        self.hint: str = f"{str(route_info)} | Trip_id: {id_}" if hint is None else hint
         self.stop_times: List[TripStopTime] = []
         self.stop_times_index: Dict[Stop, int] = {}
 
