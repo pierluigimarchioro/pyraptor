@@ -8,6 +8,7 @@ import os
 from collections.abc import Mapping, Iterable
 from enum import Enum
 from typing import Dict, Callable
+from timeit import default_timer as timer
 
 from loguru import logger
 
@@ -140,7 +141,7 @@ def query_raptor(
         enable_sm: bool = False,
         preferred_vehicle: str = None,
         enable_car: bool = None
-):
+) -> float:
     """
     Queries the RAPTOR algorithm with the provided parameters and saves its output in the
     specified output folder.
@@ -158,6 +159,8 @@ def query_raptor(
         If False, provided shared mob data is ignored
     :param preferred_vehicle: type of preferred vehicle
     :param enable_car: car-sharing transfer enabled
+
+    :return: execution_time
     """
 
     logger.debug("Output directory         : {}", output_folder)
@@ -170,6 +173,8 @@ def query_raptor(
     logger.debug("Enable use of shared-mob : {}", enable_sm)
     logger.debug("Preferred vehicle        : {}", preferred_vehicle)
     logger.debug("Enable car               : {}", enable_car)
+
+    start_time = timer()
 
     # Input check
     if origin_station == destination_station:
@@ -231,6 +236,9 @@ def query_raptor(
         output_dir=output_folder,
         algo_output=algo_output
     )
+
+    end_time = timer()
+    return end_time - start_time
 
 
 def _process_shared_mob_args(
@@ -346,7 +354,7 @@ if __name__ == "__main__":
 
     timetable = _load_timetable(args.input, args.enable_sm)
 
-    query_raptor(
+    elapsed_time = query_raptor(
         variant=args.variant,
         timetable=timetable,
         output_folder=args.output,
@@ -359,3 +367,5 @@ if __name__ == "__main__":
         preferred_vehicle=args.preferred,
         enable_car=args.car
     )
+
+    logger.info(f"Execution time: {elapsed_time} sec")
