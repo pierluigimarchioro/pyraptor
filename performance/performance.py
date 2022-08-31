@@ -176,7 +176,7 @@ def main(input_: str, output: str, config: str):
                 out_dict[k][setting_handler.variant]['shared_mobility' if setting_handler.enable_sm else 'normal'][
                     str(journey)].append(time)
 
-    _dict_to_json({'rounds': out_dict}, output)
+    _dict_to_json({'rounds': out_dict}, path.join(output, OUT_FILE))
 
 
 def _parse_arguments():
