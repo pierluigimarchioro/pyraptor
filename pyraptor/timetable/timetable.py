@@ -658,7 +658,16 @@ def _get_trips_and_stop_times(
 def _get_routes(trips: Trips) -> Routes:
     routes = Routes()
     for trip in trips:
-        routes.add(trip)
+        # TODO this is needed for dependency update step
+        #   Also, this is dependent on the fact that route_info has already been created.
+        #   Can i safely assume such dependency? I think yes because a collection of Trips
+        #   contains fully created trip objects, so it's fine
+        trip_route = routes.add(trip)
+        trip.route_info = RouteInfo(
+            name=trip.route_info.name,
+            transport_type=trip.route_info.transport_type,
+            route=trip_route
+        )
 
     return routes
 
