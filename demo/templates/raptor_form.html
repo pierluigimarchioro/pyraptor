@@ -1,15 +1,106 @@
 <!DOCTYPE html>
 <html lang="en">
 
+<style>
+
+    html {
+        background: url('https://www.creativefabrica.com/wp-content/uploads/2020/07/02/Modern-City-Silhouette-Skyscrapers-Graphics-4523478-1.jpg') no-repeat center center fixed;
+        -webkit-background-size: cover;
+        -moz-background-size: cover;
+        -o-background-size: cover;
+        background-size: cover;
+    }
+
+    body {font-family: Arial, Helvetica, sans-serif;} * {box-sizing: border-box;}
+
+    input[type=time], select {
+        width: 100%;
+        padding: 12px;
+        border: 1px solid rgba(82, 40, 101, 0.86);
+        border-radius: 4px;
+        box-sizing: border-box;
+        margin-top: 6px;
+        margin-bottom: 16px;
+        resize: vertical;
+        color: #FF8FE0FF;
+        background-color: #5228658C;
+    }
+
+    label {
+        color: rgba(124, 95, 255, 0.56);
+    }
+
+    .title {
+        align-items: center;
+        display: flex;
+        justify-content: center;
+        color: rgba(204, 96, 239, 0.57);
+        font-family: sans-serif;
+        font-size: 36px;
+        font-weight: 600;
+        margin-top: 5px;
+        margin-bottom: 30px;
+    }
+
+    input[type=submit] {
+        background-color: #04AA6D;
+        color: white;
+        margin-left: 35%;
+        text-align: center;
+        width: 23%;
+        height: 100%;
+        font-size: large;
+        position: center;
+        border: none;
+        border-radius: 4px;
+        cursor: pointer;
+        alignment: center;
+        padding-top: 10px;
+        padding-bottom: 10px;
+    }
+
+    input[type=submit]:hover {
+        background-color: #45a049;
+    }
+
+    .container {
+        margin-left: auto;
+        margin-right: auto;
+        margin-top: 50px;
+        alignment: center;
+        height: 50%;
+        width: 50%;
+        border-radius: 5px;
+        background-image: linear-gradient(rgba(45, 22, 58, 0.8), rgba(45, 22, 58, 0.77));
+        padding: 20px;
+        border-color: rgba(0, 0, 0, 0.53);
+    }
+
+    .double {
+        zoom: 1.0;
+        transform: scale(2);
+        -ms-transform: scale(2);
+        -webkit-transform: scale(2);
+        -o-transform: scale(2);
+        -moz-transform: scale(2);
+        transform-origin: 0 0;
+        -ms-transform-origin: 0 0;
+        -webkit-transform-origin: 0 0;
+        -o-transform-origin: 0 0;
+        -moz-transform-origin: 0 0;
+    }
+
+</style>
+
     <head>
         <title>{{version_name}}</title>
     </head>
 
     <body>
-        <h1> {{version_name}} </h1>
+
         <div class="container">
             <form action="/{{action}}" method="POST">
-
+                <div class="title">{{version_name}}</div>
                 <div id="or">
                     <label>Choose origin:</label>
                     <select name="origin">
@@ -50,8 +141,11 @@
                 </div>
 
                 <div id="c">
-                    <label> Use car </label>
-                    <input type="checkbox" name="car" checked>
+                    <label> Use car:
+                        <span class="double">
+                            <input type="checkbox" name="car" checked>
+                        </span>
+                    </label>
                     <br><br>
                 </div>
 
@@ -59,6 +153,7 @@
 
                 <input type="submit" value="Run">
             </form>
+            <br>
             <a href="/home">Back</a>
         </div>
     </body>
