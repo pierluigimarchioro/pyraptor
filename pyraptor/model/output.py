@@ -354,33 +354,37 @@ def _reconstruct_journeys(
     looping from destination to origin.
     """
 
-    def loop(best_labels: Mapping[Stop, Bag], journeys: Iterable[Journey]):
-        """Create full journey by prepending legs recursively"""
+    def prepend_earlier_legs(journeys_to_build: Iterable[Journey]):
+        """Create full journeys by prepending legs recursively"""
 
-        for jrny in journeys:
-            later_leg = jrny[0]
+        for to_build in journeys_to_build:
+            # Leg to construct and prepend earlier legs to
+            later_leg = to_build[0]
 
             # End of journey if we are at origin stop or journey is not feasible
             if later_leg.trip is None or later_leg.from_stop in from_stops:
-                jrny = jrny.remove_empty_legs()
+                to_build = to_build.remove_empty_legs()
 
                 # Journey is valid if leg k ends before the start of leg k+1
-                if jrny.is_valid() is True:
-                    yield jrny
+                if to_build.is_valid() is True:
+                    yield to_build
 
                 continue
 
-            # Loop trough each new leg. These are the legs that come before the current and that lead to from_stop
-            labels_to_from_stop = best_labels[later_leg.from_stop].labels
-            for new_label in labels_to_from_stop:
+            # Loop trough each new leg.
+            # These are the legs that come before the current and that lead to
+            # the `from_stop` of the later leg
+            labels_to_later_leg = best_labels[later_leg.from_stop].labels
+            for lbl in labels_to_later_leg:
                 full_earlier_leg = Leg(
-                    from_stop=new_label.boarding_stop,
+                    from_stop=lbl.boarding_stop,
                     to_stop=later_leg.from_stop,
-                    trip=new_label.trip,
-                    criteria=new_label.criteria
+                    trip=lbl.trip,
+                    criteria=lbl.criteria
                 )
 
-                # Only add the new leg if compatible before current leg, e.g. earlier arrival time, etc.
+                # Only add the new leg if compatible before current leg,
+                # e.g. earlier arrival time, etc.
                 if full_earlier_leg.is_compatible_before(later_leg):
                     # Generate and prepend the intermediate legs to the provided journey,
                     # starting from the full earlier leg
@@ -389,22 +393,22 @@ def _reconstruct_journeys(
                             full_leg=full_earlier_leg
                         )
 
-                        new_jrny = jrny
+                        new_jrny = to_build
                         for leg in intermediate_legs:
                             new_jrny = new_jrny.prepend_leg(leg)
                     else:
                         # Only add the full leg if intermediate legs are not added
-                        new_jrny = jrny.prepend_leg(full_earlier_leg)
+                        new_jrny = to_build.prepend_leg(full_earlier_leg)
 
-                    for i in loop(best_labels, [new_jrny]):
-                        yield i
+                    for built_journey in prepend_earlier_legs([new_jrny]):
+                        yield built_journey
 
     if add_intermediate_legs:
         journeys = [Journey(legs=list(reversed(_generate_intermediate_legs(leg))))
                     for leg in destination_legs]
     else:
         journeys = [Journey(legs=[leg]) for leg in destination_legs]
-    journeys = [jrny for jrny in loop(best_labels, journeys)]
+    journeys = [jrny for jrny in prepend_earlier_legs(journeys)]
 
     return journeys
 
@@ -509,11 +513,9 @@ class AlgorithmOutput(TimetableInfo):
         :param filename: name of the serialized output file
         """
 
-        def write_joblib(to_serialize: object, filename: str):
-            with open(Path(output_dir, f"{filename}.pcl"), "wb") as handle:
-                joblib.dump(to_serialize, handle)
-
         logger.info(f"Writing PyRaptor output to {output_dir}")
 
         mkdir_if_not_exists(output_dir)
-        write_joblib(algo_output, filename)
+
+        with open(Path(output_dir, f"{filename}.pcl"), "wb") as handle:
+            joblib.dump(algo_output, handle)
