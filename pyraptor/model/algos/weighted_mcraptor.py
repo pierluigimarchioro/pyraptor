@@ -566,39 +566,34 @@ class WeightedMcRaptorAlgorithm(BaseSharedMobRaptor[Bag, MultiCriteriaLabel]):
                     self.best_bag
                 )
 
-                # Consider the trip of the forward-dependent label: it is certain that
+                # Consider the trip of the dependent label: it is certain that
                 # such trip contains both the updated stop (which acts as the boarding stop)
-                # and the forward-dependent stop (which acts as the arrival stop).
-                # The two cases where the trip is a transfer or not are handled differently
+                # and the dependent stop (which acts as the arrival stop).
                 if isinstance(fwd_dep_label.trip, TransferTrip):
-                    # TODO what happens with shared mob? what transfers to use?
-                    #   chiedere a Seba se uso di timetable.transfers potrebbe non aggiornare
-                    #   correttamente shared-mob
-                    transfers = self.timetable.transfers
-                    transfer = transfers.stop_to_stop_idx[(updated_stop, fwd_dep_stop)]
+                    old_transfer_trip = fwd_dep_label.trip
+                    transfer_time = (
+                            old_transfer_trip.stop_times[1].dts_arr - old_transfer_trip.stop_times[0].dts_dep
+                    )
 
-                    transfer_arrival_time = updated_label.get_earliest_arrival_time() + transfer.transfer_time
-                    transfer_trip = TransferTrip(
+                    new_arrival_time = updated_label.get_earliest_arrival_time() + transfer_time
+                    new_transfer_trip = TransferTrip(
                         from_stop=updated_stop,
                         to_stop=fwd_dep_stop,
                         dep_time=updated_label.get_earliest_arrival_time(),
-                        arr_time=transfer_arrival_time,
-                        transport_type=transfer.transport_type
+                        arr_time=new_arrival_time,
+                        transport_type=old_transfer_trip.route_info.transport_type
                     )
 
                     update_data = LabelUpdate(
                         boarding_stop=updated_stop,
                         arrival_stop=fwd_dep_stop,
                         old_trip=fwd_dep_label.trip,
-                        new_trip=transfer_trip,
+                        new_trip=new_transfer_trip,
                         best_labels=temp_best_bag,
 
                         # TODO debug - minus sign to signal update happens in this method
                         current_round=-k
                     )
-                    updated_fwd_dep_label = fwd_dep_label.update(data=update_data)
-                    updated_fwd_dep_bag = Bag(labels=[updated_fwd_dep_label])
-                    updated_fwd_deps[fwd_dep_stop] = updated_fwd_dep_bag
                 else:
                     current_route = fwd_dep_label.trip.route_info.route
                     new_earliest_trip = current_route.earliest_trip(
@@ -621,9 +616,10 @@ class WeightedMcRaptorAlgorithm(BaseSharedMobRaptor[Bag, MultiCriteriaLabel]):
                             # TODO debug - minus sign to signal that update happens in this method
                             current_round=-k
                         )
-                        updated_fwd_dep_label = fwd_dep_label.update(data=update_data)
-                        updated_fwd_dep_bag = Bag(labels=[updated_fwd_dep_label])
-                        updated_fwd_deps[fwd_dep_stop] = updated_fwd_dep_bag
+
+                updated_fwd_dep_label = fwd_dep_label.update(data=update_data)
+                updated_fwd_dep_bag = Bag(labels=[updated_fwd_dep_label])
+                updated_fwd_deps[fwd_dep_stop] = updated_fwd_dep_bag
 
                 successful_update, rec_updated_fwd_deps = self._update_forward_dependencies(
                     k=k,
@@ -636,9 +632,9 @@ class WeightedMcRaptorAlgorithm(BaseSharedMobRaptor[Bag, MultiCriteriaLabel]):
                     return False, {}
                 else:
                     # It is noted that the merge between the current and the recursively created
-                    # maps cannot lead to conflict (i.e. a key is present in more than one map),
-                    # because there can't be cycles in an itinerary
+                    # mappings cannot lead to conflict (i.e. a key is present in more than one mapping),
+                    # because RAPTOR itineraries (paths) do not contain cycles
                     updated_fwd_deps = ChainMap(updated_fwd_deps, rec_updated_fwd_deps)
 
-        # The forward update correctly resolved, so newly calculated dependencies can be returned
+        # The forward update correctly resolved, so the updated dependencies can be returned
         return True, updated_fwd_deps
