@@ -1,0 +1,39 @@
+{
+    "rounds": {
+        "min": 5,
+        "max": 7
+    },
+    "journeys": [
+        { "from": "BISCEGLIE",       "to": "QT8",     "at": "12:00:00" },
+        { "from": "SAN SIRO STADIO", "to": "MANTOVA", "at": "08:00:00" }
+    ],
+    "settings": [
+        {
+            "variant": "basic",
+            "enable_sm": false
+        }, {
+            "variant": "basic",
+            "enable_sm": true,
+            "sm": {"preferred_vehicle": "regular", "enable_car": false }
+        }, {
+            "variant": "wmc",
+            "enable_sm": false,
+            "weights": {
+                "arrival_time": { "weight": 1, "max":   100 },
+                "distance":     { "weight": 1, "max": 86400 },
+                "transfers":    { "weight": 1, "max":    10 },
+                "co2":          { "weight": 1, "max":  2000 }
+            }
+        }, {
+            "variant": "wmc",
+            "enable_sm": true,
+            "sm": { "preferred_vehicle": "electric", "enable_car": true },
+            "weights": {
+                "arrival_time": { "weight": 1, "max":   100 },
+                "distance":     { "weight": 1, "max": 86400 },
+                "transfers":    { "weight": 1, "max":    10 },
+                "co2":          { "weight": 1, "max":  2000 }
+            }
+        }
+    ]
+}
