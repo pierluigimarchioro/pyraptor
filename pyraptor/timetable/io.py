@@ -173,7 +173,7 @@ def _zip_directory(zip_path: str, dir_path: str):
                        paths_with_arcnames=arcnames)
 
 
-def read_timetable(input_folder: str, timetable_name: str) -> RaptorTimetable:
+def read_timetable(input_folder: str, timetable_name: str) -> RaptorTimetable | RaptorTimetableSM:
     """
     Read the timetable data from the cache directory
     """

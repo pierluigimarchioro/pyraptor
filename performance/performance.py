@@ -14,8 +14,8 @@ from typing import Dict, List, Mapping
 
 from loguru import logger
 
-
 # i/o
+from pyraptor.query import query_raptor
 from pyraptor.model.shared_mobility import RaptorTimetableSM
 from pyraptor.model.timetable import RaptorTimetable
 from pyraptor.timetable.io import read_timetable

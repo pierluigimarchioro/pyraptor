@@ -129,13 +129,13 @@ class StopVisualization(object):
     @property
     def setting(self) -> MarkerSetting:
         """ Returns setting basing on stop infos """
-        mtype: MarkerType = MarkerType.PublicStop if type(self.stop) == Stop else MarkerType.RentingStation
-        msetting: MarkerSetting = MARKER_SETTINGS[mtype]()
+        m_type: MarkerType = MarkerType.PublicStop if type(self.stop) == Stop else MarkerType.RentingStation
+        m_setting: MarkerSetting = MARKER_SETTINGS[m_type]()
         if self.is_start:
-            msetting.icon.options['markerColor'] = COLOR_DEPARTURE
+            m_setting.icon.options['markerColor'] = COLOR_DEPARTURE
         if self.is_end:
-            msetting.icon.options['markerColor'] = COLOR_ARRIVAL
-        return msetting
+            m_setting.icon.options['markerColor'] = COLOR_ARRIVAL
+        return m_setting
 
     @property
     def dep(self):
@@ -246,18 +246,16 @@ class TripVisualization:
     def _mean_point(self) -> Tuple[float, float]:
         """ Returns mean latitude and longitude of journey stops"""
         lats = [stop.geo.lat for stop in self.stops]
-        lons = [stop.geo.lon for stop in self.stops]
-        return mean(lats), mean(lons)
+        longs = [stop.geo.lon for stop in self.stops]
+        return mean(lats), mean(longs)
 
     def _add_stops(self):
         """ Adds journey stops to map """
         visualizers: Mapping[Stop, StopVisualization] = {stop: StopVisualization(stop) for stop in self.stops}
 
-
         for leg in self.legs:
             visualizers[leg.from_stop].dep = leg.dep
             visualizers[leg.to_stop].arr = leg.arr
-        
 
         for vis in visualizers.values():
             vis.add_to(trip_visualization=self)

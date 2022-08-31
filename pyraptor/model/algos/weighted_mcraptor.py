@@ -43,11 +43,11 @@ class WeightedMcRaptorAlgorithm(BaseSharedMobRaptor[Bag, MultiCriteriaLabel]):
     """
     Implementation of the More Criteria RAPTOR Algorithm discussed in the original RAPTOR paper,
     with some modifications and improvements:
-    - each criterion is weighted and each label has a generalized cost that is used
-        to make comparison and determine domination
-    - transfers from the origin stops are evaluated immediately to widen
-        the set of reachable stops before the first round is executed
-    - it is possible to use shared mobility, real-time data
+        - each criterion is weighted and each label has a generalized cost that is used
+            to make comparison and determine domination
+        - transfers from the origin stops are evaluated immediately to widen
+            the set of reachable stops before the first round is executed
+        - it is possible to use shared mobility, real-time data
     """
 
     criteria_file_path: str | bytes | os.PathLike
@@ -133,11 +133,11 @@ class WeightedMcRaptorAlgorithm(BaseSharedMobRaptor[Bag, MultiCriteriaLabel]):
     def _traverse_routes(
             self,
             k: int,
-            route_marked_stops: List[Tuple[Route, Stop]],
+            marked_route_stops: List[Tuple[Route, Stop]],
     ) -> List[Stop]:
         new_marked_stops = set()
 
-        for marked_route, marked_stop in route_marked_stops:
+        for marked_route, marked_stop in marked_route_stops:
             # Get all stops after current stop within the current route
             marked_stop_index = marked_route.stop_index(marked_stop)
 
@@ -160,8 +160,7 @@ class WeightedMcRaptorAlgorithm(BaseSharedMobRaptor[Bag, MultiCriteriaLabel]):
                     #       currently considered stop
                     update_data = LabelUpdate(
                         boarding_stop=label.boarding_stop,
-                        arrival_stop=current_stop,  # New visited stop to associate the label to
-                        old_trip=label.trip,
+                        arrival_stop=current_stop,
                         new_trip=label.trip,
                         best_labels=self.best_bag
                     )
@@ -220,7 +219,6 @@ class WeightedMcRaptorAlgorithm(BaseSharedMobRaptor[Bag, MultiCriteriaLabel]):
                         update_data = LabelUpdate(
                             boarding_stop=boarding_stop,
                             arrival_stop=current_stop,
-                            old_trip=label.trip,
                             new_trip=earliest_trip,
                             best_labels=self.best_bag
                         )
@@ -271,7 +269,6 @@ class WeightedMcRaptorAlgorithm(BaseSharedMobRaptor[Bag, MultiCriteriaLabel]):
                     update_data = LabelUpdate(
                         boarding_stop=current_stop,
                         arrival_stop=stop_to_improve,
-                        old_trip=label.trip,
                         new_trip=transfer_trip,
                         best_labels=self.best_bag
                     )
@@ -436,7 +433,6 @@ class WeightedMcRaptorAlgorithm(BaseSharedMobRaptor[Bag, MultiCriteriaLabel]):
                     update_data = LabelUpdate(
                         boarding_stop=updated_stop,
                         arrival_stop=fwd_dep_stop,
-                        old_trip=fwd_dep_label.trip,
                         new_trip=new_transfer_trip,
                         best_labels=temp_best_bag
                     )
@@ -455,7 +451,6 @@ class WeightedMcRaptorAlgorithm(BaseSharedMobRaptor[Bag, MultiCriteriaLabel]):
                         update_data = LabelUpdate(
                             boarding_stop=updated_stop,
                             arrival_stop=fwd_dep_stop,
-                            old_trip=fwd_dep_label.trip,
                             new_trip=new_earliest_trip,
                             best_labels=temp_best_bag
                         )

@@ -14,9 +14,9 @@ from pyraptor.model.criteria import BasicRaptorLabel, LabelUpdate
 class RaptorAlgorithm(BaseSharedMobRaptor[BasicRaptorLabel, BasicRaptorLabel]):
     """
     Implementation of the basic RAPTOR algorithm, with some improvements:
-    - transfers from the origin stops are evaluated immediately to widen
-        the set of reachable stops before the first round is executed
-    - it is possible to include shared mobility, real-time data in the computation
+        - transfers from the origin stops are evaluated immediately to widen
+            the set of reachable stops before the first round is executed
+        - it is possible to include shared mobility, real-time data in the computation
     """
 
     def _initialization(self, from_stops: Iterable[Stop], dep_secs: int, rounds: int) -> List[Stop]:
@@ -51,16 +51,8 @@ class RaptorAlgorithm(BaseSharedMobRaptor[BasicRaptorLabel, BasicRaptorLabel]):
     def _traverse_routes(
             self,
             k: int,
-            route_marked_stops: List[Tuple[Route, Stop]],
+            marked_route_stops: List[Tuple[Route, Stop]],
     ) -> List[Stop]:
-        """
-        Iterate through the stops reachable and add all new reachable stops
-        by following all trips from the reached stations. Trips are only followed
-        in the direction of travel and beyond already added points.
-
-        :param k: current round
-        :param route_marked_stops: list of marked (route, stop) for evaluation
-        """
         logger.debug(f"Traverse routes for round {k}")
 
         new_stops = []
@@ -68,7 +60,7 @@ class RaptorAlgorithm(BaseSharedMobRaptor[BasicRaptorLabel, BasicRaptorLabel]):
         n_improvements = 0
 
         # For each route
-        for marked_route, marked_stop in route_marked_stops:
+        for marked_route, marked_stop in marked_route_stops:
 
             # Current trip for this marked stop
             current_trip = None
@@ -95,11 +87,9 @@ class RaptorAlgorithm(BaseSharedMobRaptor[BasicRaptorLabel, BasicRaptorLabel]):
                         #   t_k(next_stop) = t_arr(t, pi)
                         #   t_star(p_i) = t_arr(t, pi)
 
-                        arrival_label = self.bag_round_stop[k][current_stop]
                         update_data = LabelUpdate(
                             boarding_stop=boarding_stop,
                             arrival_stop=current_stop,
-                            old_trip=arrival_label.trip,
                             new_trip=current_trip,
                             best_labels=self.best_bag
                         )
@@ -145,13 +135,6 @@ class RaptorAlgorithm(BaseSharedMobRaptor[BasicRaptorLabel, BasicRaptorLabel]):
             marked_stops: Iterable[Stop],
             transfers: Transfers
     ) -> List[Stop]:
-        """
-        Add transfers between platforms.
-
-        :param k: current round
-        :param marked_stops: list of marked stops for evaluation
-        """
-
         new_stops: List[Stop] = []
 
         # Add in transfers from the transfers table
@@ -182,11 +165,9 @@ class RaptorAlgorithm(BaseSharedMobRaptor[BasicRaptorLabel, BasicRaptorLabel]):
                     )
 
                     # Update the label
-                    arrival_label = self.bag_round_stop[k][arrival_stop]
                     update_data = LabelUpdate(
                         boarding_stop=current_stop,
                         arrival_stop=arrival_stop,
-                        old_trip=arrival_label.trip,
                         new_trip=transfer_trip,
                         best_labels=self.best_bag
                     )
@@ -198,11 +179,12 @@ class RaptorAlgorithm(BaseSharedMobRaptor[BasicRaptorLabel, BasicRaptorLabel]):
 
     def _update_arrival_label(self, update_data: LabelUpdate, k: int):
         """
-        Updates the label, along with the bag that stores it, for the provided arrival stop
+        Updates the label, along with the bags that store it,
+        associated to the provided arrival stop.
 
-        :param update_data: data to update the label with
+        :param update_data: data to update the label with;
+            it also identifies the arrival stop
         :param k: current round of the algorithm
-        :return:
         """
 
         arrival_label = self.bag_round_stop[k][update_data.arrival_stop]
