@@ -12,13 +12,12 @@ from typing import Dict, List, Mapping
 
 from loguru import logger
 
-from model.shared_mobility import RaptorTimetableSM
-from model.timetable import RaptorTimetable
-from query import query_raptor
-from timetable.io import read_timetable
-from timetable.timetable import TIMETABLE_FILENAME, SHARED_MOB_TIMETABLE_FILENAME
-
-from util import mkdir_if_not_exists
+from pyraptor.model.shared_mobility import RaptorTimetableSM
+from pyraptor.model.timetable import RaptorTimetable
+from pyraptor.query import query_raptor
+from pyraptor.timetable.io import read_timetable
+from pyraptor.timetable.timetable import TIMETABLE_FILENAME, SHARED_MOB_TIMETABLE_FILENAME
+from pyraptor.util import mkdir_if_not_exists
 
 # i/o
 OUT_FILE = "performance_out.json"  # output file with performance info

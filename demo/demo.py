@@ -85,8 +85,8 @@ def _handle_journey_description(desc: str) -> JourneyDescriptor:
     descs = [" ".join(d.replace('|', '').split()) for d in descs]
     # Remove empty line and debug log
     descs = [d for d in descs if
-             not d.startswith('[Leg]') and not d.startswith('Journey')
-             and d != '' and d != ' ']  # TODO remove first check when remove debug
+             not d.startswith('Journey')
+             and d != '' and d != ' ']
 
     # Add legs
     n_trip = 1
@@ -374,13 +374,6 @@ def _get_station_names(timetable: RaptorTimetable):
     names = sorted(names, key=lambda s: s.lower())
 
     return names
-
-
-# TODO bugs/stuff to investigate further:
-#   - query from ABBADIA LARIANA to ANZANO DEL PARCO @16:33 generates KeyError: ANZANO DEL PARCO not found
-#       -> it seems that with Trenord station names as destination, errors occur.
-#       POSSIBLE SOLUTION: this is because Trenord actually does not have available trips,
-#           so raptor can't find anything. This edge case, however, is not handled by the demo
 
 
 if __name__ == "__main__":

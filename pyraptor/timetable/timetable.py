@@ -531,9 +531,9 @@ def gtfs_to_pyraptor_timetable(
         gtfs_timetable: GtfsTimetable,
         n_jobs: int) -> RaptorTimetable:
     """
-    Converts timetable timetable to data structures suitable for the RAPTOR algorithm.
+    Converts timetable to data structures suitable for the RAPTOR algorithm.
 
-    :param gtfs_timetable: timetable timetable instance
+    :param gtfs_timetable: timetable instance
     :param n_jobs: number of parallel jobs to run
     :return: RAPTOR timetable
     """

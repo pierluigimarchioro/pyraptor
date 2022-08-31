@@ -278,7 +278,7 @@ class TripStopTimes:
         self.stop_trip_idx: Dict[Stop, List[TripStopTime]] = defaultdict(list)
 
     def __repr__(self):
-        return f"{TripStopTimes.__name__}(n_tripstoptimes={len(self.set_idx)})"
+        return f"{TripStopTimes.__name__}(n_stop_times={len(self.set_idx)})"
 
     def __getitem__(self, trip_id):
         return self.set_idx[trip_id]
@@ -354,7 +354,7 @@ class TransportType(Enum):
             tt.Bus: 'Bus',
             tt.Ferry: 'Ferry',
             tt.CableTram: 'Cable Tram',
-            tt.AerialLift: 'Aerail Lift',
+            tt.AerialLift: 'Aerial Lift',
             tt.Funicular: 'Funicular',
             tt.TrolleyBus: 'Trolley Bus',
             tt.Monorail: 'Monorail'

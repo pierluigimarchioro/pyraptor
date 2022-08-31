@@ -54,7 +54,7 @@ def main(
 
     timetable = read_timetable('data/output/milan')
 
-    visualizer = TripVisualization(legs=[
+    trip_visualization = TripVisualization(legs=[
         Leg(
             from_stop=Stop(geo=Coordinates(0, 0)),
             to_stop=Stop(geo=Coordinates(0, 0)),
@@ -63,17 +63,17 @@ def main(
         )
     ])
 
-    viss = [StopVisualization(stop) for stop in timetable.stops]
+    stop_visualizations = [StopVisualization(stop) for stop in timetable.stops]
 
-    for vis in viss:
-        visualizer.put_marker(
+    for vis in stop_visualizations:
+        trip_visualization.put_marker(
             vis.geo,
             vis.info,
             vis.setting
         )
 
     out_file_path = path.join(output, OUT_FILE)
-    visualizer.save(path_=out_file_path, open_browser=open_)
+    trip_visualization.save(path_=out_file_path, open_browser=open_)
 
 
 if __name__ == "__main__":

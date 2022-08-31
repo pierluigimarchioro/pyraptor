@@ -38,17 +38,17 @@ def str2sec(time_str: str) -> int:
     return int(hour) * 3600 + int(minutes) * 60
 
 
-def sec2str(scnds: int, show_sec: bool = False) -> str:
+def sec2str(seconds: int, show_sec: bool = False) -> str:
     """
     Convert hh:mm:ss to seconds since midnight
 
     :param show_sec: only show :ss if True
-    :param scnds: Seconds to translate to hh:mm:ss
+    :param seconds: Seconds to translate to hh:mm:ss
     """
-    scnds = np.round(scnds)
-    hours = int(scnds / 3600)
-    minutes = int((scnds % 3600) / 60)
-    seconds = int(scnds % 60)
+    seconds = np.round(seconds)
+    hours = int(seconds / 3600)
+    minutes = int((seconds % 3600) / 60)
+    seconds = int(seconds % 60)
     return (
         "{:02d}:{:02d}:{:02d}".format(hours, minutes, seconds)
         if show_sec
@@ -56,14 +56,14 @@ def sec2str(scnds: int, show_sec: bool = False) -> str:
     )
 
 
-def sec2minutes(scnds: float) -> str:
+def sec2minutes(seconds: float) -> str:
     """
     Returns a string
-    :param scnds: number of seconds
+    :param seconds: number of seconds
     :return: minutes if not equal to zero and seconds
     """
 
-    scnds: int = round(scnds)
-    min_: int = floor(scnds/60)
-    sec: int = scnds%60
+    seconds: int = round(seconds)
+    min_: int = floor(seconds / 60)
+    sec: int = seconds % 60
     return f"{f'{min_} minutes and ' if min_>0 else ''}{sec} seconds"
