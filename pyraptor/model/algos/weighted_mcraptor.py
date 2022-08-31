@@ -43,11 +43,11 @@ class WeightedMcRaptorAlgorithm(BaseSharedMobRaptor[Bag, MultiCriteriaLabel]):
     """
     Implementation of the More Criteria RAPTOR Algorithm discussed in the original RAPTOR paper,
     with some modifications and improvements:
-    - each criterion is weighted and each label has a generalized cost that is used
-        to make comparison and determine domination
-    - transfers from the origin stops are evaluated immediately to widen
-        the set of reachable stops before the first round is executed
-    - it is possible to use shared mobility, real-time data
+        - each criterion is weighted and each label has a generalized cost that is used
+            to make comparison and determine domination
+        - transfers from the origin stops are evaluated immediately to widen
+            the set of reachable stops before the first round is executed
+        - it is possible to use shared mobility, real-time data
     """
 
     criteria_file_path: str | bytes | os.PathLike
@@ -133,11 +133,11 @@ class WeightedMcRaptorAlgorithm(BaseSharedMobRaptor[Bag, MultiCriteriaLabel]):
     def _traverse_routes(
             self,
             k: int,
-            route_marked_stops: List[Tuple[Route, Stop]],
+            marked_route_stops: List[Tuple[Route, Stop]],
     ) -> List[Stop]:
         new_marked_stops = set()
 
-        for marked_route, marked_stop in route_marked_stops:
+        for marked_route, marked_stop in marked_route_stops:
             # Get all stops after current stop within the current route
             marked_stop_index = marked_route.stop_index(marked_stop)
 

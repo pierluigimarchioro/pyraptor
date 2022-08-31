@@ -103,23 +103,23 @@ class BaseRaptorAlgorithm(ABC, Generic[_BagType, _LabelType]):
 
             # Get (route, marked stop) pairs, where marked stop
             # is the first reachable stop of the route
-            route_marked_stops = self._accumulate_routes(marked_stops)
+            marked_route_stops = self._accumulate_routes(marked_stops)
 
             # Update stop arrival times calculated basing on reachable stops
-            marked_trip_stops = self._traverse_routes(
-                k, route_marked_stops
+            trip_marked_stops = self._traverse_routes(
+                k, marked_route_stops
             )
-            logger.debug(f"{len(marked_trip_stops)} reachable stops added")
+            logger.debug(f"{len(trip_marked_stops)} reachable stops added")
 
             # Add footpath transfers and update
-            marked_transfer_stops = self._improve_with_transfers(
+            transfer_marked_stops = self._improve_with_transfers(
                 k=k,
-                marked_stops=marked_trip_stops,
+                marked_stops=trip_marked_stops,
                 transfers=self.timetable.transfers
             )
-            logger.debug(f"{len(marked_transfer_stops)} transferable stops added")
+            logger.debug(f"{len(transfer_marked_stops)} transferable stops added")
 
-            marked_stops = set(marked_trip_stops).union(marked_transfer_stops)
+            marked_stops = set(trip_marked_stops).union(transfer_marked_stops)
 
             if len(marked_stops) == 0:
                 logger.debug("No more stops to evaluate in the following rounds. Terminating...")
@@ -149,40 +149,50 @@ class BaseRaptorAlgorithm(ABC, Generic[_BagType, _LabelType]):
 
     def _accumulate_routes(self, marked_stops: List[Stop]) -> List[Tuple[Route, Stop]]:
         """
-        # TODO document better
-        Accumulate routes serving marked stops from previous round, i.e. Q
+        Generates a list of (R, S) pairs where:
+            - S is a marked stop from the provided list, and it is the earliest
+                marked stop at which you can board route R
+            - R is a route that serves at least one marked stop
+
+        At the end, such list will contain all the routes that serve the provided marked stops,
+        paired with the earliest marked stop that they can be boarded on.
+
+        :param marked_stops: list of stops marked by the algorithm
+        :return: list of (route, stop) pairs, described above
         """
 
-        route_marked_stops = {}  # i.e. Q
+        marked_route_stops = {}  # i.e. Q in the RAPTOR pseudocode
         for marked_stop in marked_stops:
             routes_serving_stop = self.timetable.routes.get_routes_of_stop(marked_stop)
             for route in routes_serving_stop:
                 # Check if new_stop is before existing stop in Q
-                current_stop_for_route = route_marked_stops.get(route, None)  # p'
+                current_stop_for_route = marked_route_stops.get(route, None)  # p'
                 if (current_stop_for_route is None) or (
                         route.stop_index(current_stop_for_route)
                         > route.stop_index(marked_stop)
                 ):
-                    route_marked_stops[route] = marked_stop
-        route_marked_stops = [(r, p) for r, p in route_marked_stops.items()]
+                    marked_route_stops[route] = marked_stop
+        marked_route_stops = [(r, p) for r, p in marked_route_stops.items()]
 
-        return route_marked_stops
+        return marked_route_stops
 
     @abstractmethod
     def _traverse_routes(
             self,
             k: int,
-            route_marked_stops: List[Tuple[Route, Stop]],
+            marked_route_stops: List[Tuple[Route, Stop]],
     ) -> List[Stop]:
         """
         Traverses through all the marked route-stops pairs and updates the labels accordingly.
+        For each route-stop pair (R, S), traverses R starting from S and tries to improve
+        the labels of all the stops reachable via a trip of R.
 
         This basically corresponds to the second section of the pseudocode that can be found
         in the RAPTOR paper, where the algorithm tries to improve the label of each marked stop
         by boarding the earliest trip on its associated route.
 
         :param k: current round
-        :param route_marked_stops: list of marked (route, stop) pairs
+        :param marked_route_stops: list of marked (route, stop) pairs
         :return: new list of marked stops,
             i.e. stops for which an improvement in some criteria was made
         """
@@ -197,19 +207,18 @@ class BaseRaptorAlgorithm(ABC, Generic[_BagType, _LabelType]):
             transfers: Iterable[Transfer]
     ) -> List[Stop]:
         """
-        Tries to use to improve the labels of each marked stop by factoring in
-        the use of (foot) transfer paths.
+        Considers all the time-independent transfers starting from the marked stops
+        and tries to improve all the reachable stops.
 
         This basically corresponds to the third section of the pseudocode that can
-        be found in the RAPTOR paper, where the algorithm tries to improve each label
-        by seeing if it is better to use a transfer than boarding the associated trip.
+        be found in the RAPTOR paper, where the algorithm tries to improve each
+        stop transfer-reachable from the marked stops.
 
         :param k: current round
         :param marked_stops: currently marked stops,
             i.e. stops for which there was an improvement in the current round
-        :param transfers: transfers to evaluate
-        :return: new list of marked stops,
-            i.e. stops for which an improvement in some criteria was made
+        :param transfers: transfers to use to seek improvements
+        :return: list of stops marked because they were improved in some criteria via transfer
         """
 
         pass
@@ -217,7 +226,6 @@ class BaseRaptorAlgorithm(ABC, Generic[_BagType, _LabelType]):
 
 @dataclass(frozen=True)
 class SharedMobilityConfig:
-
     preferred_vehicle: TransportType
     """Preferred vehicle type for shared mob transport"""
 
@@ -339,22 +347,22 @@ class BaseSharedMobRaptor(BaseRaptorAlgorithm[_BagType, _LabelType], ABC):
 
             # Get (route, marked stop) pairs, where marked stop
             # is the first reachable stop of the route
-            route_marked_stops = self._accumulate_routes(marked_stops)
+            marked_route_stops = self._accumulate_routes(marked_stops)
 
             # Update stop arrival times calculated basing on reachable stops
-            marked_trip_stops = self._traverse_routes(
-                k=k, 
-                route_marked_stops=route_marked_stops
+            trip_marked_stops = self._traverse_routes(
+                k=k,
+                marked_route_stops=marked_route_stops
             )
-            logger.debug(f"{len(marked_trip_stops)} reachable stops added")
+            logger.debug(f"{len(trip_marked_stops)} reachable stops added")
 
             # Add footpath transfers and update
-            marked_transfer_stops = self._improve_with_transfers(
+            transfer_marked_stops = self._improve_with_transfers(
                 k=k,
-                marked_stops=marked_trip_stops,
+                marked_stops=trip_marked_stops,
                 transfers=self.timetable.transfers
             )
-            logger.debug(f"{len(marked_transfer_stops)} transferable stops added")
+            logger.debug(f"{len(transfer_marked_stops)} transferable stops added")
 
             if self.enable_sm:
                 # Mark stops that were improved with shared mob data
@@ -363,14 +371,14 @@ class BaseSharedMobRaptor(BaseRaptorAlgorithm[_BagType, _LabelType], ABC):
 
                     # Only transfer stops can be passed because shared mob stations
                     # are reachable just by foot transfers
-                    marked_stops=marked_transfer_stops
+                    marked_stops=transfer_marked_stops
                 )
                 logger.debug(f"{len(shared_mob_marked_stops)} shared mob transferable stops added")
 
                 # Shared mob legs are a special kind of transfer legs
-                marked_transfer_stops = set(marked_transfer_stops).union(shared_mob_marked_stops)
+                transfer_marked_stops = set(transfer_marked_stops).union(shared_mob_marked_stops)
 
-            marked_stops = set(marked_trip_stops).union(marked_transfer_stops)
+            marked_stops = set(trip_marked_stops).union(transfer_marked_stops)
 
             if len(marked_stops) == 0:
                 logger.debug("No more stops to evaluate in the following rounds. Terminating...")
@@ -421,8 +429,6 @@ class BaseSharedMobRaptor(BaseRaptorAlgorithm[_BagType, _LabelType], ABC):
         Tries to improve the criteria values for the provided marked stops
         with shared mob data.
 
-        # TODO explain better and refactor commenting below
-
         :param k: current round
         :param marked_stops: currently marked stops,
             i.e. stops for which there was an improvement in the current round
@@ -430,63 +436,67 @@ class BaseSharedMobRaptor(BaseRaptorAlgorithm[_BagType, _LabelType], ABC):
             i.e. stops for which an improvement in some criteria was made
         """
 
-        # Part 4
-        # There may be some renting stations in  `marked_stops`:
-        # indeed we can reach a public stop with a trip
-        # and then use a footpath (a transfer) and walk to a renting station
-        #
+        # There may be some renting stations in `marked_stops`, from which we could
+        # reach a public transport stop with a shared-mobility trip
+        # and then use a footpath (a transfer) and walk to a renting station.
         # We filter these renting station in `marked_renting_stations`
         marked_renting_stations: List[RentingStation] = filter_shared_mobility(marked_stops)
-        logger.debug(f"{len(marked_renting_stations)} renting stations reachable")
+        logger.debug(f"{len(marked_renting_stations)} marked renting stations")
 
-        # We add a VehicleTransfer foreach (old, new) renting station
-        # (according to system_id and availability)
-
+        # We create a VehicleTransfer links each old renting station with newfound ones,
+        # according to system_id (id of the shared-mob dataset) and availability
         new_v_transfers = VehicleTransfers()
-
         for old in self.visited_renting_stations:
             for new in marked_renting_stations:
                 if old != new:
-                    new_vt = self._add_vehicle_transfer(stop_a=old, stop_b=new)
+                    new_vt = self._create_vehicle_transfer(stop_a=old, stop_b=new)
+
                     if new_vt is not None:
                         new_v_transfers.add(new_vt)
 
-        logger.debug(f"New {len(new_v_transfers)} vehicle transfers created")
+        logger.debug(f"New {len(new_v_transfers)} shared-mob transfers created")
 
-        # We can get compute transfer-time from these selected renting stations using only filtered transfers
-        improved_new_renting_stations = self._improve_with_transfers(
+        # We can compute transfer-time from these selected renting stations using only filtered transfers
+        new_reachable_renting_stations = self._improve_with_transfers(
             k=k,
             marked_stops=self.visited_renting_stations,
             transfers=new_v_transfers
         )
-        logger.debug(f"{len(improved_new_renting_stations)} transferable renting stations improved")
+        logger.debug(f"{len(new_reachable_renting_stations)} new renting stations can be reached"
+                     f" through shared-mobility")
 
-        # Update visited renting stations with the new ones
+        # Mark the new renting stations as visited
         self.visited_renting_stations = list(set(self.visited_renting_stations).union(marked_renting_stations))
 
-        # Part 5
-        # `renting_stations_from_trip_improved` contains all improved renting-stations
-        # These improvements must reflect to public-transport network, so we compute footpaths (Transfers)
-        # between improved renting stations and associated transferable public stops
-        marked_shared_mob_stops = self._improve_with_transfers(
+        # `new_reachable_renting_stations` contains all the improved renting-stations,
+        # i.e. that were reachable with a shared-mob transfer.
+        # These improvements must be reflected to the public-transport network,
+        # so we compute footpaths (Transfers) between improved renting stations
+        # and any associated public stop
+        sm_marked_stop = self._improve_with_transfers(
             k=k,
-            marked_stops=improved_new_renting_stations,
+            marked_stops=new_reachable_renting_stations,
             transfers=self.timetable.transfers
         )
-        logger.debug(f"{len(marked_shared_mob_stops)} using shared-mobility stops upgraded")
+        logger.debug(f"{len(sm_marked_stop)} new stops marked using shared-mobility")
 
-        return marked_shared_mob_stops
+        return sm_marked_stop
 
-    def _add_vehicle_transfer(self, stop_a: RentingStation, stop_b: RentingStation) -> VehicleTransfer:
-        """ Given two stop adds associated outdoor vehicle-transfer
-            to a vehicles transfers depending on availability and system belongings
+    def _create_vehicle_transfer(self, stop_a: RentingStation, stop_b: RentingStation) -> VehicleTransfer:
+        """
+        Given two stop, adds an associated outdoor vehicle-transfer
+        to depending on the vehicle availability of their associated shared-mob feed.
 
-            If stops have common available multiple vehicles:
-             * uses preferred vehicle if present,
-             * otherwise uses another vehicle (the fastest on average)
+        If stops have common available multiple vehicles:
+            - uses preferred vehicle if present
+            - otherwise uses another vehicle (the fastest on average)
+
+        :param stop_a: departing station
+        :param stop_b: arrival station
+        :return: vehicle transfer between `stop_a` and `stop_b`
         """
 
-        # 1. they are part of same system
+        # 1. they are part of same system (feed)
         if stop_a.system_id == stop_b.system_id:
             # 2.1. evaluate common transport type
             common_t_types: List[TransportType] = list(
@@ -515,16 +525,22 @@ class BaseSharedMobRaptor(BaseRaptorAlgorithm[_BagType, _LabelType], ABC):
                     return t_ab
 
     def _update_availability_info(self):
-        """ Updates stops availability based on real-time query
-            Also clears all vehicle transfers computed """
+        """
+        Updates stops availability based on real-time information provided
+        by the shared-mob system feeds.
+        """
 
         for feed in self.timetable.shared_mobility_feeds:
             feed.renting_stations.update()
 
-        no_source_: List[List[RentingStation]] = [feed.renting_stations.no_source for feed in
-                                                  self.timetable.shared_mobility_feeds]
-        no_dest_: List[List[RentingStation]] = [feed.renting_stations.no_destination for feed in
-                                                self.timetable.shared_mobility_feeds]
+        no_source_: List[List[RentingStation]] = [
+            feed.renting_stations.no_source for feed in
+            self.timetable.shared_mobility_feeds
+        ]
+        no_dest_: List[List[RentingStation]] = [
+            feed.renting_stations.no_destination for feed in
+            self.timetable.shared_mobility_feeds
+        ]
 
         self.no_source: List[RentingStation] = [i for sub in no_source_ for i in sub]  # flatten
         self.no_dest: List[RentingStation] = [i for sub in no_dest_ for i in sub]  # flatten
