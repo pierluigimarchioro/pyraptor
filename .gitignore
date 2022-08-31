@@ -68,3 +68,5 @@ data
 output/
 otp2/
 test-output.xml
+/performance/in/
+/performance/out/
