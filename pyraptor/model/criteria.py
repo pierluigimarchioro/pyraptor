@@ -121,7 +121,7 @@ class MultiCriteriaLabel(BaseLabel):
     """Collection of criteria used to compare labels"""
 
     # TODO debug
-    updated_at_round: int = attr.ib(default=-1)
+    updated_at_round: int = -999
 
     @staticmethod
     def from_base_raptor_label(label: BasicRaptorLabel) -> MultiCriteriaLabel:
@@ -682,7 +682,7 @@ class LabelUpdate(Generic[_LabelType]):
     """
 
     # TODO debug
-    current_round: int
+    current_round: int = -999
 
 
 @dataclass(frozen=True)
