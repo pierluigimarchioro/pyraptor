@@ -129,7 +129,7 @@
                 </div>
 
                 <div id="t">
-                    <label>Choose departure time:</label>
+                    <label>{% if enable_sm %} Departure just now {% else %} Choose departure time {% endif %}:</label>
                     <input type="time" name="time" min="00:00" max="23:59" required>
                     <br><br>
                 </div>
