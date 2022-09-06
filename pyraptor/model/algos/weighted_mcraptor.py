@@ -360,7 +360,7 @@ class WeightedMcRaptorAlgorithm(BaseSharedMobRaptor[Bag, MultiCriteriaLabel]):
         At some point during the next round, then, it is found that there is a path
         that improves the generalized cost of going from X to Y, but said path worsens the
         arrival time at Y, from X, to T+2. This would mean that you could arrive at Z, from Y,
-        at time K+1, but the best (minimum cost) path to Y has an arrival time of K+2.
+        at time T+1, but the best (minimum cost) path to Y has an arrival time of T+2.
         This is an absurd.
 
         It is therefore necessary, when some label A is updated, to recursively update

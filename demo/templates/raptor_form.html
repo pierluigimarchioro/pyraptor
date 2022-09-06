@@ -16,25 +16,25 @@
     input[type=time], select {
         width: 100%;
         padding: 12px;
-        border: 1px solid rgba(82, 40, 101, 0.86);
+        border: 1px solid rgba(255, 0, 217, 0.86);
         border-radius: 4px;
         box-sizing: border-box;
         margin-top: 6px;
         margin-bottom: 16px;
         resize: vertical;
-        color: #FF8FE0FF;
-        background-color: #5228658C;
+        color: rgb(84, 0, 84);
+        background-color: #ffffffda;
     }
 
     label {
-        color: rgba(100, 50, 150, 0.90);
+        color: rgb(255, 230, 248);
     }
 
     .title {
         align-items: center;
         display: flex;
         justify-content: center;
-        color: rgba(204, 96, 239, 0.90);
+        color: rgba(194, 0, 158, 0.9);
         font-family: sans-serif;
         font-size: 36px;
         font-weight: 600;
@@ -43,11 +43,11 @@
     }
 
     input[type=submit] {
-        background-color: #04AA6D;
+        background-color: rgba(194, 0, 158, 0.9);
         color: white;
         margin-left: 35%;
         text-align: center;
-        width: 23%;
+        width: 30%;
         height: 100%;
         font-size: large;
         position: center;
@@ -60,7 +60,7 @@
     }
 
     input[type=submit]:hover {
-        background-color: #45a049;
+        background-color: rgba(172, 0, 141, 0.9);
     }
 
     .container {
@@ -71,24 +71,31 @@
         height: 50%;
         width: 50%;
         border-radius: 5px;
-        background-image: linear-gradient(rgba(100, 100, 100, 0.975), rgba(130, 130, 130, 0.975));
+        background-image: linear-gradient(rgba(63, 0, 66, 0.975), rgba(122, 0, 129, 0.975));
         padding: 20px;
-        border-color: rgba(0, 0, 0, 0.53);
+        border-style: solid;
+        border-width: 5px;
+        border-color: rgb(120, 27, 103);
     }
 
-    .double {
-        zoom: 1.0;
-        transform: scale(2);
-        -ms-transform: scale(2);
-        -webkit-transform: scale(2);
-        -o-transform: scale(2);
-        -moz-transform: scale(2);
-        transform-origin: 0 0;
-        -ms-transform-origin: 0 0;
-        -webkit-transform-origin: 0 0;
-        -o-transform-origin: 0 0;
-        -moz-transform-origin: 0 0;
+    #cb1 {
+        margin-top: 10px;
+        scale: 110%;
+        accent-color: #9b59b6;
     }
+    
+    a[href] {
+        padding-left: 5px;
+        color:rgb(227, 227, 227);
+        font-size: large;
+        text-decoration: none;
+        font-family:'Segoe UI', Tahoma, Geneva, Verdana, sans-serif
+    }
+
+    a[href]:hover {
+        color: rgb(255, 170, 212);
+    }
+
 
 </style>
 
@@ -122,7 +129,7 @@
                 </div>
 
                 <div id="t">
-                    <label>Choose departure time:</label>
+                    <label>{% if enable_sm %} Departure just now {% else %} Choose departure time {% endif %}:</label>
                     <input type="time" name="time" min="00:00" max="23:59" required>
                     <br><br>
                 </div>
@@ -142,9 +149,7 @@
 
                 <div id="c">
                     <label> Use car:
-                        <span class="double">
-                            <input type="checkbox" name="car" checked>
-                        </span>
+                        <input type="checkbox" id="cb1" name="car" checked>
                     </label>
                     <br><br>
                 </div>
@@ -153,7 +158,7 @@
 
                 <input type="submit" value="Run">
             </form>
-            <br>
+            <br><br>
             <a href="/home">Back</a>
         </div>
     </body>
