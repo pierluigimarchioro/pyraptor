@@ -667,7 +667,9 @@ class LabelUpdate(Generic[_LabelType]):
     (e.g. the distance cost of label x+1 depends on the distance cost of label x)
     """
 
-
+# TODO this can be removed: WMC RAPTOR only keeps the best label each time a merge is done,
+#   which means that the concept of bag is useless. We can directly compare the cost of the
+#   old and the potentially new best label.
 @dataclass(frozen=True)
 class Bag:
     """
