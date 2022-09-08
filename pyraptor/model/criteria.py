@@ -120,6 +120,10 @@ class MultiCriteriaLabel(BaseLabel):
     criteria: Sequence[Criterion] = attr.ib(default=list)
     """Collection of criteria used to compare labels"""
 
+    # TODO since arrival time information must always be considered for correctness purposes,
+    #   consider defining an arrival_time attribute in the BaseLabel class
+    #   (possibly of type ArrivalTimeCriterion?)
+
     @staticmethod
     def from_base_raptor_label(label: BasicRaptorLabel) -> MultiCriteriaLabel:
         """
