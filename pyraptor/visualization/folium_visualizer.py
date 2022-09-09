@@ -32,9 +32,10 @@ class LineType(Enum):
         of a conjunction between two points on the map """
     PublicTransport = 'public_transport'
     Rail = 'rail'
+    LightRail = 'light_rail'
     Metro = 'metro'
     Bus = 'bus'
-    ShareMobility = 'shared_mobility'
+    SharedMobility = 'shared_mobility'
     Walk = 'walk'
 
 
@@ -76,9 +77,10 @@ MARKER_SETTINGS: Mapping[MarkerType, Callable[[], MarkerSetting]] = {
 LINE_SETTINGS: Mapping[LineType, LineSetting] = {
     LineType.PublicTransport: LineSetting(color='red', weight=2.5, opacity=1, dash_array='1'),
     LineType.Rail: LineSetting(color='#FF5100', weight=2.5, opacity=1, dash_array='1'),
+    LineType.LightRail: LineSetting(color='#C6B328', weight=2.5, opacity=1, dash_array='1'),
     LineType.Bus: LineSetting(color='#181F62', weight=2.5, opacity=1, dash_array='1'),
-    LineType.Metro: LineSetting(color='#F700FF', weight=2.5, opacity=1, dash_array='1'),
-    LineType.ShareMobility: LineSetting(color='green', weight=2, opacity=1, dash_array='8'),
+    LineType.Metro: LineSetting(color='#E25600', weight=2.5, opacity=1, dash_array='1'),
+    LineType.SharedMobility: LineSetting(color='green', weight=2, opacity=1, dash_array='8'),
     LineType.Walk: LineSetting(color='blue', weight=2, opacity=0.8, dash_array='15')
 }
 
@@ -206,13 +208,15 @@ class MovementVisualization:
         if t_type == TransportType.Walk:
             return LineType.Walk
         elif t_type in SHARED_MOBILITY_TYPES:
-            return LineType.ShareMobility
+            return LineType.SharedMobility
         elif t_type == TransportType.Metro:
             return LineType.Metro
         elif t_type == TransportType.Bus:
             return LineType.Bus
         elif t_type == TransportType.Rail:
             return LineType.Rail
+        elif t_type == TransportType.LightRail:
+            return LineType.LightRail
         elif t_type in PUBLIC_TRANSPORT_TYPES:
             return LineType.PublicTransport
         else:
