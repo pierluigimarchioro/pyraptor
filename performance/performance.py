@@ -169,7 +169,6 @@ def main(input_: str, output: str, config: str):
         for k in range(round_start, round_end + 1)
     }
 
-    # TODO since raptor computes from 1 to K rounds: can we skip external for loop and access all bags
     for k in range(round_start, round_end + 1):  # rounds
         for setting in d[SETTINGS]:  # algos
             setting_handler = SettingHandler(setting, output, tmp_dir)
@@ -181,7 +180,10 @@ def main(input_: str, output: str, config: str):
     _dict_to_json({'rounds': out_dict}, path.join(output, OUT_FILE))
 
     os.remove(path.join(output, "algo-output.pcl"))
-    os.remove(path.join(tmp_dir, WMC_CONFIG))
+    try:
+        os.remove(path.join(tmp_dir, WMC_CONFIG))
+    except:
+        pass
     os.rmdir(tmp_dir)
 
 
