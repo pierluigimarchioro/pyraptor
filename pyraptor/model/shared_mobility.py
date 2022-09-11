@@ -19,10 +19,12 @@ class RaptorTimetableSM(RaptorTimetable):
     """Timetable data"""
 
     shared_mobility_feeds: List[SharedMobilityFeed] = None
+    vehicle_transfers: VehicleTransfers = None
 
     def counts(self) -> None:
         """Prints timetable counts"""
         super().counts()
+        logger.debug("VTransfers : {}", len(self.vehicle_transfers))
         logger.debug([str(smf) for smf in self.shared_mobility_feeds])
 
 
