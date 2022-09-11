@@ -38,10 +38,10 @@ from pyraptor.model.timetable import (
     RouteInfo,
     Routes,
     Coordinates,
-    TransportType,
+    TransportType, TRANSPORT_TYPE_SPEEDS,
 )
 from pyraptor.model.shared_mobility import SharedMobilityFeed, public_transport_stop, shared_mobility_stops, \
-    RaptorTimetableSM
+    RaptorTimetableSM, VehicleTransfers, RentingStation, VehicleTransfer
 from pyraptor.util import mkdir_if_not_exists, str2sec, MIN_DIST
 
 
@@ -102,8 +102,8 @@ def parse_arguments():
         "-sm",
         "--shared_mobility",
         type=bool,
-        action=argparse.BooleanOptionalAction,   # --shared_mobility    evaluates True,
-                                                 # --no-shared_mobility evaluates False
+        action=argparse.BooleanOptionalAction,  # --shared_mobility    evaluates True,
+        # --no-shared_mobility evaluates False
         default=False,
         help="If True, shared-mobility data are included",
     )
@@ -631,7 +631,7 @@ def _get_trips_and_stop_times(
 
         job = _trips_processor_job(
             # +1 because end would not be included
-            trips_row_iterator=itertools.islice(gtfs_timetable.trips.itertuples(), start, end+1),
+            trips_row_iterator=itertools.islice(gtfs_timetable.trips.itertuples(), start, end + 1),
             stops_info=stops,
             trip_route_info=trip_route_info,
             stop_times_by_trip_id=stop_times,
@@ -806,8 +806,8 @@ def add_shared_mobility_to_pyraptor_timetable(timetable: RaptorTimetable, feeds:
     # Number of transfers before shared mob - for debugging/logging purposes
     transfers_before_sm = len(timetable.transfers)
 
-    public_stops = public_transport_stop(for_stops=timetable.stops)
-    shared_mob_stops = shared_mobility_stops(for_stops=timetable.stops)
+    public_stops: List[Stop] = public_transport_stop(for_stops=timetable.stops)
+    shared_mob_stops: List[RentingStation] = shared_mobility_stops(for_stops=timetable.stops)
 
     jobs = []
     for i in range(n_jobs):
@@ -825,7 +825,7 @@ def add_shared_mobility_to_pyraptor_timetable(timetable: RaptorTimetable, feeds:
 
         job = _shared_mob_processor_job(
             # +1 because end would not be included
-            shared_mob_stops=list(itertools.islice(shared_mob_stops, start, end+1)),
+            shared_mob_stops=list(itertools.islice(shared_mob_stops, start, end + 1)),
             public_stops=public_stops,
             job_id=f"#{i}"
         )
@@ -841,6 +841,23 @@ def add_shared_mobility_to_pyraptor_timetable(timetable: RaptorTimetable, feeds:
     transfers_after_sm = len(timetable.transfers)
     logger.debug(f"Added new {transfers_after_sm - transfers_before_sm} vehicle-transfers "
                  f"between public and shared-mobility stops")
+
+    # Adding all shared_mob transfers
+    logger.debug("Adding shared-mobility transfers")
+
+    vtransfers = VehicleTransfers()
+
+    for feed in feeds:
+            for i in range(len(shared_mob_stops) - 1):
+                logger.debug(f"Feed: {feed.system_id}: {round(i * 100 / len(shared_mob_stops), 3)}%")
+                for j in range(i + 1, len(shared_mob_stops)):
+                    s_a: RentingStation = shared_mob_stops[i]
+                    s_b: RentingStation = shared_mob_stops[j]
+                    for vtype in feed.transport_types:
+                        vt1, vt2 = VehicleTransfer.get_vehicle_transfer(sa=s_a, sb=s_b, transport_type=vtype)
+                        vtransfers.add(vt1)
+                        vtransfers.add(vt2)
+
     return RaptorTimetableSM(
         stations=timetable.stations,
         stops=timetable.stops,
@@ -848,7 +865,8 @@ def add_shared_mobility_to_pyraptor_timetable(timetable: RaptorTimetable, feeds:
         trip_stop_times=timetable.trip_stop_times,
         routes=timetable.routes,
         transfers=timetable.transfers,
-        shared_mobility_feeds=feeds
+        shared_mobility_feeds=feeds,
+        vehicle_transfers=vtransfers
     )
 
 
