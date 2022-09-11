@@ -7,6 +7,7 @@ from dataclasses import dataclass
 from typing import List, Tuple, TypeVar, Generic, Dict
 
 import numpy as np
+from joblib import Parallel, delayed
 from loguru import logger
 
 from pyraptor.model.criteria import BaseLabel
@@ -17,6 +18,7 @@ from pyraptor.model.shared_mobility import (
     VehicleTransfer,
     TRANSPORT_TYPE_SPEEDS, RaptorTimetableSM)
 from pyraptor.model.timetable import RaptorTimetable, Route, Stop, TransportType, Transfer
+from pathos.helpers import cpu_count
 
 _BagType = TypeVar("_BagType")
 """Type of the bag of labels assigned to each stop by the RAPTOR algorithm"""
@@ -442,13 +444,27 @@ class BaseSharedMobRaptor(BaseRaptorAlgorithm[_BagType, _LabelType], ABC):
         # We create a VehicleTransfer links each old renting station with newfound ones,
         # according to system_id (id of the shared-mob dataset) and availability
         new_v_transfers = VehicleTransfers()
+
+        #""" # SINGLE PROCESS
         for old in self.visited_renting_stations:
             for new in marked_renting_stations:
                 if old != new:
                     new_vt = self._create_vehicle_transfer(stop_a=old, stop_b=new)
-
+    
                     if new_vt is not None:
                         new_v_transfers.add(new_vt)
+        #"""
+
+        """ MULTIPROCESS
+        vts = Parallel(n_jobs=2)(delayed(self._create_vehicle_transfer)(old, new)
+                                           for old in self.visited_renting_stations
+                                           for new in marked_renting_stations
+                                           if new != old)
+
+        for vt in vts:
+            if vt is not None:
+                new_v_transfers.add(vt)
+        """
 
         logger.debug(f"New {len(new_v_transfers)} shared-mob transfers created")
 
