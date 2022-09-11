@@ -441,38 +441,11 @@ class BaseSharedMobRaptor(BaseRaptorAlgorithm[_BagType, _LabelType], ABC):
         marked_renting_stations: List[RentingStation] = filter_shared_mobility(marked_stops)
         logger.debug(f"{len(marked_renting_stations)} marked renting stations")
 
-        # We create a VehicleTransfer links each old renting station with newfound ones,
-        # according to system_id (id of the shared-mob dataset) and availability
-        new_v_transfers = VehicleTransfers()
-
-        #""" # SINGLE PROCESS
-        for old in self.visited_renting_stations:
-            for new in marked_renting_stations:
-                if old != new:
-                    new_vt = self._create_vehicle_transfer(stop_a=old, stop_b=new)
-    
-                    if new_vt is not None:
-                        new_v_transfers.add(new_vt)
-        #"""
-
-        """ MULTIPROCESS
-        vts = Parallel(n_jobs=2)(delayed(self._create_vehicle_transfer)(old, new)
-                                           for old in self.visited_renting_stations
-                                           for new in marked_renting_stations
-                                           if new != old)
-
-        for vt in vts:
-            if vt is not None:
-                new_v_transfers.add(vt)
-        """
-
-        logger.debug(f"New {len(new_v_transfers)} shared-mob transfers created")
-
         # We can compute transfer-time from these selected renting stations using only filtered transfers
         new_reachable_renting_stations = self._improve_with_transfers(
             k=k,
             marked_stops=self.visited_renting_stations,
-            transfers=new_v_transfers
+            transfers=self.timetable.vehicle_transfers
         )
         logger.debug(f"{len(new_reachable_renting_stations)} new renting stations can be reached"
                      f" through shared-mobility")
