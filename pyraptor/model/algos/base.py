@@ -1,10 +1,13 @@
 from __future__ import annotations
 
+import itertools
+import math
+import uuid
 from abc import ABC, abstractmethod
 from collections.abc import Iterable, Mapping, Sequence
 from copy import copy
 from dataclasses import dataclass
-from typing import List, Tuple, TypeVar, Generic, Dict
+from typing import List, Tuple, TypeVar, Generic, Dict, Callable
 
 import numpy as np
 from joblib import Parallel, delayed
@@ -19,6 +22,8 @@ from pyraptor.model.shared_mobility import (
     TRANSPORT_TYPE_SPEEDS, RaptorTimetableSM)
 from pyraptor.model.timetable import RaptorTimetable, Route, Stop, TransportType, Transfer
 from pathos.helpers import cpu_count
+
+from pyraptor.timetable.timetable import execute_jobs
 
 _BagType = TypeVar("_BagType")
 """Type of the bag of labels assigned to each stop by the RAPTOR algorithm"""
@@ -418,6 +423,40 @@ class BaseSharedMobRaptor(BaseRaptorAlgorithm[_BagType, _LabelType], ABC):
                     and s not in self.visited_renting_stations):
                 self.visited_renting_stations.append(s)
 
+    def _vehicle_transfer_processor_job(
+        self,
+        old_rt: List[RentingStation],
+        new_rt: List[RentingStation],
+        job_id: int | str | uuid.UUID = uuid.uuid4()
+    ) -> Callable[[], Iterable[VehicleTransfer]]:
+        """
+        Returns a function that creates and returns vehicle transfers between
+        the provided old renting stations and new discovered renting stations
+
+        :param old_rt: old known renting stations
+        :param new_rt: new discovered renting stations
+        :param job_id: id to assign to this job.
+            Its purpose is only to identify the job in the logger output.
+        :return: collection of vehicle transfers between the aforementioned renting stations
+        """
+
+        def job():
+            def log(msg: str):
+                logger.debug(f"[VehicleTransferProcessor {job_id}] {msg}")
+
+            v_transfers: List[VehicleTransfer] = []
+
+            for i, old in zip(range(len(old_rt)), old_rt):
+                log(f'Progress: {i * 100 / len(old_rt):0.0f}%')
+                for new in new_rt:
+                    new_vt, _ = self._create_vehicle_transfer(stop_a=old, stop_b=new)
+                    if new_vt is not None:
+                        v_transfers.append(new_vt)
+
+            return v_transfers
+
+        return job
+
     def _improve_with_sm_transfers(
             self,
             k: int,
@@ -443,28 +482,46 @@ class BaseSharedMobRaptor(BaseRaptorAlgorithm[_BagType, _LabelType], ABC):
 
         # We create a VehicleTransfer links each old renting station with newfound ones,
         # according to system_id (id of the shared-mob dataset) and availability
+
         new_v_transfers = VehicleTransfers()
 
-        #""" # SINGLE PROCESS
+        """ TODO multiprocessor brings to large elapsed time
+        n_jobs = 1
+        jobs = []
+        for i in range(n_jobs):
+            visited_renting_station_no = len(self.visited_renting_stations)
+            interval_length = math.floor(visited_renting_station_no / n_jobs)
+            start = i * interval_length
+
+            if i == (n_jobs - 1):
+                # Make sure that all the shared mob stops are processed and
+                # that no stop is left out due to rounding errors
+                # in calculating interval_length
+                end = visited_renting_station_no
+            else:
+                end = (start + interval_length) - 1  # -1 because the interval_length-th stop belongs to the next round
+
+            job = self._vehicle_transfer_processor_job(
+                # +1 because end would not be included
+                old_rt=list(itertools.islice(self.visited_renting_stations, start, end + 1)),
+                new_rt=marked_renting_stations,
+                job_id=f"#{i}"
+            )
+            jobs.append(job)
+
+        logger.debug(f"Starting {n_jobs} jobs to process vehicle transfers")
+        job_results = execute_jobs(jobs=jobs, cpus=n_jobs)
+
+        for vtransfer in itertools.chain.from_iterable(job_results):
+            new_v_transfers.add(vtransfer)
+        """
+
         for old in self.visited_renting_stations:
             for new in marked_renting_stations:
                 if old != new:
                     new_vt = self._create_vehicle_transfer(stop_a=old, stop_b=new)
-    
                     if new_vt is not None:
                         new_v_transfers.add(new_vt)
-        #"""
-
-        """ MULTIPROCESS
-        vts = Parallel(n_jobs=2)(delayed(self._create_vehicle_transfer)(old, new)
-                                           for old in self.visited_renting_stations
-                                           for new in marked_renting_stations
-                                           if new != old)
-
-        for vt in vts:
-            if vt is not None:
-                new_v_transfers.add(vt)
-        """
 
         logger.debug(f"New {len(new_v_transfers)} shared-mob transfers created")
 

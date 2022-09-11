@@ -640,7 +640,7 @@ def _get_trips_and_stop_times(
         jobs.append(job)
 
     logger.debug(f"Starting {n_jobs} jobs to process timetable trips")
-    job_results = _execute_jobs(jobs=jobs, cpus=n_jobs)
+    job_results = execute_jobs(jobs=jobs, cpus=n_jobs)
 
     trips = Trips()
     trip_stop_times = TripStopTimes()
@@ -832,7 +832,7 @@ def add_shared_mobility_to_pyraptor_timetable(timetable: RaptorTimetable, feeds:
         jobs.append(job)
 
     logger.debug(f"Starting {n_jobs} jobs to process timetable trips")
-    job_results = _execute_jobs(jobs=jobs, cpus=n_jobs)
+    job_results = execute_jobs(jobs=jobs, cpus=n_jobs)
 
     for transfer in itertools.chain.from_iterable(job_results):
         timetable.transfers.add(transfer)
@@ -891,7 +891,7 @@ def _shared_mob_processor_job(
 _J = TypeVar('_J')
 
 
-def _execute_jobs(
+def execute_jobs(
         jobs: Iterable[Callable[[], _J]],
         cpus: int = cpu_count()
 ) -> Iterable[_J]:
