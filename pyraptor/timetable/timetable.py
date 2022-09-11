@@ -848,16 +848,17 @@ def add_shared_mobility_to_pyraptor_timetable(timetable: RaptorTimetable, feeds:
     vtransfers = VehicleTransfers()
 
     for feed in feeds:
-            for i in range(len(shared_mob_stops) - 1):
-                if i % 15 == 0:
-                    logger.debug(f"Feed: {feed.system_id}: {round(i * 100 / len(shared_mob_stops), 3)}%")
-                for j in range(i + 1, len(shared_mob_stops)):
-                    s_a: RentingStation = shared_mob_stops[i]
-                    s_b: RentingStation = shared_mob_stops[j]
-                    for vtype in feed.transport_types:
-                        vt1, vt2 = VehicleTransfer.get_vehicle_transfer(sa=s_a, sb=s_b, transport_type=vtype)
-                        vtransfers.add(vt1)
-                        vtransfers.add(vt2)
+        shared_mob_stops: List[RentingStation] = list(feed.renting_stations)
+        for i in range(len(shared_mob_stops) - 1):
+            if i % 15 == 0:
+                logger.debug(f"Feed: {feed.system_id}: {round(i * 100 / len(shared_mob_stops), 3)}%")
+            for j in range(i + 1, len(shared_mob_stops)):
+                s_a: RentingStation = shared_mob_stops[i]
+                s_b: RentingStation = shared_mob_stops[j]
+                for vtype in feed.transport_types:
+                    vt1, vt2 = VehicleTransfer.get_vehicle_transfer(sa=s_a, sb=s_b, transport_type=vtype)
+                    vtransfers.add(vt1)
+                    vtransfers.add(vt2)
 
     return RaptorTimetableSM(
         stations=timetable.stations,
