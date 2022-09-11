@@ -7,7 +7,7 @@ import argparse
 import os
 from collections.abc import Mapping, Iterable
 from enum import Enum
-from typing import Dict, Callable
+from typing import Dict, Callable, List
 from timeit import default_timer as timer
 
 from loguru import logger
@@ -17,7 +17,8 @@ from pyraptor.model.algos.raptor import RaptorAlgorithm
 from pyraptor.model.algos.weighted_mcraptor import WeightedMcRaptorAlgorithm
 from pyraptor.model.criteria import Bag, MultiCriteriaLabel
 from pyraptor.model.output import AlgorithmOutput, get_journeys_to_destinations
-from pyraptor.model.shared_mobility import RaptorTimetableSM
+from pyraptor.model.shared_mobility import RaptorTimetableSM, RentingStation, filter_shared_mobility, VehicleTransfers, \
+    VehicleTransfer
 from pyraptor.model.timetable import RaptorTimetable, Stop, TransportType
 from pyraptor.timetable.io import read_timetable
 from pyraptor.timetable.timetable import TIMETABLE_FILENAME, SHARED_MOB_TIMETABLE_FILENAME
@@ -174,8 +175,6 @@ def query_raptor(
     logger.debug("Preferred vehicle        : {}", preferred_vehicle)
     logger.debug("Enable car               : {}", enable_car)
 
-    start_time = timer()
-
     # Input check
     if origin_station == destination_station:
         raise ValueError(f"{origin_station} is both origin and destination")
@@ -193,11 +192,51 @@ def query_raptor(
     }
     destination_stops.pop(origin_station, None)
 
+    # Pre-filtering vehicle transfers
+
+    if enable_sm:
+
+        renting_stations: List[RentingStation] = filter_shared_mobility(timetable.stops)
+
+        origin_stop: Stop = origin_stops[0]
+        destination_stop: Stop = list(destination_stops.values())[0][0]
+
+        cut_off = 0.01
+        renting_stations_sub: List[RentingStation] = [
+            rs for rs in renting_stations if
+            min(origin_stop.geo.lat, destination_stop.geo.lat) - cut_off <=
+                rs.geo.lat <= max(origin_stop.geo.lat, destination_stop.geo.lat) + cut_off and
+            min(origin_stop.geo.lon, destination_stop.geo.lon) - cut_off <=
+                rs.geo.lon <= max(origin_stop.geo.lon, destination_stop.geo.lon) + cut_off
+        ]
+
+        logger.debug(f"Considering only {len(renting_stations_sub)} renting stations")
+
+        vtransfers = VehicleTransfers()
+
+        for feed in timetable.shared_mobility_feeds:
+            shared_mob_stops: List[RentingStation] = list(feed.renting_stations)
+            shared_mob_stops = [sms for sms in shared_mob_stops if sms in renting_stations_sub]
+            for i in range(len(shared_mob_stops) - 1):
+                for j in range(i + 1, len(shared_mob_stops)):
+                    s_a: RentingStation = shared_mob_stops[i]
+                    s_b: RentingStation = shared_mob_stops[j]
+                    for vtype in feed.transport_types:
+                        vt1, vt2 = VehicleTransfer.get_vehicle_transfer(sa=s_a, sb=s_b, transport_type=vtype)
+                        vtransfers.add(vt1)
+                        vtransfers.add(vt2)
+
+        timetable.vehicle_transfers = vtransfers
+
+        logger.debug(f"Using only {len(vtransfers)} vehicle transfers")
+
     preferred_transport_type = _process_shared_mob_args(
         enable_sm=enable_sm,
         preferred_vehicle=preferred_vehicle,
         enable_car=enable_car
     )
+
+    start_time = timer()
 
     best_labels = _handle_raptor_variant(
         variant=RaptorVariants(variant),
@@ -355,7 +394,6 @@ def _load_timetable(input_folder: str, enable_sm: bool) -> RaptorTimetable:
 
 
 if __name__ == "__main__":
-
     args = _parse_arguments()
 
     cached_timetable = _load_timetable(args.input, args.enable_sm)
