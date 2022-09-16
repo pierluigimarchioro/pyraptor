@@ -64,15 +64,16 @@ class Graph:
                 times.append(curr_time[start])
                 times.reverse()
 
-                print('Path found: {}'.format(path_found))
+                print('Path found:')
+                for s, t in zip(path_found, times):
+                    print('Stop: {} - Arrival time: {}'.format(s, sec2str(t)))
                 print('duration: ', sec2str(duration))
-                print('arrival time: ', times)
 
                 return path_found
 
             # for all the neighbors of the current node do
             for step in self.get_neighbors(n):
-                # if n == "A_PAGANO" and step.stop_to.name == "BUONARROTI" and step.departure_time == 44155:
+                # if n == "QT8" and step.stop_to.name == "qt8 m1" and step.departure_time == 44155:
                 #     print("time found")
 
                 if not self.is_int(step.departure_time) \
