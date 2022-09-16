@@ -6,7 +6,7 @@ from preprocessing import read_adjacency
 
 import a_star
 
-from pyraptor.dao.timetable import read_timetable
+from pyraptor.timetable.io import read_timetable
 from pyraptor.util import str2sec
 from pyraptor.util import sec2str
 

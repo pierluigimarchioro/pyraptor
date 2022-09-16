@@ -4,8 +4,8 @@ import joblib
 import os
 from loguru import logger
 from pathlib import Path
-from pyraptor.dao.timetable import read_timetable
 from pyraptor.model.timetable import RaptorTimetable
+from pyraptor.timetable.io import read_timetable
 from pyraptor.util import mkdir_if_not_exists
 
 

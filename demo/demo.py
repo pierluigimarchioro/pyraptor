@@ -379,7 +379,6 @@ def _get_station_names(timetable: RaptorTimetable):
 if __name__ == "__main__":
 
     args = parse_arguments()
-    print(args)
     run_demo(
         input_folder=args.input,
         debug=args.debug
