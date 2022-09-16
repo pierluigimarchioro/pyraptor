@@ -7,6 +7,7 @@ from preprocessing import read_adjacency
 import a_star
 
 from pyraptor.timetable.io import read_timetable
+from pyraptor.timetable.timetable import TIMETABLE_FILENAME
 from pyraptor.util import str2sec
 from pyraptor.util import sec2str
 
@@ -70,7 +71,7 @@ def main(
     if origin_station == destination_station:
         raise ValueError(f"{origin_station} is both origin and destination")
 
-    timetable = read_timetable(input_folder)
+    timetable = read_timetable(input_folder=input_folder, timetable_name=TIMETABLE_FILENAME)
 
     heuristic = get_heuristic(destination_station, timetable)
     adjacency_list = read_adjacency(output_folder)

@@ -7,6 +7,7 @@ from pathlib import Path
 from pyraptor.model.timetable import RaptorTimetable
 from pyraptor.timetable.io import read_timetable
 from pyraptor.util import mkdir_if_not_exists
+from pyraptor.timetable.timetable import TIMETABLE_FILENAME
 
 
 def parse_arguments():
@@ -41,7 +42,7 @@ def main(
     logger.debug("Input directory       : {}", input_folder)
     logger.debug("Output directory      : {}", output_folder)
 
-    timetable = read_timetable(input_folder)
+    timetable = read_timetable(input_folder=input_folder, timetable_name=TIMETABLE_FILENAME)
 
     get_adj_list(timetable, output_folder)
 
