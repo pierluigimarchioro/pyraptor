@@ -49,25 +49,30 @@ class Graph:
             # if the current node is the stop print journey
             if n == stop:
                 path_found = []
-                duration = 0
                 times = []
+                all_durations= []
+                tot_duration = 0
 
                 while parents[n] != n:
                     path_found.append(self.timetable.stops.get_stop(n).name)
-                    duration = duration + durations[n]
+                    tot_duration = tot_duration + durations[n]
                     times.append(curr_time[n])
+                    all_durations.append(durations[n])
                     n = parents[n]
 
                 path_found.append(self.timetable.stops.get_stop(start).name)
                 path_found.reverse()
-                duration = duration + durations[start]
+                tot_duration = tot_duration + durations[start]
                 times.append(curr_time[start])
                 times.reverse()
+                all_durations.append(durations[n])
+                all_durations.reverse()
 
                 print('Path found:')
-                for s, t in zip(path_found, times):
+                for s, t, d in zip(path_found, times, all_durations):
                     print('Stop: {} - Arrival time: {}'.format(s, sec2str(t)))
-                print('duration: ', sec2str(duration))
+                    print('Duration: ', d)
+                print('total duration: ', sec2str(tot_duration))
 
                 return path_found
 
@@ -86,10 +91,11 @@ class Graph:
 
                         if self.is_int(step.arrive_time):  # this cover all hours and waiting time
                             curr_time[step.stop_to.id] = step.arrive_time  # old: curr_time[n] + step.duration
+                            durations[step.stop_to.id] = step.duration + (step.departure_time - curr_time[n])
                         else:
                             curr_time[step.stop_to.id] = curr_time[n] + step.duration
+                            durations[step.stop_to.id] = step.duration
                         parents[step.stop_to.id] = n
-                        durations[step.stop_to.id] = step.duration  # waiting time is not added
 
                     # otherwise, check if it's quicker to first visit n, than step
                     # and if it is, update parents data and curr_dist data
@@ -100,10 +106,11 @@ class Graph:
 
                             if self.is_int(step.arrive_time):
                                 curr_time[step.stop_to.id] = step.arrive_time
+                                durations[step.stop_to.id] = step.duration + (step.departure_time - curr_time[n])
                             else:
                                 curr_time[step.stop_to.id] = curr_time[n] + step.duration
+                                durations[step.stop_to.id] = step.duration
                             parents[step.stop_to.id] = n
-                            durations[step.stop_to.id] = step.duration
                             # todo consider to make a method instead of these 2 blocks of the same code
 
                             if step.stop_to.id in closed_lst:
@@ -121,4 +128,3 @@ class Graph:
     # todo salvare la sequenza di step fatti
     # todo note down when route or means of transport changes
     # todo save stop order to give as input to folium for visualization
-    # todo duration doesn't count waiting time
