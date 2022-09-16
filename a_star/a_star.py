@@ -70,8 +70,7 @@ class Graph:
 
                 print('Path found:')
                 for s, t, d in zip(path_found, times, all_durations):
-                    print('Stop: {} - Arrival time: {}'.format(s, sec2str(t)))
-                    print('Duration: ', d)
+                    print('Stop: {} - Arrival time: {} - Duration: {}'.format(s, sec2str(t), sec2str(d)))
                 print('total duration: ', sec2str(tot_duration))
 
                 return path_found
