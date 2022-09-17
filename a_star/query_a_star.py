@@ -12,7 +12,7 @@ from timeit import default_timer as timer
 
 from pyraptor.timetable.io import read_timetable
 from pyraptor.timetable.timetable import TIMETABLE_FILENAME
-from pyraptor.util import str2sec, sec2str
+from pyraptor.util import str2sec, sec2str, sec2minutes
 
 _DEFAULT_FILENAME = "algo-output"
 
@@ -72,19 +72,19 @@ def main(
     logger.debug("Destination station   : {}", destination_station)
     logger.debug("Departure time        : {}", departure_time)
 
-    start_time = timer()
-
     # Input check
     if origin_station == destination_station:
         raise ValueError(f"{origin_station} is both origin and destination")
 
     logger.debug("Loading timetable...")
+    timetbl_start_time = timer()
     timetable = read_timetable(input_folder=input_folder, timetable_name=TIMETABLE_FILENAME)
-
-    heuristic = get_heuristic(destination_station, timetable)
+    timetbl_end_time = timer()
 
     logger.debug("Loading adjacency list...")
+    adjlst_start_time = timer()
     adjacency_list = read_adjacency(output_folder)
+    adjlst_end_time = timer()
 
     logger.info(f"Calculating network from: {origin_station}")
 
@@ -93,30 +93,37 @@ def main(
     logger.debug("Departure time (s.)  : " + str(dep_secs))
 
     # Find route between two stations + Print journey to destination
+    path_start_time = timer()
+    heuristic = get_heuristic(destination_station, timetable)
     graph = a_star.Graph(adjacency_list, heuristic, timetable, str2sec(departure_time))
     graph.a_star_algorithm(origin_station, destination_station)
+    path_end_time = timer()
 
-    # Save the algorithm output
-    algo_output = AstarOutput(
-        journeys=destination_journeys,
-        departure_time=departure_time,
-        date=timetable.date,
-        original_gtfs_dir=timetable.original_gtfs_dir
-    )
-    AstarOutput.save(
-        output_dir=output_folder,
-        algo_output=algo_output
-    )
+    # Save the algorithm output TODO finish adapting first, need to make a reasonable class for output
+    # algo_output = AstarOutput(
+    #     journeys=destination_journeys,
+    #     departure_time=departure_time,
+    #     date=timetable.date,
+    #     original_gtfs_dir=timetable.original_gtfs_dir
+    # )
+    # AstarOutput.save(
+    #     output_dir=output_folder,
+    #     algo_output=algo_output
+    # )
 
     # Todo visualizzazione in folium
 
-    end_time = timer()
-    return end_time - start_time
+    compute_path_timer = path_end_time - path_start_time
+    load_adj_list_timer = adjlst_end_time - adjlst_start_time
+    load_timetable_timer = timetbl_end_time - timetbl_start_time
+
+    return load_timetable_timer, load_adj_list_timer, compute_path_timer
 
 
 if __name__ == "__main__":
     args = parse_arguments()
-    main(
+
+    timetbl_time, adjlst_time, path_time = main(
         input_folder=args.input,
         output_folder=args.output,
         origin_station=args.origin,
@@ -124,3 +131,6 @@ if __name__ == "__main__":
         departure_time=args.time
     )
 
+    logger.info(f"Loading timetable time: {timetbl_time} sec ({sec2minutes(timetbl_time)})")
+    logger.info(f"Loading adjacency list time: {adjlst_time} sec ({sec2minutes(adjlst_time)})")
+    logger.info(f"Computing path time: {path_time} sec ({sec2minutes(path_time)})")

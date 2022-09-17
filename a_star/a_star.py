@@ -146,12 +146,13 @@ class AstarOutput(TimetableInfo):
 
     _DEFAULT_FILENAME = "algo-output"
 
-    journeys: Iterable[Journey] = None
+    # journeys: Iterable[Journey] = None # TODO fare un iterable dell'oggetto che contiene le fermate? o trovare tutti gli archi
     """Best journey found by the algorithm"""
 
     departure_time: str = None
     """string in the format %H:%M:%S"""
 
+    # not adapted to a_star yet because it's not used anyway
     @staticmethod
     def read_from_file(filepath: str | bytes | os.PathLike) -> AstarOutput:
         """
@@ -190,9 +191,7 @@ class AstarOutput(TimetableInfo):
         """
 
         logger.info(f"Writing PyRaptor output to {output_dir}")
-
         mkdir_if_not_exists(output_dir)
 
         with open(Path(output_dir, f"{filename}.pcl"), "wb") as handle:
             joblib.dump(algo_output, handle)
-

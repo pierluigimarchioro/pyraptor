@@ -6,7 +6,7 @@ from loguru import logger
 from pathlib import Path
 from pyraptor.model.timetable import RaptorTimetable
 from pyraptor.timetable.io import read_timetable
-from pyraptor.util import mkdir_if_not_exists
+from pyraptor.util import sec2minutes, mkdir_if_not_exists
 from pyraptor.timetable.timetable import TIMETABLE_FILENAME
 from timeit import default_timer as timer
 
@@ -43,16 +43,20 @@ def main(
     logger.debug("Input directory       : {}", input_folder)
     logger.debug("Output directory      : {}", output_folder)
 
-    start_time = timer()
-
     logger.debug("Loading timetable...")
+    timetbl_start_time = timer()
     timetable = read_timetable(input_folder=input_folder, timetable_name=TIMETABLE_FILENAME)
+    timetbl_end_time = timer()
 
     logger.debug("Calculating adjacency list...")
+    start_time = timer()
     get_adj_list(timetable, output_folder)
-
     end_time = timer()
-    return end_time - start_time
+
+    compute_adj_list_timer = end_time - start_time
+    load_timetable_timer = timetbl_end_time - timetbl_start_time
+
+    return load_timetable_timer, compute_adj_list_timer
 
 
 @dataclass
@@ -249,7 +253,11 @@ def write_adjacency(output_folder: str, adjacency_list: dict[str, list]) -> None
 
 if __name__ == "__main__":
     args = parse_arguments()
-    main(
+
+    timetbl_time, adjlst_time = main(
         input_folder=args.input,
         output_folder=args.output
     )
+
+    logger.info(f"Loading timetable time: {timetbl_time} sec ({sec2minutes(timetbl_time)})")
+    logger.info(f"Computing adjacency list time: {adjlst_time} sec ({sec2minutes(adjlst_time)})")
