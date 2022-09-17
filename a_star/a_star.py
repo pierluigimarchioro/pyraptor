@@ -1,5 +1,12 @@
-from pyraptor.model.timetable import RaptorTimetable
-from pyraptor.util import sec2str
+from __future__ import annotations
+
+import joblib
+import os
+
+from pyraptor.model.timetable import RaptorTimetable, TimetableInfo
+from pyraptor.util import str2sec, sec2str, mkdir_if_not_exists
+from pathlib import Path
+from loguru import logger
 
 
 class Graph:
@@ -127,3 +134,65 @@ class Graph:
     # todo salvare la sequenza di step fatti
     # todo note down when route or means of transport changes
     # todo save stop order to give as input to folium for visualization
+
+
+class AstarOutput(TimetableInfo):
+    """
+    Class that represents the data output of a Raptor algorithm execution.
+    Contains the best journey found by the algorithm, the departure date and time of said journey
+    and the path to the directory of the GTFS feed originally used to build the timetable
+    provided to the algorithm.
+    """
+
+    _DEFAULT_FILENAME = "algo-output"
+
+    journeys: Iterable[Journey] = None
+    """Best journey found by the algorithm"""
+
+    departure_time: str = None
+    """string in the format %H:%M:%S"""
+
+    @staticmethod
+    def read_from_file(filepath: str | bytes | os.PathLike) -> AstarOutput:
+        """
+        Returns the AlgorithmOutput instance read from the provided folder
+        :param filepath: path to an AlgorithmOutput .pcl file
+        :return: AlgorithmOutput instance
+        """
+
+        def load_joblib() -> AstarOutput:
+            logger.debug(f"Loading '{filepath}'")
+            with open(Path(filepath), "rb") as handle:
+                return joblib.load(handle)
+
+        if not os.path.exists(filepath):
+            raise IOError(
+                "PyRaptor AlgorithmOutput not found. Run `python pyraptor/query_raptor`"
+                " first to generate an algorithm output .pcl file."
+            )
+
+        logger.debug("Using cached datastructures")
+
+        algo_output: AstarOutput = load_joblib()
+
+        return algo_output
+
+    @staticmethod
+    def save(output_dir: str | bytes | os.PathLike,
+             algo_output: AstarOutput,
+             filename: str = _DEFAULT_FILENAME):
+        """
+        Write the algorithm output to the provided directory
+
+        :param output_dir: path to the directory to write the serialized output file
+        :param algo_output: instance to serialize
+        :param filename: name of the serialized output file
+        """
+
+        logger.info(f"Writing PyRaptor output to {output_dir}")
+
+        mkdir_if_not_exists(output_dir)
+
+        with open(Path(output_dir, f"{filename}.pcl"), "wb") as handle:
+            joblib.dump(algo_output, handle)
+
