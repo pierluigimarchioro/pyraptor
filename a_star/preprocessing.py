@@ -4,7 +4,7 @@ import joblib
 import os
 from loguru import logger
 from pathlib import Path
-from pyraptor.model.timetable import RaptorTimetable
+from pyraptor.model.timetable import RaptorTimetable, TransportType
 from pyraptor.timetable.io import read_timetable
 from pyraptor.util import sec2minutes, mkdir_if_not_exists
 from pyraptor.timetable.timetable import TIMETABLE_FILENAME
@@ -63,7 +63,7 @@ def main(
 class Step(object):
     """
     Step object to represent the weight of an edge of the graph
-    It contains information about the departure from a stop to another, the route this step is part of, and what transport is used for it
+    It contains information about the departure from a stop to another, the route, and what transport is used
     """
 
     stop_to = None
@@ -74,19 +74,21 @@ class Step(object):
     route_id = None
     transport_type = None
 
-    def __init__(self, stop, duration, departure_time, arrive_time, trip_id, route_id, transport_type):
+    def __init__(self, stop_from, stop_to, duration, departure_time, arrive_time, trip_id, route_id, transport_type):
         """
         Initializes the stop node
-        :param stop: destination stop of the trip
+        :param stop_from: start stop of the trip
+        :param stop_to: destination stop of the trip
         :param duration: duration of the trip
         :param departure_time: arrive time from a stop
         :param arrive_time: arrive time to a stop
         :param trip_id: trip id of this step
         :param route_id: route id of this step
-        :param transport_type: transport type of this route (route_type : Indicates the type of transportation used on a route)
+        :param transport_type: transport type of this route (route_type : The type of transportation used on a route)
         """
 
-        self.stop_to = stop
+        self.stop_from = stop_from
+        self.stop_to = stop_to
         self.duration = duration
         self.departure_time = departure_time
         self.arrive_time = arrive_time
@@ -166,6 +168,7 @@ def get_adj_list(timetable: RaptorTimetable, output_folder) -> None:
         # get all the next stops in the same trips of st
         adjacency_list[st.id] = []
         for tripid, tr in is_present_in_trip.items():
+            stop_from = None
             got_seq = False
             seq = -2
             dep = 0
@@ -174,18 +177,27 @@ def get_adj_list(timetable: RaptorTimetable, output_folder) -> None:
                     seq = s.stop_idx
                     got_seq = True
                     dep = s.dts_arr
+                    stop_from = s.stop
                 if got_seq and s.stop_idx == seq+1:
-                    adjacency_list[st.id].append(Step(s.stop,
-                                                      s.dts_arr-dep,
-                                                      dep,
-                                                      s.dts_arr,
-                                                      tripid,
-                                                      tr.route_info.name,
-                                                      tr.route_info.transport_type.name))
+                    adjacency_list[st.id].append(Step(stop_from=stop_from,
+                                                      stop_to=s.stop,
+                                                      duration=s.dts_arr-dep,
+                                                      departure_time=dep,
+                                                      arrive_time=s.dts_arr,
+                                                      trip_id=tripid,
+                                                      route_id=tr.route_info.name,
+                                                      transport_type=tr.route_info.transport_type))
 
         for arr in timetable.transfers:
             if arr.from_stop == st:
-                adjacency_list[st.id].append(Step(arr.to_stop, arr.transfer_time, "x", "x", arr.id, "x", "walk"))
+                adjacency_list[st.id].append(Step(stop_from=arr.from_stop,
+                                                  stop_to=arr.to_stop,
+                                                  duration=arr.transfer_time,
+                                                  departure_time="x",
+                                                  arrive_time="x",
+                                                  trip_id=arr.id,
+                                                  route_id="x",
+                                                  transport_type=TransportType.Walk))
                 # departure time, arrive time and route id set to "x" because it's a transfer
 
     write_adjacency(output_folder, adjacency_list)

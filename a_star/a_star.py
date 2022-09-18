@@ -3,8 +3,12 @@ from __future__ import annotations
 import joblib
 import os
 
+from preprocessing import Step
 from pyraptor.model.timetable import RaptorTimetable, TimetableInfo
-from pyraptor.util import str2sec, sec2str, mkdir_if_not_exists
+from pyraptor.util import sec2str, mkdir_if_not_exists
+
+from dataclasses import dataclass
+from collections.abc import Iterable
 from pathlib import Path
 from loguru import logger
 
@@ -16,13 +20,14 @@ class Graph:
         self.timetable = timetable
         self.departure = dep_time
 
-    def is_int(self, v):
+    @staticmethod
+    def is_int(v):
         return isinstance(v, int)
 
     def get_neighbors(self, v):
         return self.adjacency_list[v]
 
-    def a_star_algorithm(self, start, stop):
+    def a_star_algorithm(self, start, end) -> Iterable[Step]:
         # In this open_lst is a list of nodes which have been visited, but who's
         # neighbours haven't all been always inspected,
         # It starts off with the start node
@@ -34,11 +39,12 @@ class Graph:
         # curr_dist contains current distances from start_node to all other nodes
         # the default value (if it's not found in the map) is +infinity
         curr_time = {start: self.departure}
+        durations = {start: 0}
 
-        # parents contain an adjacency map of all nodes
+        # parents contain an adjacency list of all nodes
         parents = {start: start}
 
-        durations = {start: 0}
+        all_step = {}
 
         while len(open_lst) > 0:
             n = None
@@ -49,46 +55,50 @@ class Graph:
                         or curr_time[v] + self.heuristic[v] < curr_time[n] + self.heuristic[n]:
                     n = v
 
-            if n is None:  # to delete, it should impossible to reached
+            if n is None:  # to delete, it should be impossible to reach
                 print('Path does not exist!')
                 return None
 
-            # if the current node is the stop print journey
-            if n == stop:
+            # if the current node is the destination print journey
+            if n == end:
+                path_step = []
                 path_found = []
                 times = []
-                all_durations= []
+                all_durations = []
                 tot_duration = 0
 
                 while parents[n] != n:
+                    path_step.append(all_step[n])
                     path_found.append(self.timetable.stops.get_stop(n).name)
-                    tot_duration = tot_duration + durations[n]
                     times.append(curr_time[n])
                     all_durations.append(durations[n])
+                    tot_duration = tot_duration + durations[n]
                     n = parents[n]
 
+                path_step.reverse()
                 path_found.append(self.timetable.stops.get_stop(start).name)
                 path_found.reverse()
-                tot_duration = tot_duration + durations[start]
                 times.append(curr_time[start])
                 times.reverse()
                 all_durations.append(durations[n])
                 all_durations.reverse()
+                tot_duration = tot_duration + durations[start]
 
                 print('Path found:')
                 for s, t, d in zip(path_found, times, all_durations):
                     print('Stop: {} - Arrival time: {} - Duration: {}'.format(s, sec2str(t), sec2str(d)))
                 print('total duration: ', sec2str(tot_duration))
 
-                return path_found
+                fill_transfer_time(path_step, times)
+
+                return path_step
 
             # for all the neighbors of the current node do
             for step in self.get_neighbors(n):
                 # if n == "QT8" and step.stop_to.name == "qt8 m1" and step.departure_time == 44155:
                 #     print("time found")
 
-                if not self.is_int(step.departure_time) \
-                        or curr_time[n] <= step.departure_time:
+                if not self.is_int(step.departure_time) or curr_time[n] <= step.departure_time:
 
                     # if the current node is not present in both open_lst and closed_lst
                     # add it to open_lst and note n as it's parents
@@ -102,6 +112,7 @@ class Graph:
                             curr_time[step.stop_to.id] = curr_time[n] + step.duration
                             durations[step.stop_to.id] = step.duration
                         parents[step.stop_to.id] = n
+                        all_step[step.stop_to.id] = step
 
                     # otherwise, check if it's quicker to first visit n, than step
                     # and if it is, update parents data and curr_dist data
@@ -117,6 +128,7 @@ class Graph:
                                 curr_time[step.stop_to.id] = curr_time[n] + step.duration
                                 durations[step.stop_to.id] = step.duration
                             parents[step.stop_to.id] = n
+                            all_step[step.stop_to.id] = step
                             # todo consider to make a method instead of these 2 blocks of the same code
 
                             if step.stop_to.id in closed_lst:
@@ -131,26 +143,30 @@ class Graph:
         print('Path does not exist!')
         return None
 
-    # todo salvare la sequenza di step fatti
-    # todo note down when route or means of transport changes
-    # todo save stop order to give as input to folium for visualization
+
+def fill_transfer_time(steps: Iterable[Step], arr_times) -> Iterable[Step]:
+    for step, arr_time in zip(steps, arr_times):
+        if not Graph.is_int(step.arrive_time):
+            step.departure_time = arr_time
+            step.arrive_time = arr_time+step.duration
+
+    return steps
 
 
+@dataclass
 class AstarOutput(TimetableInfo):
     """
-    Class that represents the data output of a Raptor algorithm execution.
+    Class that represents the data output of a A Star algorithm execution.
     Contains the best journey found by the algorithm, the departure date and time of said journey
-    and the path to the directory of the GTFS feed originally used to build the timetable
-    provided to the algorithm.
     """
 
-    _DEFAULT_FILENAME = "algo-output"
+    _DEFAULT_FILENAME = "algo-output-astar"
 
-    # journeys: Iterable[Journey] = None # TODO fare un iterable dell'oggetto che contiene le fermate? o trovare tutti gli archi
     """Best journey found by the algorithm"""
+    journeys: Iterable[Step] = None
 
-    departure_time: str = None
     """string in the format %H:%M:%S"""
+    departure_time: str = None
 
     # not adapted to a_star yet because it's not used anyway
     @staticmethod
@@ -190,7 +206,7 @@ class AstarOutput(TimetableInfo):
         :param filename: name of the serialized output file
         """
 
-        logger.info(f"Writing PyRaptor output to {output_dir}")
+        logger.info(f"Writing A Star output to {output_dir}")
         mkdir_if_not_exists(output_dir)
 
         with open(Path(output_dir, f"{filename}.pcl"), "wb") as handle:

@@ -96,22 +96,20 @@ def main(
     path_start_time = timer()
     heuristic = get_heuristic(destination_station, timetable)
     graph = a_star.Graph(adjacency_list, heuristic, timetable, str2sec(departure_time))
-    graph.a_star_algorithm(origin_station, destination_station)
+    destination_journeys = graph.a_star_algorithm(origin_station, destination_station)
     path_end_time = timer()
 
-    # Save the algorithm output TODO finish adapting first, need to make a reasonable class for output
-    # algo_output = AstarOutput(
-    #     journeys=destination_journeys,
-    #     departure_time=departure_time,
-    #     date=timetable.date,
-    #     original_gtfs_dir=timetable.original_gtfs_dir
-    # )
-    # AstarOutput.save(
-    #     output_dir=output_folder,
-    #     algo_output=algo_output
-    # )
-
-    # Todo visualizzazione in folium
+    # Save the algorithm output
+    algo_output = AstarOutput(
+        journeys=destination_journeys,
+        departure_time=departure_time,
+        date=timetable.date,
+        original_gtfs_dir=timetable.original_gtfs_dir
+    )
+    AstarOutput.save(
+        output_dir=output_folder,
+        algo_output=algo_output
+    )
 
     compute_path_timer = path_end_time - path_start_time
     load_adj_list_timer = adjlst_end_time - adjlst_start_time
