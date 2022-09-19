@@ -190,9 +190,8 @@ def basic_raptor_run():
 
         timetable = TIMETABLE_SM if ENABLE_SM else TIMETABLE
 
-        elapsed_time = query_raptor(
+        elapsed_time, algo_output = query_raptor(
             timetable=timetable,
-            output_folder=BASIC_RAPTOR_OUT_DIR,
             origin_station=origin,
             destination_station=destination,
             departure_time=departure_time,
@@ -203,7 +202,7 @@ def basic_raptor_run():
             enable_car=enable_car
         )
 
-        visualize(BASIC_RAPTOR_OUT_DIR)
+        visualize(algo_output, BASIC_RAPTOR_OUT_DIR)
 
         return show_journey_descriptions(algo_output_dir=BASIC_RAPTOR_OUT_DIR, time=elapsed_time)
 
@@ -269,9 +268,8 @@ def wmc_raptor_run():
 
         timetable = TIMETABLE_SM if ENABLE_SM else TIMETABLE
 
-        elapsed_time = query_raptor(
+        elapsed_time, algo_output = query_raptor(
             timetable=timetable,
-            output_folder=MC_RAPTOR_OUT_DIR,
             origin_station=origin,
             destination_station=destination,
             departure_time=departure_time,
@@ -283,7 +281,7 @@ def wmc_raptor_run():
             enable_car=enable_car
         )
 
-        visualize(MC_RAPTOR_OUT_DIR)
+        visualize(algo_output, MC_RAPTOR_OUT_DIR)
 
         return show_journey_descriptions(MC_RAPTOR_OUT_DIR, time=elapsed_time)
 
@@ -291,8 +289,15 @@ def wmc_raptor_run():
 """Visualization utils"""
 
 
-def visualize(algo_output_dir: str, open_browser: bool = True):
+def visualize(algo_output: AlgorithmOutput, algo_output_dir: str, open_browser: bool = True):
     algo_out_path = path.join(algo_output_dir, ALGO_OUTPUT_FILENAME)
+
+    # TODO refactor the visualization script to accept AlgorithmOutput instance as arg
+    AlgorithmOutput.save(
+        algo_output=algo_output,
+        output_dir=algo_output_dir
+    )
+
     visualize_output(
         algo_output_path=algo_out_path,
         visualization_dir=algo_output_dir,

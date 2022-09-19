@@ -4,10 +4,9 @@ Script that allows to execute queries with all the RAPTOR algorithm variants.
 from __future__ import annotations
 
 import argparse
-import os
 from collections.abc import Mapping, Iterable
 from enum import Enum
-from typing import Dict, Callable
+from typing import Dict, Callable, Tuple
 from timeit import default_timer as timer
 
 from loguru import logger
@@ -34,104 +33,8 @@ class RaptorVariants(Enum):
     WeightedMc = "wmc"
 
 
-def _parse_arguments():
-    """Parse arguments"""
-
-    parser = argparse.ArgumentParser()
-    parser.add_argument(
-        "-i",
-        "--input",
-        type=str,
-        default="data/output",
-        help="Input directory",
-    )
-    parser.add_argument(
-        "-o",
-        "--output",
-        type=str,
-        default="data/output",
-        help="Output directory",
-    )
-    parser.add_argument(
-        "-or",
-        "--origin",
-        type=str,
-        default="Hertogenbosch ('s)",
-        help="Origin station of the journey",
-    )
-    parser.add_argument(
-        "-d",
-        "--destination",
-        type=str,
-        default="Rotterdam Centraal",
-        help="Destination station of the journey",
-    )
-    parser.add_argument(
-        "-t",
-        "--time",
-        type=str,
-        default="08:35:00",
-        help="Departure time (hh:mm:ss)"
-    )
-    parser.add_argument(
-        "-r",
-        "--rounds",
-        type=int,
-        default=5,
-        help="Number of rounds to execute the RAPTOR algorithm",
-    )
-    parser.add_argument(
-        "-var",
-        "--variant",
-        type=str,
-        default=RaptorVariants.Basic.value,
-        help="""
-        Variant of the RAPTOR algorithm to execute. Possible values:\n
-            - `basic`: base RAPTOR
-            - `wmc`: Weighted More Criteria RAPTOR
-        """,
-    )
-    parser.add_argument(
-        "-cfg",
-        "--mc_config",
-        type=str,
-        default="data/input/mc.json",
-        help="Path to the criteria configuration file. "
-             "This argument is ignored if the algorithm variant is not Weighted More Criteria",
-    )
-    parser.add_argument(
-        "-sm",
-        "--enable_sm",
-        type=bool,
-        action=argparse.BooleanOptionalAction,
-        default=False,
-        help="Enable use of shared mobility data (default False)",
-    )
-    parser.add_argument(
-        "-p",
-        "--preferred",
-        type=str,
-        default="regular",
-        help="Preferred type of vehicle (regular | electric | car)"
-             "Ignored if argument -sm is set to False"
-    )
-    parser.add_argument(
-        "-c",
-        "--car",
-        type=bool,
-        action=argparse.BooleanOptionalAction,
-        default=False,
-        help="Enable car-sharing transfers"
-             "Ignored if argument -sm is set to False"
-    )
-
-    arguments = parser.parse_args()
-    return arguments
-
-
 def query_raptor(
         timetable: RaptorTimetable,
-        output_folder: str | bytes | os.PathLike,
         origin_station: str,
         destination_station: str,
         departure_time: str,
@@ -141,13 +44,12 @@ def query_raptor(
         enable_sm: bool = False,
         preferred_vehicle: str = None,
         enable_car: bool = None
-) -> float:
+) -> Tuple[float, AlgorithmOutput]:
     """
-    Queries the RAPTOR algorithm with the provided parameters and saves its output in the
-    specified output folder.
+    Queries the RAPTOR algorithm with the provided parameters.
+    Returns the query execution time and the algorithm output
 
     :param timetable: timetable
-    :param output_folder: folder where the algorithm output is saved
     :param variant: variant of the algorithm to run
     :param origin_station: name of the station to depart from
     :param destination_station: name of the station to arrive at
@@ -159,10 +61,9 @@ def query_raptor(
     :param preferred_vehicle: type of preferred vehicle
     :param enable_car: car-sharing transfer enabled
 
-    :return: execution_time
+    :return: query execution time and the algorithm output
     """
 
-    logger.debug("Output directory         : {}", output_folder)
     logger.debug("Origin station           : {}", origin_station)
     logger.debug("Destination station      : {}", destination_station)
     logger.debug("Departure time           : {}", departure_time)
@@ -243,12 +144,8 @@ def query_raptor(
         departure_time=departure_time,
         original_gtfs_dir=timetable.original_gtfs_dir
     )
-    AlgorithmOutput.save(
-        output_dir=output_folder,
-        algo_output=algo_output
-    )
 
-    return query_time
+    return query_time, algo_output
 
 
 def _process_shared_mob_args(
@@ -345,6 +242,100 @@ def _load_timetable(input_folder: str, enable_sm: bool) -> RaptorTimetable:
 
     return read_timetable(input_folder=input_folder, timetable_name=timetable_name)
 
+def _parse_arguments():
+    """Parse arguments"""
+
+    parser = argparse.ArgumentParser()
+    parser.add_argument(
+        "-i",
+        "--input",
+        type=str,
+        default="data/output",
+        help="Input directory",
+    )
+    parser.add_argument(
+        "-o",
+        "--output",
+        type=str,
+        default="data/output",
+        help="Output directory",
+    )
+    parser.add_argument(
+        "-or",
+        "--origin",
+        type=str,
+        default="Hertogenbosch ('s)",
+        help="Origin station of the journey",
+    )
+    parser.add_argument(
+        "-d",
+        "--destination",
+        type=str,
+        default="Rotterdam Centraal",
+        help="Destination station of the journey",
+    )
+    parser.add_argument(
+        "-t",
+        "--time",
+        type=str,
+        default="08:35:00",
+        help="Departure time (hh:mm:ss)"
+    )
+    parser.add_argument(
+        "-r",
+        "--rounds",
+        type=int,
+        default=5,
+        help="Number of rounds to execute the RAPTOR algorithm",
+    )
+    parser.add_argument(
+        "-var",
+        "--variant",
+        type=str,
+        default=RaptorVariants.Basic.value,
+        help="""
+        Variant of the RAPTOR algorithm to execute. Possible values:\n
+            - `basic`: base RAPTOR
+            - `wmc`: Weighted More Criteria RAPTOR
+        """,
+    )
+    parser.add_argument(
+        "-cfg",
+        "--mc_config",
+        type=str,
+        default="data/input/mc.json",
+        help="Path to the criteria configuration file. "
+             "This argument is ignored if the algorithm variant is not Weighted More Criteria",
+    )
+    parser.add_argument(
+        "-sm",
+        "--enable_sm",
+        type=bool,
+        action=argparse.BooleanOptionalAction,
+        default=False,
+        help="Enable use of shared mobility data (default False)",
+    )
+    parser.add_argument(
+        "-p",
+        "--preferred",
+        type=str,
+        default="regular",
+        help="Preferred type of vehicle (regular | electric | car)"
+             "Ignored if argument -sm is set to False"
+    )
+    parser.add_argument(
+        "-c",
+        "--car",
+        type=bool,
+        action=argparse.BooleanOptionalAction,
+        default=False,
+        help="Enable car-sharing transfers"
+             "Ignored if argument -sm is set to False"
+    )
+
+    arguments = parser.parse_args()
+    return arguments
+
 
 if __name__ == "__main__":
 
@@ -355,10 +346,9 @@ if __name__ == "__main__":
 
     # TODO refactor to delegate stuff like reading files to the outside, i.e.
     #   - do not pass output_folder and instead return AlgorithmOutput
-    elapsed_time = query_raptor(
+    elapsed_time, algo_output = query_raptor(
         variant=args.variant,
         timetable=cached_timetable,
-        output_folder=args.output,
         origin_station=args.origin,
         destination_station=args.destination,
         departure_time=args.time,
@@ -367,6 +357,12 @@ if __name__ == "__main__":
         enable_sm=args.enable_sm,
         preferred_vehicle=args.preferred,
         enable_car=args.car
+    )
+
+    logger.debug("Output directory         : {}", args.output)
+    AlgorithmOutput.save(
+        output_dir=args.output,
+        algo_output=algo_output
     )
 
     logger.info(f"Elapsed time: {elapsed_time} sec ({sec2minutes(elapsed_time)})")
