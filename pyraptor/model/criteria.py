@@ -201,34 +201,40 @@ class MultiCriteriaLabel(BaseLabel):
         return self.total_cost <= other.total_cost
 
 
-@dataclass(frozen=True)
 class Criterion(ABC):
     """
     Base class for a RAPTOR label criterion
     """
 
-    name: str = field(default="")
-    """Name of the criterion"""
+    def __init__(
+            self, 
+            name: str = "", 
+            weight: float = 1.0, 
+            raw_value: float = 0.0, 
+            upper_bound: float = LARGE_NUMBER
+    ):
+        self.name: str = name
+        """Name of the criterion"""
 
-    weight: float = field(default=1.0)
-    """Weight used to determine the cost of this criterion"""
+        self.weight: float = weight
+        """Weight used to determine the cost of this criterion"""
 
-    raw_value: float = field(default=0.0)
-    """
-    Raw value of the criterion, that is before any weight is applied.
-    This value maintains is expressed in the original unit of measurement.
-    """
+        self.raw_value: float = raw_value
+        """
+        Raw value of the criterion, that is before any weight is applied.
+        This value maintains is expressed in the original unit of measurement.
+        """
 
-    upper_bound: float = field(default=LARGE_NUMBER)
-    """
-    Maximum value allowed for this criterion.
-    Such threshold has two main purposes:
-    
-    - to scale the raw value into the [0,1] range;
-    - to represent the maximum accepted raw value for the criteria, over which
-        the label is considered very unfavorable (the cost becomes artificially very large)
-        or discarded completely.
-    """
+        self.upper_bound: float = upper_bound
+        """
+        Maximum value allowed for this criterion.
+        Such threshold has two main purposes:
+
+        - to scale the raw value into the [0,1] range;
+        - to represent the maximum accepted raw value for the criteria, over which
+            the label is considered very unfavorable (the cost becomes artificially very large)
+            or discarded completely.
+        """
 
     @property
     def cost(self) -> float:
@@ -368,6 +374,14 @@ class DistanceCriterion(Criterion):
     Class that represents and handles calculations for the distance criterion.
     The value represents the total number of km travelled.
     """
+    
+    def __init__(self, weight: float = 1.0, raw_value: float = 0.0, upper_bound: float = LARGE_NUMBER):
+        super(DistanceCriterion, self).__init__(
+            name="Total Distance",
+            weight=weight,
+            raw_value=raw_value,
+            upper_bound=upper_bound
+        )
 
     def __str__(self):
         return f"Travelled Distance: {self.raw_value} [Km]"
@@ -376,7 +390,6 @@ class DistanceCriterion(Criterion):
         arrival_distance = self._get_total_arrival_distance(data=data)
 
         return DistanceCriterion(
-            name=self.name,
             weight=self.weight,
             raw_value=arrival_distance,
             upper_bound=self.upper_bound
@@ -434,6 +447,14 @@ class EmissionsCriterion(Criterion):
     """
     Class that represents and handles calculations for the co2 emissions criterion
     """
+    
+    def __init__(self, weight: float = 1.0, raw_value: float = 0.0, upper_bound: float = LARGE_NUMBER):
+        super(EmissionsCriterion, self).__init__(
+            name="Total Emissions",
+            weight=weight,
+            raw_value=raw_value,
+            upper_bound=upper_bound
+        )
 
     def __str__(self):
         return f"Total Emissions: {self.raw_value} [CO2 grams / passenger Km]"
@@ -442,7 +463,6 @@ class EmissionsCriterion(Criterion):
         arrival_emissions = self._get_total_arrival_emissions(data=data)
 
         return EmissionsCriterion(
-            name=self.name,
             weight=self.weight,
             raw_value=arrival_emissions,
             upper_bound=self.upper_bound
@@ -528,6 +548,14 @@ class ArrivalTimeCriterion(Criterion):
     Class that represents and handles calculations for the arrival time criterion
     """
 
+    def __init__(self, weight: float = 1.0, raw_value: float = 0.0, upper_bound: float = LARGE_NUMBER):
+        super(ArrivalTimeCriterion, self).__init__(
+            name="Arrival Time",
+            weight=weight,
+            raw_value=raw_value,
+            upper_bound=upper_bound
+        )
+
     def __str__(self):
         return f"Arrival Time: {sec2str(seconds=int(self.raw_value))}"
 
@@ -541,7 +569,6 @@ class ArrivalTimeCriterion(Criterion):
             raise ValueError(f"Arrival time not found for stop {data.arrival_stop}")
 
         return ArrivalTimeCriterion(
-            name=self.name,
             weight=self.weight,
             raw_value=new_arrival_time,
             upper_bound=self.upper_bound
@@ -558,6 +585,14 @@ class TransfersCriterion(Criterion):
     A transfer is defined as a change of trip, excluding the initial change that happens
     at the origin stops to board the first trip.
     """
+    
+    def __init__(self, weight: float = 1.0, raw_value: float = 0.0, upper_bound: float = LARGE_NUMBER):
+        super(TransfersCriterion, self).__init__(
+            name="Transfers Number",
+            weight=weight,
+            raw_value=raw_value,
+            upper_bound=upper_bound
+        )
 
     def __str__(self):
         return f"Total Transfers: {self.raw_value}"
@@ -576,19 +611,85 @@ class TransfersCriterion(Criterion):
         )
 
         return TransfersCriterion(
-            name=self.name,
             weight=self.weight,
             raw_value=transfers_at_boarding.raw_value if not add_new_transfer else transfers_at_boarding.raw_value + 1,
             upper_bound=self.upper_bound
         )
 
 
+@dataclass
+class CriterionConfiguration:
+    """
+    Class that represents the configuration for some criterion.
+    It defines weight and upper_bound parameters
+    """
+
+    weight: float
+    upper_bound: float
+
+
 class CriteriaProvider:
     """
-    Class that provides parsing functionality for the criteria configuration file.
+    Class that represents a criteria factory whose goal is to create properly
+    parameterized criterion instances based on some specified configuration
+    """
 
-    Such file is a JSON format where keys represent criteria names and
-    values represent criteria weights.
+    _criteria_config: Dict[Type[Criterion], CriterionConfiguration]
+
+    def __init__(self, criteria_config: Dict[Type[Criterion], CriterionConfiguration]):
+        self._criteria_config = criteria_config
+
+    @property
+    def criteria_config(self) -> Dict[Type[Criterion], CriterionConfiguration]:
+        """
+        Returns the currently loaded criteria configuration
+        :return:
+        """
+
+        return self._criteria_config
+
+    def get_criteria(self, defaults: Dict[Type[Criterion], float] = None) -> Sequence[Criterion]:
+        """
+        Returns a collection of criteria objects that are based the configuration provided
+        to this instance
+
+        :param: dictionary containing the default values for each criterion type.
+            The default value for an unspecified criterion is `0`.
+        :return: criteria objects
+        """
+
+        if defaults is None:
+            defaults = {}
+
+        criteria = []
+        for criterion_class, criterion_cfg in self._criteria_config.items():
+            c = criterion_class(
+                weight=criterion_cfg.weight,
+                raw_value=defaults.get(criterion_class, 0.0),
+                upper_bound=criterion_cfg.upper_bound
+            )
+            criteria.append(c)
+
+        return criteria
+
+
+class FileCriteriaProvider(CriteriaProvider):
+    """
+    Class that provides parameterized criteria instances based on a .json configuration file.
+
+    Such file has the following format::
+
+        {
+            "criterion_name1": {
+                "weight": float
+                "upper_bound": float
+            },
+            "criterion_name2": {
+                "weight": float
+                "upper_bound": float
+            },
+            ...
+        }
     """
 
     def __init__(self, criteria_config_path: str | bytes | os.PathLike):
@@ -601,55 +702,33 @@ class CriteriaProvider:
             raise FileNotFoundError(f"'{criteria_config_path}' is not a valid path to a criteria configuration file.")
 
         self._criteria_config_path: str | bytes | os.PathLike = criteria_config_path
-        self._criteria_config: Dict[str, Dict[str, float]] = {}
+        cfg = self._read_config_from_file()
 
-    def get_criteria(self, defaults: Dict[Type[Criterion], float] = None) -> Sequence[Criterion]:
-        """
-        Returns a collection of criteria objects that are based on the name and weights provided
-        in the configuration file.
-
-        :param: dictionary containing the default values for each criterion type.
-            The default value for an unspecified criterion is `0`.
-        :return: criteria objects
-        """
-
-        # Load criteria only if necessary
-        if len(self._criteria_config) == 0:
-            self._load_config()
-
-        if defaults is None:
-            defaults = {}
-
-        # Pair criteria names with their class (and constructor)
-        criterion_classes = {
-            "distance": DistanceCriterion,
-            "arrival_time": ArrivalTimeCriterion,
-            "co2": EmissionsCriterion,
-            "transfers": TransfersCriterion,
-        }
-
-        criteria = []
-        for name, criteria_info in self._criteria_config.items():
-            weight = criteria_info["weight"]
-            upper_bound = criteria_info["max"]
-
-            c_class = criterion_classes[name]
-            default_val = defaults.get(c_class, 0)
-
-            c = c_class(
-                name=name,
-                weight=weight,
-                raw_value=default_val,
-                upper_bound=upper_bound
-            )
-
-            criteria.append(c)
-
-        return criteria
-
-    def _load_config(self):
+        super(FileCriteriaProvider, self).__init__(criteria_config=cfg)
+        
+    def _read_config_from_file(self) -> Dict[Type[Criterion], CriterionConfiguration]:
         with open(self._criteria_config_path) as f:
-            self._criteria_config = json.load(f)
+            cfg_json = json.load(f)
+
+            # Pair criteria names with their class (and constructor)
+            criterion_classes = {
+                "distance": DistanceCriterion,
+                "arrival_time": ArrivalTimeCriterion,
+                "co2": EmissionsCriterion,
+                "transfers": TransfersCriterion,
+            }
+
+            criteria_cfg: Dict[Type[Criterion], CriterionConfiguration] = {}
+            for name, criteria_info in cfg_json.items():
+                weight = criteria_info["weight"]
+                upper_bound = criteria_info["max"]
+                
+                criteria_cfg[criterion_classes[name]] = CriterionConfiguration(
+                    weight=weight,
+                    upper_bound=upper_bound
+                )
+                
+            return criteria_cfg
 
 
 @dataclass(frozen=True)

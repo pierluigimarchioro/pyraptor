@@ -96,10 +96,6 @@ class WeightedMcRaptorAlgorithm(BaseSharedMobRaptor[Bag, MultiCriteriaLabel]):
 
         logger.debug(f"Starting from Stop IDs: {str(from_stops)}")
 
-        logger.debug("Criteria Configuration:")
-        for c in self.criteria_provider.get_criteria():
-            logger.debug(repr(c))
-
         # Initialize origin stops labels, bags and dependencies
         for from_stop in from_stops:
             with_departure_time = self.criteria_provider.get_criteria(

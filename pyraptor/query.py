@@ -15,7 +15,7 @@ from loguru import logger
 from pyraptor.model.algos.base import SharedMobilityConfig
 from pyraptor.model.algos.raptor import RaptorAlgorithm
 from pyraptor.model.algos.weighted_mcraptor import WeightedMcRaptorAlgorithm
-from pyraptor.model.criteria import Bag, MultiCriteriaLabel, CriteriaProvider
+from pyraptor.model.criteria import Bag, MultiCriteriaLabel, FileCriteriaProvider, CriteriaProvider
 from pyraptor.model.output import AlgorithmOutput, get_journeys_to_destinations
 from pyraptor.model.shared_mobility import RaptorTimetableSM
 from pyraptor.model.timetable import RaptorTimetable, Stop, TransportType
@@ -137,7 +137,7 @@ def query_raptor(
         departure_time: str,
         rounds: int,
         variant: str,
-        criteria_config: str | bytes | os.PathLike = None,
+        criteria_provider: CriteriaProvider = None,
         enable_sm: bool = False,
         preferred_vehicle: str = None,
         enable_car: bool = None
@@ -153,8 +153,7 @@ def query_raptor(
     :param destination_station: name of the station to arrive at
     :param departure_time: departure time in the format %H:%M:%S
     :param rounds: number of iterations to perform
-    :param criteria_config: path to the criteria configuration file.
-        Ignored if variant is not multi-criteria.
+    :param criteria_provider: provider of parameterized criteria for multi-criteria variants
     :param enable_sm: if True, shared mobility data is included in the itinerary computation.
         If False, provided shared mob data is ignored
     :param preferred_vehicle: type of preferred vehicle
@@ -169,10 +168,14 @@ def query_raptor(
     logger.debug("Departure time           : {}", departure_time)
     logger.debug("Rounds                   : {}", str(rounds))
     logger.debug("Algorithm Variant        : {}", variant)
-    logger.debug("Criteria Config          : {}", criteria_config)
+    logger.debug("Criteria Provider        : {}", criteria_provider)
     logger.debug("Enable use of shared-mob : {}", enable_sm)
     logger.debug("Preferred vehicle        : {}", preferred_vehicle)
     logger.debug("Enable car               : {}", enable_car)
+
+    logger.debug("Criteria Configuration:")
+    for c in criteria_provider.get_criteria():
+        logger.debug(repr(c))
 
     start_time = timer()
 
@@ -204,7 +207,7 @@ def query_raptor(
         timetable=timetable,
         origin_stops=origin_stops,
         dep_secs=dep_secs,
-        criteria_file_path=criteria_config,
+        criteria_provider=criteria_provider,
         enable_sm=enable_sm,
         preferred_vehicle=preferred_transport_type,
         enable_car=enable_car,
@@ -280,7 +283,7 @@ def _execute_raptor_variant(
         origin_stops: Iterable[Stop],
         dep_secs: int,
         rounds: int,
-        criteria_file_path: str,
+        criteria_provider: CriteriaProvider,
         enable_sm: bool,
         preferred_vehicle: TransportType,
         enable_car: bool
@@ -288,19 +291,6 @@ def _execute_raptor_variant(
     """
     Executes the specified variant of the Raptor algorithm and returns a
     mapping that pairs each stop with its bag of best labels.
-
-    :param variant: variant of the algorithm to run
-    :param timetable: timetable
-    :param origin_stops: collection of stops to depart from
-    :param dep_secs: time of departure in seconds
-    :param rounds: number of iterations to perform
-    :param criteria_file_path: path to the criteria configuration file.
-        Ignored if variant is not multi-criteria
-    :param enable_sm: if True, shared mobility data is included in the itinerary computation.
-        If False, provided shared mob data is ignored
-    :param preferred_vehicle: type of preferred vehicle
-    :param enable_car: car-sharing transfer enabled
-    :return: mapping that pairs each stop with its bag of best labels
     """
 
     sm_config = SharedMobilityConfig(
@@ -309,8 +299,6 @@ def _execute_raptor_variant(
     )
 
     def run_weighted_mc_raptor() -> Mapping[Stop, Bag]:
-        criteria_provider = CriteriaProvider(criteria_file_path)
-
         raptor = WeightedMcRaptorAlgorithm(
             timetable=timetable,
             enable_sm=enable_sm,
@@ -362,10 +350,10 @@ if __name__ == "__main__":
 
     args = _parse_arguments()
 
-    cached_timetable = _load_timetable(args.input, args.enable_sm)
+    cached_timetable = _load_timetable(input_folder=args.input, enable_sm=args.enable_sm)
+    file_criteria_provider = FileCriteriaProvider(criteria_config_path=args.mc_config)
 
     # TODO refactor to delegate stuff like reading files to the outside, i.e.
-    #   - pass criteria provider instead of config file path
     #   - do not pass output_folder and instead return AlgorithmOutput
     elapsed_time = query_raptor(
         variant=args.variant,
@@ -375,7 +363,7 @@ if __name__ == "__main__":
         destination_station=args.destination,
         departure_time=args.time,
         rounds=args.rounds,
-        criteria_config=args.mc_config,
+        criteria_provider=file_criteria_provider,
         enable_sm=args.enable_sm,
         preferred_vehicle=args.preferred,
         enable_car=args.car
