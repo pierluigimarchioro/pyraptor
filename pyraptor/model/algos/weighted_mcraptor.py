@@ -12,7 +12,6 @@ than L2 in any criterion.
 
 from __future__ import annotations
 
-import os.path
 from collections import ChainMap
 from collections.abc import Iterable, MutableMapping
 from copy import copy
@@ -50,19 +49,17 @@ class WeightedMcRaptorAlgorithm(BaseSharedMobRaptor[Bag, MultiCriteriaLabel]):
         - it is possible to use shared mobility, real-time data
     """
 
-    criteria_file_path: str | bytes | os.PathLike
-    """Path to the criteria configuration file"""
-
     def __init__(
             self,
             timetable: RaptorTimetable | RaptorTimetableSM,
             enable_sm: bool,
             sm_config: SharedMobilityConfig,
-            criteria_file_path: str | bytes | os.PathLike
+            criteria_provider: CriteriaProvider
     ):
         """
         :param timetable: object containing the data that will be used by the algorithm
-        :param criteria_file_path: path to the criteria configuration file
+        :param criteria_provider: object that provides properly parameterized criteria for
+            the algorithm to use
         """
 
         super(WeightedMcRaptorAlgorithm, self).__init__(
@@ -71,11 +68,9 @@ class WeightedMcRaptorAlgorithm(BaseSharedMobRaptor[Bag, MultiCriteriaLabel]):
             sm_config=sm_config
         )
 
-        if not os.path.exists(criteria_file_path):
-            raise FileNotFoundError(f"'{criteria_file_path}' is not a valid path to a criteria configuration file.")
-
-        self.criteria_file_path: str | bytes | os.PathLike = criteria_file_path
-        """Path to the criteria configuration file"""
+        self.criteria_provider: CriteriaProvider = criteria_provider
+        """Object that provides properly parameterized criteria for
+            the algorithm to use"""
 
         self.stop_forward_dependencies: Dict[Stop, List[Stop]] = {}
         """Dictionary that pairs each stop with the list of stops that depend on it. 
@@ -102,13 +97,12 @@ class WeightedMcRaptorAlgorithm(BaseSharedMobRaptor[Bag, MultiCriteriaLabel]):
         logger.debug(f"Starting from Stop IDs: {str(from_stops)}")
 
         logger.debug("Criteria Configuration:")
-        criteria_provider = CriteriaProvider(criteria_config_path=self.criteria_file_path)
-        for c in criteria_provider.get_criteria():
+        for c in self.criteria_provider.get_criteria():
             logger.debug(repr(c))
 
         # Initialize origin stops labels, bags and dependencies
         for from_stop in from_stops:
-            with_departure_time = criteria_provider.get_criteria(
+            with_departure_time = self.criteria_provider.get_criteria(
                 defaults={
                     # Default arrival time for origin stops is the departure time
                     ArrivalTimeCriterion: dep_secs

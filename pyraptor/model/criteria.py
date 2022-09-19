@@ -597,6 +597,9 @@ class CriteriaProvider:
             containing the weights of each supported criteria
         """
 
+        if not os.path.exists(criteria_config_path):
+            raise FileNotFoundError(f"'{criteria_config_path}' is not a valid path to a criteria configuration file.")
+
         self._criteria_config_path: str | bytes | os.PathLike = criteria_config_path
         self._criteria_config: Dict[str, Dict[str, float]] = {}
 

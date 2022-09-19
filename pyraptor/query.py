@@ -15,7 +15,7 @@ from loguru import logger
 from pyraptor.model.algos.base import SharedMobilityConfig
 from pyraptor.model.algos.raptor import RaptorAlgorithm
 from pyraptor.model.algos.weighted_mcraptor import WeightedMcRaptorAlgorithm
-from pyraptor.model.criteria import Bag, MultiCriteriaLabel
+from pyraptor.model.criteria import Bag, MultiCriteriaLabel, CriteriaProvider
 from pyraptor.model.output import AlgorithmOutput, get_journeys_to_destinations
 from pyraptor.model.shared_mobility import RaptorTimetableSM
 from pyraptor.model.timetable import RaptorTimetable, Stop, TransportType
@@ -307,11 +307,13 @@ def _handle_raptor_variant(
     )
 
     def run_weighted_mc_raptor() -> Mapping[Stop, Bag]:
+        criteria_provider = CriteriaProvider(criteria_file_path)
+
         raptor = WeightedMcRaptorAlgorithm(
             timetable=timetable,
             enable_sm=enable_sm,
             sm_config=sm_config,
-            criteria_file_path=criteria_file_path
+            criteria_provider=criteria_provider
         )
         best_labels = raptor.run(origin_stops, dep_secs, rounds)
 
