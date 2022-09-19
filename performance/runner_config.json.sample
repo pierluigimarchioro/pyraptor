@@ -1,0 +1,77 @@
+{
+    // Number from 0 to +infinity, or -1 if the algorithm must always run until convergence
+    "max_rounds": -1,
+
+    // Settings of the query to execute
+    // if random == true, random queries are generated with the given params
+    // if random == false, the provided queries are executed
+    "queries_settings": {
+        "random": true,
+
+        // If random == false, the below random configuration fields are ignored
+        "min_distance": 10, // Min distance [Km] between origin and destination
+        "max_distance": 50, // Max distance [Km] between origin and destination
+        "min_hour": 6, // Minimum hour of the day for which query are executed
+        "max_hour": 19, // Maximum hour of the day for which query are executed
+        "number": 100, // Number of queries to generate
+
+        // If random == true, this field is ignored
+        "queries": [
+            {
+                "from": "BISCEGLIE",
+                "to": "QT8",
+                "at": "12:00:00"
+            },
+            {
+                "from": "SAN SIRO STADIO",
+                "to": "MANTOVA",
+                "at": "08:00:00"
+            }
+        ]
+    },
+
+    // RAPTOR configurations to run the queries against
+    // Each query will be executed one time for each provided configuration
+    "raptor_configs": [
+        {
+            // An identifier to give to this configuration
+            "configuration_id": "arbitrary",
+
+            // Can be either "basic" or "gc" (Earliest Arrival Time RAPTOR or Generalized Cost RAPTOR)
+            "variant": "gc",
+
+            // true or false. If false, "sm" field is ignored
+            "enable_sm": true,
+            "sm": {
+                "preferred_vehicle": "regular",
+                "enable_car": false
+            },
+
+            // true or false to enable/disable the use of the heuristic
+            "fwd_deps_heuristic": true,
+
+            // Used only if variant == "gc", ignored otherwise
+            "criteria_config": {
+                "arrival_time": {
+                    "weight": 1,
+                    "max": 200
+                },
+                "distance": {
+                    "weight": 1,
+                    "max": 86400
+                },
+                "transfers": {
+                    "weight": 1,
+                    "max": 50
+                },
+                "co2": {
+                    "weight": 1,
+                    "max": 10000
+                }
+            }
+        },
+
+        // There can be any number of configuration objects like the one above
+        ...
+    ]
+}

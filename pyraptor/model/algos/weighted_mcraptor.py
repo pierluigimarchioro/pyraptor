@@ -37,7 +37,10 @@ from pyraptor.model.criteria import (
     DEFAULT_ORIGIN_TRIP
 )
 
-
+# TODO Future refactoring:
+#   - rename to GeneralizedCostRaptor (rename all the routes in demo.py too)
+#   - make use only of single MultiCriteriaLabel, no bags
+#   - enable_fwd_deps parameter in run method -> add fwd deps heuristic in base.py
 class WeightedMcRaptorAlgorithm(BaseSharedMobRaptor[Bag, MultiCriteriaLabel]):
     """
     Implementation of the More Criteria RAPTOR Algorithm discussed in the original RAPTOR paper,

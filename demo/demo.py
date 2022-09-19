@@ -142,7 +142,7 @@ TIMETABLE: RaptorTimetable | None = None
 TIMETABLE_SM: RaptorTimetableSM | None = None
 DEBUG: bool = True
 ENABLE_SM: bool = True
-RAPTOR_ROUNDS = 10
+RAPTOR_ROUNDS = 10  # TODO change to max rounds
 
 VEHICLES = [Option(id_=id_, name=name) for id_, name in [
     ('regular', 'Regular bike'), ('electric', 'Electric bike'), ('car', 'Car')
@@ -274,7 +274,7 @@ def wmc_raptor_run():
             destination_station=destination,
             departure_time=departure_time,
             rounds=RAPTOR_ROUNDS,
-            variant=RaptorVariants.WeightedMc.value,
+            variant=RaptorVariants.GeneralizedCost.value,
             criteria_provider=CRITERIA_PROVIDER,
             enable_sm=ENABLE_SM,
             preferred_vehicle=preferred_vehicle,

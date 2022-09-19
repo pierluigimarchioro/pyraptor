@@ -30,7 +30,7 @@ class RaptorVariants(Enum):
     """
 
     Basic = "basic"
-    WeightedMc = "wmc"
+    GeneralizedCost = "gc"
 
 
 def query_raptor(
@@ -224,7 +224,7 @@ def _execute_raptor_variant(
 
     variant_switch: Dict[RaptorVariants, Callable[[], Mapping[Stop, Bag]]] = {
         RaptorVariants.Basic: run_base_raptor,
-        RaptorVariants.WeightedMc: run_weighted_mc_raptor
+        RaptorVariants.GeneralizedCost: run_weighted_mc_raptor
     }
 
     return variant_switch[variant]()

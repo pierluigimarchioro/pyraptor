@@ -470,8 +470,8 @@ class AlgorithmOutput(TimetableInfo):
 
     _DEFAULT_FILENAME = "algo-output"
 
-    journeys: Iterable[Journey] = None
-    """Best journey found by the algorithm"""
+    journeys: Sequence[Journey] = None
+    """Best journeys found by the algorithm"""
 
     departure_time: str = None
     """string in the format %H:%M:%S"""
