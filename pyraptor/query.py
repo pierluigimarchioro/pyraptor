@@ -199,7 +199,7 @@ def query_raptor(
         enable_car=enable_car
     )
 
-    best_labels = _handle_raptor_variant(
+    best_labels = _execute_raptor_variant(
         variant=RaptorVariants(variant),
         timetable=timetable,
         origin_stops=origin_stops,
@@ -210,6 +210,9 @@ def query_raptor(
         enable_car=enable_car,
         rounds=rounds
     )
+
+    end_time = timer()
+    query_time = end_time - start_time
 
     journeys_to_all_destinations = get_journeys_to_destinations(
         origin_stops=origin_stops,
@@ -242,8 +245,7 @@ def query_raptor(
         algo_output=algo_output
     )
 
-    end_time = timer()
-    return end_time - start_time
+    return query_time
 
 
 def _process_shared_mob_args(
@@ -272,7 +274,7 @@ def _process_shared_mob_args(
         return None
 
 
-def _handle_raptor_variant(
+def _execute_raptor_variant(
         variant: RaptorVariants,
         timetable: RaptorTimetable | RaptorTimetableSM,
         origin_stops: Iterable[Stop],
@@ -362,6 +364,9 @@ if __name__ == "__main__":
 
     cached_timetable = _load_timetable(args.input, args.enable_sm)
 
+    # TODO refactor to delegate stuff like reading files to the outside, i.e.
+    #   - pass criteria provider instead of config file path
+    #   - do not pass output_folder and instead return AlgorithmOutput
     elapsed_time = query_raptor(
         variant=args.variant,
         timetable=cached_timetable,
