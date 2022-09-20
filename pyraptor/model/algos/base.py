@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-import itertools
-import math
 import uuid
 from abc import ABC, abstractmethod
 from collections.abc import Iterable, Mapping, Sequence
@@ -10,7 +8,6 @@ from dataclasses import dataclass
 from typing import List, Tuple, TypeVar, Generic, Dict, Callable
 
 import numpy as np
-from joblib import Parallel, delayed
 from loguru import logger
 
 from pyraptor.model.criteria import BaseLabel
@@ -21,9 +18,6 @@ from pyraptor.model.shared_mobility import (
     VehicleTransfer,
     TRANSPORT_TYPE_SPEEDS, RaptorTimetableSM)
 from pyraptor.model.timetable import RaptorTimetable, Route, Stop, TransportType, Transfer
-from pathos.helpers import cpu_count
-
-from pyraptor.timetable.timetable import execute_jobs
 
 _BagType = TypeVar("_BagType")
 """Type of the bag of labels assigned to each stop by the RAPTOR algorithm"""
@@ -63,21 +57,22 @@ class BaseRaptorAlgorithm(ABC, Generic[_BagType, _LabelType]):
             self,
             from_stops: Iterable[Stop],
             dep_secs: int,
-            rounds: int
+            max_rounds: int = -1
     ) -> Mapping[Stop, _BagType]:
         """
         Executes the round-based algorithm and returns the stop-label mappings, keyed by round.
 
         :param from_stops: collection of stops to depart from
         :param dep_secs: departure time in seconds from midnight
-        :param rounds: total number of rounds to execute
+        :param max_rounds: maximum number of rounds to execute.
+            The algorithm may stop before if convergence is reached.
+            If -1, the algorithm always runs until it converges.
         :return: mapping of the best labels for each stop
         """
         # Initialize data structures and origin stops
         initial_marked_stops = self._initialization(
             from_stops=from_stops,
-            dep_secs=dep_secs,
-            rounds=rounds
+            dep_secs=dep_secs
         )
 
         # Get stops immediately reachable with a transfer
@@ -97,8 +92,10 @@ class BaseRaptorAlgorithm(ABC, Generic[_BagType, _LabelType]):
         logger.debug(f"Added {n_stops_2 - n_stops_1} stops immediately reachable on foot:\n"
                      f"{list(set(immediately_reachable_stops))}")
 
-        # Run rounds
-        for k in range(1, rounds + 1):
+        # Only cap rounds if max_rounds != -1
+        k = 1
+        while(len(marked_stops) > 0
+              or (k <= max_rounds and max_rounds != -1)):
             logger.info(f"Analyzing possibilities at round {k}")
             logger.debug(f"Marked stops to evaluate: {len(marked_stops)}")
 
@@ -137,10 +134,12 @@ class BaseRaptorAlgorithm(ABC, Generic[_BagType, _LabelType]):
             else:
                 logger.debug(f"{len(marked_stops)} stops to evaluate in the next round")
 
-        return self.bag_round_stop[rounds]
+            k += 1
+
+        return self.bag_round_stop[max_rounds]
 
     @abstractmethod
-    def _initialization(self, from_stops: Iterable[Stop], dep_secs: int, rounds: int) -> List[Stop]:
+    def _initialization(self, from_stops: Iterable[Stop], dep_secs: int) -> List[Stop]:
         """
         Initialization phase of the algorithm.
 
@@ -149,7 +148,6 @@ class BaseRaptorAlgorithm(ABC, Generic[_BagType, _LabelType]):
 
         :param from_stops: departure stops
         :param dep_secs: departure time in seconds from midnight
-        :param rounds: number of rounds to execute
         :return: list of marked stops, which should contain the departure stops
         """
         pass
@@ -302,13 +300,12 @@ class BaseSharedMobRaptor(BaseRaptorAlgorithm[_BagType, _LabelType], ABC):
             self,
             from_stops: Iterable[Stop],
             dep_secs: int,
-            rounds: int
+            max_rounds: int = -1
     ) -> Mapping[Stop, _BagType]:
         # Initialize data structures and origin stops
         initial_marked_stops = self._initialization(
             from_stops=from_stops,
-            dep_secs=dep_secs,
-            rounds=rounds
+            dep_secs=dep_secs
         )
 
         # Setup shared mob data only if enabled
@@ -338,8 +335,10 @@ class BaseSharedMobRaptor(BaseRaptorAlgorithm[_BagType, _LabelType], ABC):
         logger.debug(f"Added {n_stops_2 - n_stops_1} stops immediately reachable on foot:\n"
                      f"{list(set(immediately_reachable_stops))}")
 
-        # Run rounds
-        for k in range(1, rounds + 1):
+        # Only cap rounds if max_rounds != -1
+        k = 1
+        while(len(marked_stops) > 0
+              or (k <= max_rounds and max_rounds != -1)):
             logger.info(f"Analyzing possibilities at round {k}")
             logger.debug(f"Marked stops to evaluate: {len(marked_stops)}")
 
@@ -392,7 +391,9 @@ class BaseSharedMobRaptor(BaseRaptorAlgorithm[_BagType, _LabelType], ABC):
             else:
                 logger.debug(f"{len(marked_stops)} stops to evaluate in the next round")
 
-        return self.bag_round_stop[rounds]
+            k += 1
+
+        return self.bag_round_stop[max_rounds]
 
     def _initialize_shared_mob(self, origin_stops: Sequence[Stop]):
         """

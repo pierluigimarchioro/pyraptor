@@ -77,8 +77,8 @@ def _parse_arguments():
         "-r",
         "--rounds",
         type=int,
-        default=5,
-        help="Number of rounds to execute the RAPTOR algorithm",
+        default=-1,
+        help="Number of rounds to execute the RAPTOR algorithm (Default: runs until convergence)",
     )
     parser.add_argument(
         "-var",
