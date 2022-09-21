@@ -93,8 +93,8 @@ def main(
     logger.debug("Departure time (s.)  : " + str(dep_secs))
 
     # Find route between two stations + Print journey to destination
-    path_start_time = timer()
     heuristic = get_heuristic(destination_station, timetable)
+    path_start_time = timer()
     graph = a_star.Graph(adjacency_list, heuristic, timetable, str2sec(departure_time))
     destination_journeys = graph.a_star_algorithm(origin_station, destination_station)
     path_end_time = timer()

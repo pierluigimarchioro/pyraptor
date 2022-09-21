@@ -11,6 +11,7 @@ from os import path
 from typing import Dict, List, Mapping
 from timeit import default_timer as timer
 
+from geopy.distance import geodesic
 from loguru import logger
 
 import a_star
@@ -80,12 +81,21 @@ def main(input_: str, adjacent: str, output: str, config: str):
     k = "Adjacency list time: {}".format(adjlst_end_time-adjlst_start_time)
     out_dict: Dict[str, Dict[str, List[float]]] = {k: {str(j): [] for j in journeys}}
 
+    distances = []
+
     for journey in journeys:
         # find paths
         path_start_time = timer()
         heuristic = get_heuristic(journey.destination, timetable)
         graph = a_star.Graph(adjacency_list, heuristic, timetable, str2sec(journey.departure_time))
         destination_journeys = graph.a_star_algorithm(journey.origin, journey.destination)
+
+        a = timetable.stops.get_stop(journey.origin)
+        b = timetable.stops.get_stop(journey.destination)
+        dist = geodesic((a.geo.lat, a.geo.lon), (b.geo.lat, b.geo.lon)).km
+        print("DISTANZA: {} ".format(dist))
+        distances.append(dist)
+
         path_end_time = timer()
         time = path_end_time - path_start_time
 
@@ -94,6 +104,7 @@ def main(input_: str, adjacent: str, output: str, config: str):
     _dict_to_json(out_dict, path.join(output, OUT_FILE))
 
     os.rmdir(tmp_dir)
+    print(distances)
 
 
 def _json_to_dict(file: str) -> Dict:

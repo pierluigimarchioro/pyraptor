@@ -95,7 +95,7 @@ class Graph:
 
             # for all the neighbors of the current node do
             for step in self.get_neighbors(n):
-                # if n == "QT8" and step.stop_to.name == "qt8 m1" and step.departure_time == 44155:
+                # if n == "A_11018" and step.stop_to.name == "MILANO BOVISA FNM":
                 #     print("time found")
 
                 if not self.is_int(step.departure_time) or curr_time[n] <= step.departure_time:
