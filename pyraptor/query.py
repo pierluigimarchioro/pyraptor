@@ -244,6 +244,16 @@ def query_raptor(
         algo_output=algo_output
     )
 
+    # Removing http time if shared-mobility is enabled
+    if enable_sm:
+        start_sm = timer()
+        for feed in timetable.shared_mobility_feeds:
+            feed.renting_stations.update()
+        end_sm = timer()
+        sm_time = end_sm - start_sm
+        logger.debug(f"Removing HTML request time: {sm_time}")
+        end_time -= sm_time
+
     return end_time - start_time
 
 
