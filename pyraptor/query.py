@@ -231,6 +231,8 @@ def query_raptor(
         for j in destination_journeys:
             j.print()
 
+    end_time = timer()
+
     algo_output = AlgorithmOutput(
         journeys=destination_journeys,
         date=timetable.date,
@@ -242,7 +244,6 @@ def query_raptor(
         algo_output=algo_output
     )
 
-    end_time = timer()
     return end_time - start_time
 
 
