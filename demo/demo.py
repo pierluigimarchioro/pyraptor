@@ -196,7 +196,7 @@ def basic_raptor_run():
             destination_station=destination,
             departure_time=departure_time,
             rounds=RAPTOR_ROUNDS,
-            variant=RaptorVariants.Basic.value,
+            variant=RaptorVariants.EarliestArrivalTime.value,
             enable_sm=ENABLE_SM,
             preferred_vehicle=preferred_vehicle,
             enable_car=enable_car

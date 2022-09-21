@@ -1,17 +1,18 @@
 from __future__ import annotations
 
 from collections.abc import Iterable
-from typing import List, Tuple
+from typing import List, Tuple, Set, Dict
 
 from loguru import logger
 
 from pyraptor.model.algos.base import BaseSharedMobRaptor
 from pyraptor.model.timetable import Transfers
 from pyraptor.model.timetable import Stop, Route, TransferTrip
-from pyraptor.model.criteria import BasicRaptorLabel, LabelUpdate
+from pyraptor.model.criteria import EarliestArrivalTimeLabel, EarliestArrivalTimeBag, LabelUpdate
+from pyraptor.util import LARGE_NUMBER
 
 
-class RaptorAlgorithm(BaseSharedMobRaptor[BasicRaptorLabel, BasicRaptorLabel]):
+class RaptorAlgorithm(BaseSharedMobRaptor[EarliestArrivalTimeLabel, EarliestArrivalTimeBag]):
     """
     Implementation of the basic RAPTOR algorithm, with some improvements:
         - transfers from the origin stops are evaluated immediately to widen
@@ -19,32 +20,28 @@ class RaptorAlgorithm(BaseSharedMobRaptor[BasicRaptorLabel, BasicRaptorLabel]):
         - it is possible to include shared mobility, real-time data in the computation
     """
 
-    def _initialization(self, from_stops: Iterable[Stop], dep_secs: int, rounds: int) -> List[Stop]:
-        # Initialize empty bag of labels for each stop
-        for k in range(0, rounds + 1):
-            self.bag_round_stop[k] = {}
-            for s in self.timetable.stops:
-                self.bag_round_stop[k][s] = BasicRaptorLabel()
-
-        # Initialize bag with the earliest arrival times
-        # This bag is used as a side-collection to efficiently retrieve
-        # the earliest arrival time for each reachable stop at round k.
-        # Look for "local pruning" in the Microsoft paper for a better description.
-        self.best_bag = {}
-        for s in self.timetable.stops:
-            self.best_bag[s] = BasicRaptorLabel()
+    def _initialization(self, from_stops: Iterable[Stop], dep_secs: int) -> List[Stop]:
+        # Initialize Round 0 with default labels.
+        # Following rounds are initialized by copying the previous one
+        self.round_stop_bags[0] = {}
+        for p in self.timetable.stops:
+            self.round_stop_bags[0][p] = EarliestArrivalTimeBag(
+                labels=[EarliestArrivalTimeLabel(arrival_time=LARGE_NUMBER)]
+            )
 
         # Initialize bags with starting stops taking dep_secs to reach
         # Remember that dep_secs is the departure_time expressed in seconds
         logger.debug(f"Starting from Stop IDs: {str(from_stops)}")
         marked_stops = []
         for s in from_stops:
-            departure_label = BasicRaptorLabel(earliest_arrival_time=dep_secs)
-
-            self.bag_round_stop[0][s] = departure_label
-            self.best_bag[s] = departure_label
+            departure_label = EarliestArrivalTimeLabel(arrival_time=dep_secs)
+            self.round_stop_bags[0][s] = EarliestArrivalTimeBag(labels=[departure_label])
 
             marked_stops.append(s)
+
+        self.stop_forward_dependencies: Dict[Stop, List[Stop]] = {}
+        for s in self.timetable.stops:
+            self.stop_forward_dependencies[s] = []
 
         return marked_stops
 
@@ -55,7 +52,7 @@ class RaptorAlgorithm(BaseSharedMobRaptor[BasicRaptorLabel, BasicRaptorLabel]):
     ) -> List[Stop]:
         logger.debug(f"Traverse routes for round {k}")
 
-        new_stops = []
+        new_stops = set()
         n_evaluations = 0
         n_improvements = 0
 
@@ -78,34 +75,45 @@ class RaptorAlgorithm(BaseSharedMobRaptor[BasicRaptorLabel, BasicRaptorLabel]):
                 if current_trip is not None:
                     # Arrival time at stop, i.e. arr(current_trip, next_stop)
                     new_arrival_time = current_trip.get_stop_time(current_stop).dts_arr
-                    best_arrival_time = self.best_bag[
+
+                            # TODO find a cleaner way (SingleLabelBag(Bag[_LabelType])??)
+                            #   mettere direttamente attributo arrival_time o gen_cost su bag?
+                    best_arrival_time = self.round_stop_bags[k][
                         current_stop
-                    ].earliest_arrival_time
+                    ].labels[0].arrival_time
 
                     if new_arrival_time < best_arrival_time:
                         # Update arrival by trip, i.e.
                         #   t_k(next_stop) = t_arr(t, pi)
                         #   t_star(p_i) = t_arr(t, pi)
 
+                        # Update arrival stop with new arrival time
                         update_data = LabelUpdate(
                             boarding_stop=boarding_stop,
                             arrival_stop=current_stop,
                             new_trip=current_trip,
-                            best_labels=self.best_bag
+
+                            # TODO find a cleaner way (SingleLabelBag(Bag[_LabelType])??)
+                            #   mettere direttamente attributo arrival_time o gen_cost su bag?
+                            boarding_stop_label=self.round_stop_bags[k][boarding_stop].labels[0]
                         )
-                        self._update_arrival_label(update_data=update_data, k=k)
+                        self._update_arrival_stop(
+                            k=k,
+                            update_data=update_data,
+                            currently_marked_stops=new_stops
+                        )
 
                         # Logging
                         n_improvements += 1
-                        new_stops.append(current_stop)
+                        new_stops.add(current_stop)
 
                 # Can we catch an earlier trip at p_i
                 # if tau_{k-1}(next_stop) <= tau_dep(t, next_stop)
                 # NOTE: bag[k] is used, and not bag[k-1], because at this point they have the same value.
                 #   bag[k] is (iirc) initialized with bag[k-1] values
-                previous_earliest_arrival_time = self.bag_round_stop[k][
+                previous_earliest_arrival_time = self.round_stop_bags[k][
                     current_stop
-                ].earliest_arrival_time
+                ].labels[0].arrival_time  # TODO find a cleaner way (SingleLabelBag(Bag[_LabelType])??)
                 earliest_trip_stop_time = marked_route.earliest_trip_stop_time(
                     previous_earliest_arrival_time, current_stop
                 )
@@ -127,7 +135,7 @@ class RaptorAlgorithm(BaseSharedMobRaptor[BasicRaptorLabel, BasicRaptorLabel]):
         logger.debug(f"- Evaluations    : {n_evaluations}")
         logger.debug(f"- Improvements   : {n_improvements}")
 
-        return new_stops
+        return list(new_stops)
 
     def _improve_with_transfers(
             self,
@@ -135,7 +143,7 @@ class RaptorAlgorithm(BaseSharedMobRaptor[BasicRaptorLabel, BasicRaptorLabel]):
             marked_stops: Iterable[Stop],
             transfers: Transfers
     ) -> List[Stop]:
-        new_stops: List[Stop] = []
+        new_stops: Set[Stop] = set()
 
         # Add in transfers from the transfers table
         for current_stop in marked_stops:
@@ -145,14 +153,17 @@ class RaptorAlgorithm(BaseSharedMobRaptor[BasicRaptorLabel, BasicRaptorLabel]):
                 t.to_stop for t in transfers if t.from_stop == current_stop
             ]
 
-            time_sofar = self.bag_round_stop[k][current_stop].earliest_arrival_time
+            # TODO find a cleaner way (SingleLabelBag(Bag[_LabelType])??)
+            time_sofar = self.round_stop_bags[k][current_stop].labels[0].arrival_time
             for arrival_stop in other_station_stops:
                 transfer = transfers.stop_to_stop_idx[(current_stop, arrival_stop)]
 
                 arrival_time_with_transfer = time_sofar + transfer.transfer_time
-                previous_earliest_arrival = self.best_bag[
+
+                # TODO find a cleaner way (SingleLabelBag(Bag[_LabelType])??)
+                previous_earliest_arrival = self.round_stop_bags[k][
                     arrival_stop
-                ].earliest_arrival_time
+                ].labels[0].arrival_time
 
                 # Domination criteria: update only if arrival time is improved
                 if arrival_time_with_transfer < previous_earliest_arrival:
@@ -164,20 +175,32 @@ class RaptorAlgorithm(BaseSharedMobRaptor[BasicRaptorLabel, BasicRaptorLabel]):
                         transport_type=transfer.transport_type
                     )
 
-                    # Update the label
+                    # Update the arrival stop
                     update_data = LabelUpdate(
                         boarding_stop=current_stop,
                         arrival_stop=arrival_stop,
                         new_trip=transfer_trip,
-                        best_labels=self.best_bag
+
+                            # TODO find a cleaner way (SingleLabelBag(Bag[_LabelType])??)
+                            #   mettere direttamente attributo arrival_time o gen_cost su bag?
+                        boarding_stop_label=self.round_stop_bags[k][current_stop].labels[0]
                     )
-                    self._update_arrival_label(update_data=update_data, k=k)
+                    self._update_arrival_stop(
+                        k=k,
+                        update_data=update_data,
+                        currently_marked_stops=new_stops
+                    )
 
-                    new_stops.append(arrival_stop)
+                    new_stops.add(arrival_stop)
 
-        return new_stops
+        return list(new_stops)
 
-    def _update_arrival_label(self, update_data: LabelUpdate, k: int):
+    def _update_arrival_stop(
+            self,
+            k: int,
+            update_data: LabelUpdate,
+            currently_marked_stops: Set[Stop]
+    ):
         """
         Updates the label, along with the bags that store it,
         associated to the provided arrival stop.
@@ -185,13 +208,18 @@ class RaptorAlgorithm(BaseSharedMobRaptor[BasicRaptorLabel, BasicRaptorLabel]):
         :param update_data: data to update the label with;
             it also identifies the arrival stop
         :param k: current round of the algorithm
+        :param currently_marked_stops: stops currently marked
         """
 
-        arrival_label = self.bag_round_stop[k][update_data.arrival_stop]
+        # TODO find a cleaner way (SingleLabelBag(Bag[_LabelType])??)
+        arrival_label = self.round_stop_bags[k][update_data.arrival_stop].labels[0]
         arrival_label = arrival_label.update(
             data=update_data
         )
 
-        # Assign the updated label to the bags
-        self.bag_round_stop[k][update_data.arrival_stop] = arrival_label
-        self.best_bag[update_data.arrival_stop] = arrival_label
+        self._update_stop(
+            k=k,
+            stop_to_update=update_data.arrival_stop,
+            update_with=[arrival_label],
+            currently_marked_stops=currently_marked_stops,
+        )

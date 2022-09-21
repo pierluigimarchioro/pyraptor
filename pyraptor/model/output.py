@@ -11,7 +11,7 @@ import joblib
 import numpy as np
 from loguru import logger
 
-from pyraptor.model.criteria import Criterion, Bag, pareto_set, MultiCriteriaLabel
+from pyraptor.model.criteria import Criterion, pareto_set, MultiCriteriaLabel, ParetoBag
 from pyraptor.model.timetable import Stop, Trip, TimetableInfo
 from pyraptor.util import sec2str, mkdir_if_not_exists
 
@@ -286,7 +286,7 @@ class Journey:
 def get_journeys_to_destinations(
         origin_stops: Iterable[Stop],
         destination_stops: Dict[Any, Iterable[Stop]],
-        best_labels: Mapping[Stop, Bag]
+        best_bags: Mapping[Stop, ParetoBag]
 ) -> Mapping[Any, Sequence[Journey]]:
     # Calculate journeys to all destinations
     logger.info("Calculating journeys to all destinations")
@@ -294,7 +294,7 @@ def get_journeys_to_destinations(
 
     journeys_to_destinations = {}
     for destination_station_name, to_stops in destination_stops.items():
-        destination_legs = _best_legs_to_destination_station(to_stops, best_labels)
+        destination_legs = _best_legs_to_destination_station(to_stops, best_bags)
 
         if len(destination_legs) == 0:
             logger.debug(f"Destination '{destination_station_name}' unreachable with given parameters."
@@ -302,7 +302,7 @@ def get_journeys_to_destinations(
             continue
 
         journeys = _reconstruct_journeys(
-            origin_stops, destination_legs, best_labels
+            origin_stops, destination_legs, best_bags
         )
         journeys_to_destinations[destination_station_name] = journeys
 
@@ -313,7 +313,7 @@ def get_journeys_to_destinations(
 
 def _best_legs_to_destination_station(
         to_stops: Iterable[Stop],
-        last_round_bag: Mapping[Stop, Bag]
+        last_round_bag: Mapping[Stop, ParetoBag]
 ) -> Sequence[Leg]:
     """
     Find the last legs to destination station that are reached by non-dominated labels.
@@ -346,7 +346,7 @@ def _best_legs_to_destination_station(
 def _reconstruct_journeys(
         from_stops: Iterable[Stop],
         destination_legs: Iterable[Leg],
-        best_labels: Mapping[Stop, Bag],
+        best_labels: Mapping[Stop, ParetoBag],
         add_intermediate_legs: bool = True
 ) -> List[Journey]:
     """
