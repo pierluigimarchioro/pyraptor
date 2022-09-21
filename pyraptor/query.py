@@ -40,6 +40,7 @@ def query_raptor(
         departure_time: str,
         rounds: int,
         variant: str,
+        enable_fwd_deps: bool = True,
         criteria_provider: CriteriaProvider = None,
         enable_sm: bool = False,
         preferred_vehicle: str = None,
@@ -109,6 +110,7 @@ def query_raptor(
         origin_stops=origin_stops,
         dep_secs=dep_secs,
         criteria_provider=criteria_provider,
+        enable_fwd_deps=enable_fwd_deps,
         enable_sm=enable_sm,
         preferred_vehicle=preferred_transport_type,
         enable_car=enable_car,
@@ -180,6 +182,7 @@ def _execute_raptor_variant(
         origin_stops: Iterable[Stop],
         dep_secs: int,
         rounds: int,
+        enable_fwd_deps: bool,
         criteria_provider: CriteriaProvider,
         enable_sm: bool,
         preferred_vehicle: TransportType,
@@ -198,6 +201,7 @@ def _execute_raptor_variant(
     def run_weighted_mc_raptor() -> Mapping[Stop, ParetoBag]:
         raptor = GeneralizedCostRaptor(
             timetable=timetable,
+            enable_fwd_deps_heuristic=enable_fwd_deps,
             enable_sm=enable_sm,
             sm_config=sm_config,
             criteria_provider=criteria_provider
@@ -225,6 +229,7 @@ def _execute_raptor_variant(
     def run_base_raptor() -> Mapping[Stop, ParetoBag]:
         raptor = RaptorAlgorithm(
             timetable=timetable,
+            enable_fwd_deps_heuristic=enable_fwd_deps,
             enable_sm=enable_sm,
             sm_config=sm_config
         )

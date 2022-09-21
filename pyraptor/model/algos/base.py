@@ -99,8 +99,8 @@ class BaseRaptorAlgorithm(ABC, Generic[_LabelType, _BagType]):
 
         # Only cap rounds if max_rounds != -1
         k = 1
-        while(len(marked_stops) > 0
-              or (k <= max_rounds and max_rounds != -1)):
+        while (len(marked_stops) > 0
+               or (k <= max_rounds and max_rounds != -1)):
             logger.info(f"Analyzing possibilities at round {k}")
             logger.debug(f"Marked stops to evaluate: {len(marked_stops)}")
 
@@ -452,6 +452,7 @@ class BaseSharedMobRaptor(BaseRaptorAlgorithm[_LabelType, _BagType], ABC):
     def __init__(
             self,
             timetable: RaptorTimetable | RaptorTimetableSM,
+            enable_fwd_deps_heuristic: bool = True,
             enable_sm: bool = False,
             sm_config: SharedMobilityConfig = None
     ):
@@ -462,7 +463,10 @@ class BaseSharedMobRaptor(BaseRaptorAlgorithm[_LabelType, _BagType], ABC):
         :param sm_config: shared mobility configuration data. Ignored if `enable_sm` is False.
         """
 
-        super(BaseSharedMobRaptor, self).__init__(timetable=timetable)
+        super(BaseSharedMobRaptor, self).__init__(
+            timetable=timetable,
+            enable_fwd_deps_heuristic=enable_fwd_deps_heuristic
+        )
 
         self.enable_sm = enable_sm
 
@@ -517,8 +521,8 @@ class BaseSharedMobRaptor(BaseRaptorAlgorithm[_LabelType, _BagType], ABC):
 
         # Only cap rounds if max_rounds != -1
         k = 1
-        while(len(marked_stops) > 0
-              or (k <= max_rounds and max_rounds != -1)):
+        while (len(marked_stops) > 0
+               or (k <= max_rounds and max_rounds != -1)):
             logger.info(f"Analyzing possibilities at round {k}")
             logger.debug(f"Marked stops to evaluate: {len(marked_stops)}")
 

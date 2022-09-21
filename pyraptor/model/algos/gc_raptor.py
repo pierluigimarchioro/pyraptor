@@ -56,9 +56,10 @@ class GeneralizedCostRaptor(BaseSharedMobRaptor[GeneralizedCostLabel, Generalize
     def __init__(
             self,
             timetable: RaptorTimetable | RaptorTimetableSM,
+            enable_fwd_deps_heuristic: bool,
             enable_sm: bool,
             sm_config: SharedMobilityConfig,
-            criteria_provider: CriteriaProvider
+            criteria_provider: CriteriaProvider,
     ):
         """
         :param timetable: object containing the data that will be used by the algorithm
@@ -69,7 +70,8 @@ class GeneralizedCostRaptor(BaseSharedMobRaptor[GeneralizedCostLabel, Generalize
         super(GeneralizedCostRaptor, self).__init__(
             timetable=timetable,
             enable_sm=enable_sm,
-            sm_config=sm_config
+            sm_config=sm_config,
+            enable_fwd_deps_heuristic=enable_fwd_deps_heuristic
         )
 
         self.criteria_provider: CriteriaProvider = criteria_provider

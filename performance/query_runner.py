@@ -214,7 +214,7 @@ def run_raptor_config(
         destination_station=query.destination,
         departure_time=query.dep_time,
         rounds=max_rounds,
-        # enable_fwd_deps=raptor_config["fwd_deps_heuristic"],  # TODO need to implement
+        enable_fwd_deps=raptor_config["fwd_deps_heuristic"],
         criteria_provider=criteria_provider,
         enable_sm=enable_sm,
         preferred_vehicle=raptor_config["sm"]["preferred_vehicle"] if enable_sm else None,
