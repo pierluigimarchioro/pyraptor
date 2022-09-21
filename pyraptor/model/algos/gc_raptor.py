@@ -150,8 +150,8 @@ class GeneralizedCostRaptor(BaseSharedMobRaptor[GeneralizedCostLabel, Generalize
                         arrival_stop=current_stop,
                         new_trip=label.trip,
 
-                        # TODO è giusta? mah
-                        boarding_stop_label=label
+                        # TODO find cleaner way - is it correct?
+                        boarding_stop_label=self.round_stop_bags[k][label.boarding_stop].labels[0]
                     )
                     label = label.update(data=update_data)
 

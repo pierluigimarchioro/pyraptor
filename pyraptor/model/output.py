@@ -347,7 +347,7 @@ def _reconstruct_journeys(
         from_stops: Iterable[Stop],
         destination_legs: Iterable[Leg],
         best_labels: Mapping[Stop, ParetoBag],
-        add_intermediate_legs: bool = True
+        add_intermediate_legs: bool = False  # TODO parameterize at query level
 ) -> List[Journey]:
     """
     Construct Journeys for destinations from bags by recursively

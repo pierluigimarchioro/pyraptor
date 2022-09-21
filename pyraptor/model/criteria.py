@@ -352,6 +352,7 @@ class Criterion(ABC):
 _C = TypeVar('_C', bound=Criterion)
 
 
+# TODO this note is obsolete because now only one label is passed as arg
 # NOTE: what if `stop` is associated with two labels with an equal cost?
 # In that case, `best_label` would contain just one of the two, with the choice
 # being non-deterministic. This could create errors when calculating the criteria
@@ -364,7 +365,9 @@ _C = TypeVar('_C', bound=Criterion)
 # of the Bag.merge() method)
 def _get_best_criterion(
         criterion_class: Type[_C],
-        label: MultiCriteriaLabel | GeneralizedCostLabel  # TODO try to use polymorphism
+
+        # TODO try to use polymorphism -> might as well become a method of the label class
+        label: MultiCriteriaLabel | GeneralizedCostLabel
 ) -> _C:
     """
     Returns the instance of the specified type of criterion, which is retrieved from the
