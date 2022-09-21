@@ -85,15 +85,13 @@ class WeightedMcRaptorAlgorithm(BaseSharedMobRaptor[Bag, MultiCriteriaLabel]):
     def _initialization(
             self,
             from_stops: Iterable[Stop],
-            dep_secs: int,
-            rounds: int) -> List[Stop]:
-        # Initialize each stop, for each round, with an empty bag
-        self.bag_round_stop: Dict[int, Dict[Stop, Bag]] = {}
-        for k in range(0, rounds + 1):
-            self.bag_round_stop[k] = {}
+            dep_secs: int) -> List[Stop]:
 
-            for p in self.timetable.stops:
-                self.bag_round_stop[k][p] = Bag()
+        # Initialize Round 0 with empty bags.
+        # Following rounds are initialized by copying the previous one
+        self.bag_round_stop[0] = {}
+        for p in self.timetable.stops:
+            self.bag_round_stop[0][p] = Bag()
 
         self.stop_forward_dependencies: Dict[Stop, List[Stop]] = {}
         for s in self.timetable.stops:

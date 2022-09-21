@@ -19,12 +19,12 @@ class RaptorAlgorithm(BaseSharedMobRaptor[BasicRaptorLabel, BasicRaptorLabel]):
         - it is possible to include shared mobility, real-time data in the computation
     """
 
-    def _initialization(self, from_stops: Iterable[Stop], dep_secs: int, rounds: int) -> List[Stop]:
-        # Initialize empty bag of labels for each stop
-        for k in range(0, rounds + 1):
-            self.bag_round_stop[k] = {}
-            for s in self.timetable.stops:
-                self.bag_round_stop[k][s] = BasicRaptorLabel()
+    def _initialization(self, from_stops: Iterable[Stop], dep_secs: int) -> List[Stop]:
+        # Initialize Round 0 with default labels.
+        # Following rounds are initialized by copying the previous one
+        self.bag_round_stop[0] = {}
+        for p in self.timetable.stops:
+            self.bag_round_stop[0][p] = BasicRaptorLabel()
 
         # Initialize bag with the earliest arrival times
         # This bag is used as a side-collection to efficiently retrieve
