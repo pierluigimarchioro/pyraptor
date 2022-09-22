@@ -109,7 +109,7 @@ def main(input_: str, output_dir: str, config: str):
     logger.debug(f"Runner execution terminated. Saving output to {output_file}")
 
     results_df = pd.DataFrame.from_records(data=runner_results)
-    results_df.to_csv(output_file)
+    results_df.to_csv(output_file, index=False)
 
 
 def _json_to_dict(file: str) -> Dict:
