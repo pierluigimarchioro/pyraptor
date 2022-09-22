@@ -73,11 +73,24 @@ def main(input_: str, output_dir: str, config: str):
     runner_results: List[Mapping] = []
 
     logger.debug("Executing generated queries...")
+    all_stop_names = [s.name for s in timetable.stops]
+    all_stop_names_sm = [s.name for s in timetable_sm.stops]
     for q in queries:
         for raptor_config_obj in raptor_configs:
+            sm_enabled = raptor_config_obj["enable_sm"]
+            timetable = timetable_sm if sm_enabled else timetable
+            timetable_stop_names = all_stop_names_sm if sm_enabled else all_stop_names
+
+            # This might happen if query contains sm stops but sm is not enabled,
+            # causing the "base" timetable to be selected
+            if q.origin not in timetable_stop_names or q.destination not in timetable_stop_names:
+                logger.warning("Skipping query because it contains stops not in the timetable\n"
+                               f"Stops: [{q.origin}, {q.destination}]")
+                continue
+
             query_time, journey_cost = run_raptor_config(
                 raptor_config=raptor_config_obj,
-                timetable=timetable_sm if raptor_config_obj["enable_sm"] else timetable,
+                timetable=timetable,
                 query=q,
                 max_rounds=max_rounds
             )
@@ -142,12 +155,12 @@ def get_queries(queries_settings: Mapping, timetable: RaptorTimetable) -> Sequen
             logger.debug(f"Generating random query #{i} of {total_number}")
 
             # Get two random stops whose distance from each other is in the valid range
-            origin_stop: Stop = all_stops[rnd.randint(0, len(all_stops) - 1)]
-            dest_stop: Stop = all_stops[rnd.randint(0, len(all_stops) - 1)]
+            origin_stop: Stop = all_stops.set_index[rnd.randint(0, len(all_stops) - 1)]
+            dest_stop: Stop = all_stops.set_index[rnd.randint(0, len(all_stops) - 1)]
 
             while (origin_stop == dest_stop
                    or not (min_distance <= Stop.stop_distance(origin_stop, dest_stop) <= max_distance)):
-                dest_stop = all_stops[rnd.randint(0, len(all_stops) - 1)]
+                dest_stop = all_stops.set_index[rnd.randint(0, len(all_stops) - 1)]
 
             # Generate random query time in the provided range
             query_hour = rnd.randint(min_hour, max_hour)

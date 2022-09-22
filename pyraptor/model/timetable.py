@@ -133,9 +133,9 @@ class Stops(Generic[_Stop]):
     """Stops"""
 
     def __init__(self):
-        self.set_idx = dict()
-        self.set_index = dict()
-        self.last_index = 1
+        self.set_idx: Dict[Any, Stop] = dict()
+        self.set_index: Dict[int, Stop] = dict()
+        self.last_index: int = 0
 
     def __repr__(self):
         return f"Stops(n_stops={len(self.set_idx)})"

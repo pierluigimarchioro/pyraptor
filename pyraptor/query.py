@@ -211,18 +211,18 @@ def _execute_raptor_variant(
         # Convert best labels from Dict[Stop, Label] to Dict[Stop, Bag]
         best_bags: Dict[Stop, ParetoBag] = {}
         for stop, bag in results.items():
-            # TODO polymorphism? What breaks everything is the dataclass decorator. Might remove
-            if len(bag.labels) == 0:
-                continue
-            label = bag.labels[0]    # TODO find cleaner way to get label
+            # TODO polymorphism for GC labels? What breaks everything is the dataclass decorator. Might remove
+            mc_labels = []
+            for label in bag.labels:
+                mc_lbl = MultiCriteriaLabel(
+                    arrival_time=label.arrival_time,
+                    boarding_stop=label.boarding_stop,
+                    trip=label.trip,
+                    criteria=label.gc_criterion.criteria
+                )
 
-            mc_lbl = MultiCriteriaLabel(
-                arrival_time=label.arrival_time,
-                boarding_stop=label.boarding_stop,
-                trip=label.trip,
-                criteria=label.gc_criterion.criteria
-            )
-            best_bags[stop] = ParetoBag(labels=[mc_lbl])
+                mc_labels.append(mc_lbl)
+            best_bags[stop] = ParetoBag(labels=mc_labels)
 
         return best_bags
 
@@ -238,8 +238,13 @@ def _execute_raptor_variant(
         # Convert best labels from Dict[Stop, Label] to Dict[Stop, Bag]
         best_bags: Dict[Stop, ParetoBag] = {}
         for stop, bag in results.items():
-            mc_label = MultiCriteriaLabel.from_eat_label(bag.labels[0])  # TODO find cleaner way to get label
-            best_bags[stop] = ParetoBag(labels=[mc_label])
+            mc_labels = []
+            for label in bag.labels:
+                mc_lbl = MultiCriteriaLabel.from_eat_label(label)  # TODO find cleaner way to get label
+
+                mc_labels.append(mc_lbl)
+
+            best_bags[stop] = ParetoBag(labels=mc_labels)
 
         return best_bags
 
