@@ -26,6 +26,7 @@ _LabelType = TypeVar("_LabelType", bound=BaseLabel)
 """Type of the label used by the RAPTOR algorithm"""
 
 
+# TODO merge this and BaseSMRaptor into one class?
 class BaseRaptorAlgorithm(ABC, Generic[_LabelType, _BagType]):
     """
     Base class that defines the structure of RAPTOR algorithm implementations.
