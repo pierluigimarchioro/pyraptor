@@ -3,9 +3,14 @@
     "max_rounds": -1,
     "timetable_configs": [
         {
-            // Arbitrary identifier to assign to the GTFS feed in order to make it recognizable
-            // in the runner output
+            // Arbitrary identifier to assign to the timetable
+            //  - makes the results recognizable in the runner output
+            //  - used as name of the folder where the generated timetables are stored
             "timetable_id": "ATM",
+
+            // If true, tries to use a previously created timetable instance
+            // If false, (a) new timetable(s) are always generated
+            "use_cached": true,
 
             // Date to create the timetable for, in "YYYYMMDD" format
             "date": "20220727",
@@ -16,7 +21,7 @@
 
             // GBFS configuration; the specified GBFS feeds will be combined with the
             // above GTFS to generate a shared mobility timetable.
-            // This attribute is optional
+            // This attribute is optional. If not defined, no shared-mob timetable is generated
             "gbfs": {
                 "feeds": [
                     {
