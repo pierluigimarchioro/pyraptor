@@ -41,6 +41,13 @@ OUT_FILENAME = "runner_out.csv"  # output file with performance info
 
 # TODO define some classes for the configuration objects (e.g. timetable config, raptor config)
 #   tp facilitate dependency injection
+# TODO would be useful to test this runner with different GTFS to see where the timetable generation
+#   procedure fails/lacks the proper checks
+#   GTFS candidates:
+#       - Munich (MVV) <https://www.transit.land/feeds/f-u281z9-mvv/>
+#       - Milan (ATM) <https://www.amat-mi.it/it/servizi/pubblicazione-orari-trasporto-pubblico-locale-formato-gtfs/>
+#       - Wien (Wiener Linien): <http://www.wienerlinien.at/ogd_realtime/doku/ogd/gtfs/gtfs.zip>
+#       - Paris: <https://demo.transit.land/api/v2/rest/feed_versions/fc4bb2b52728a2da41a46d84dd85861872d09308/download>
 
 
 @dataclass
