@@ -128,9 +128,9 @@ def generate_timetable(
         output_folder: str,
         departure_date: str,
         agencies: List[str],
-        shared_mobility: bool,
-        feeds_path: str,
-        n_jobs: int
+        shared_mobility: bool = False,
+        feeds_path: str = "",
+        n_jobs: int = cpu_count()
 ):
     """Main function"""
 
