@@ -89,7 +89,10 @@ def parse_arguments():
         "-a",
         "--agencies",
         nargs="+",
-        default=["NS"]
+        default=[],
+        help="Names of the agencies whose services are included in the timetable "
+             "(refer to the agency_name field in the agency.txt table). "
+             "If nothing is specified, all the agencies are included by default."
     )
     parser.add_argument(
         "-j",
@@ -119,6 +122,7 @@ def parse_arguments():
     return arguments
 
 
+# TODO allow to specify timetable name - as of now, it is hardcoded as either "timetable.pcl" or "timetable_sm.pcl"
 def generate_timetable(
         input_folder: str,
         output_folder: str,
@@ -374,12 +378,14 @@ def read_gtfs_timetable(
     return gtfs_timetable
 
 
-def _process_agencies_table(input_folder: str, agency_names: Iterable[str]) -> pd.DataFrame:
+def _process_agencies_table(input_folder: str, agency_names: Sequence[str]) -> pd.DataFrame:
     agencies_df = pd.read_csv(os.path.join(input_folder, "agency.txt"))
 
-    agencies_df = agencies_df.loc[agencies_df["agency_name"].isin(agency_names)][
-        ["agency_id", "agency_name"]
-    ]
+    # Filter only if at least one name is specified
+    if len(agency_names) > 0:
+        agencies_df = agencies_df.loc[agencies_df["agency_name"].isin(agency_names)][
+            ["agency_id", "agency_name"]
+        ]
 
     return agencies_df
 
