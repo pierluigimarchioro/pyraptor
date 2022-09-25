@@ -17,13 +17,20 @@ from typing import Dict, List, Type, Tuple
 import pandas as pd
 from loguru import logger
 
-from pyraptor.model.criteria import Criterion, ArrivalTimeCriterion, TransfersCriterion, DistanceCriterion, \
-    EmissionsCriterion, CriterionConfiguration, CriteriaProvider
+from pyraptor.model.criteria import (
+    Criterion,
+    ArrivalTimeCriterion,
+    TransfersCriterion,
+    DistanceCriterion,
+    EmissionsCriterion,
+    CriterionConfiguration,
+    CriteriaProvider
+)
 from pyraptor.query import query_raptor
 from pyraptor.model.shared_mobility import RaptorTimetableSM
 from pyraptor.model.timetable import RaptorTimetable, Stop
 from pyraptor.timetable.io import read_timetable
-from pyraptor.timetable.timetable import TIMETABLE_FILENAME, SHARED_MOB_TIMETABLE_FILENAME
+from pyraptor.timetable.timetable import generate_timetable, TIMETABLE_FILENAME, SHARED_MOB_TIMETABLE_FILENAME
 from pyraptor.util import mkdir_if_not_exists
 
 OUT_FILENAME = "runner_out.csv"  # output file with performance info
@@ -59,14 +66,33 @@ def main(input_: str, output_dir: str, config: str):
     timetable: RaptorTimetable = read_timetable(input_, TIMETABLE_FILENAME)
     timetable_sm: RaptorTimetableSM = read_timetable(input_, SHARED_MOB_TIMETABLE_FILENAME)
 
-    # Rounds
-    max_rounds: int = runner_config["max_rounds"]
-    queries_settings: Mapping = runner_config["queries_settings"]
-    raptor_configs: Sequence[Mapping] = runner_config["raptor_configs"]
+    # TODO call run_feed_config func
+
+
+def _json_to_dict(file: str) -> Dict:
+    """
+    Convert a json to a dictionary
+    :param file: path to json file
+    :return: data as a dictionary
+    """
+
+    return json.load(open(file))
+
+
+def run_feed_configuration(input_dir: str, output_dir: str, timetable_config: Mapping, max_rounds: int):
+    timetable_id = timetable_config["timetable_id"]
+
+    timetable, timetable_sm = generate_timetables()
+
+    # Queries and RAPTOR settings
+    max_rounds: int = timetable_config["max_rounds"]
+    run_config = timetable_config["run_config"]
+    queries_settings: Mapping = run_config["query_settings"]
+    raptor_configs: Sequence[Mapping] = run_config["raptor_configs"]
 
     # Get the queries to execute
     # timetable_sm is passed since it's a superset of the base timetable
-    queries = get_queries(queries_settings=queries_settings, timetable=timetable_sm)
+    queries = get_queries(query_settings=queries_settings, timetable=timetable_sm)
 
     # Records with the following fields:
     # query,query_time,generalized_cost,config_name,dataset,fwd_deps
@@ -112,21 +138,75 @@ def main(input_: str, output_dir: str, config: str):
     results_df.to_csv(output_file, index=False)
 
 
-def _json_to_dict(file: str) -> Dict:
+def generate_timetables(input_dir: str, timetable_config: Mapping) -> Tuple[RaptorTimetable, RaptorTimetableSM | None]:
     """
-    Convert a json to a dictionary
-    :param file: path to json file
-    :return: data as a dictionary
+    Genera
+    :param input_dir:
+    :param timetable_config:
+    :return:
     """
 
-    return json.load(open(file))
+    timetable_id = timetable_config["timetable_id"]
+    timetable_dir = os.path.join(input_dir, timetable_id)
+    raw_feed_dir = os.path.join(timetable_dir, "gtfs")
+
+    mkdir_if_not_exists(timetable_dir)
+    mkdir_if_not_exists(raw_feed_dir)
+
+    # TODO download GTFS and put in input folder
+    # TODO 2 it could be optimized to not download the feed if the timetables are already there
+    gtfs_download_url = timetable_config["gtfs_download_url"]
+    logger.info(f"[{timetable_id}] Downloading GTFS feed from url: {gtfs_download_url}")
+    download_gtfs(
+        download_dir=raw_feed_dir,
+        download_url=gtfs_download_url
+    )
+
+    logger.info(f"[{timetable_id}] Generating RAPTOR timetable...")
+    # Generate non-sm timetable
+    generate_timetable(
+        input_folder=raw_feed_dir,
+        output_folder=timetable_dir,
+        departure_date=timetable_config["date"],
+        agencies=[],
+        shared_mobility=False,
+        feeds_path="",
+        n_jobs=-1
+    )
+    logger.info(f"[{timetable_id}] RAPTOR timetable generated")
+    timetable: RaptorTimetable = read_timetable(input_folder=timetable_dir, timetable_name=TIMETABLE_FILENAME)
+
+    timetable_sm: RaptorTimetableSM | None = None
+    if "gbfs" in timetable_config:
+        logger.info(f"[{timetable_id}] Generating Shared-Mobility RAPTOR timetable...")
+
+        # Generate shared mob config file
+        # TODO consider Dep. Inj. instead of having to write to a file
+        sm_config_path = os.path.join(timetable_dir, "sm_feeds_config.json")
+        json.dump(timetable_config["gbfs"], open(sm_config_path, 'w'))
+
+        # Generate non-sm timetable
+        generate_timetable(
+            input_folder=raw_feed_dir,
+            output_folder=timetable_dir,
+            departure_date=timetable_config["date"],
+            agencies=[],
+            shared_mobility=True,
+            feeds_path=sm_config_path,
+            n_jobs=-1
+        )
+        logger.info(f"[{timetable_id}] Shared-Mobility RAPTOR timetable generated")
+
+        timetable_sm = read_timetable(input_folder=timetable_dir, timetable_name=SHARED_MOB_TIMETABLE_FILENAME)
+
+    return timetable, timetable_sm
 
 
-def get_queries(queries_settings: Mapping, timetable: RaptorTimetable) -> Sequence[Query]:
+def get_queries(query_settings: Mapping, timetable: RaptorTimetable) -> Sequence[Query]:
     """
     Returns a sequence of queries based on the provided settings.
 
-    :param queries_settings: value of the "queries_settings" field of the runner configuration
+    :param query_settings: value of the "queries_settings" field of the runner configuration
     :param timetable: timetable to retrieve random stops from, if random queries are enabled
     :return: sequence of queries
     """
@@ -135,20 +215,20 @@ def get_queries(queries_settings: Mapping, timetable: RaptorTimetable) -> Sequen
 
     # If True, generate random queries
     # if False, consider the queries in the field "queries"
-    random_queries = queries_settings["random"]
+    random_queries = query_settings["random"]
     if random_queries:
         logger.debug(f"Generating random queries...")
 
         # Range of valid distances [Km]
-        min_distance = queries_settings["min_distance"]
-        max_distance = queries_settings["max_distance"]
+        min_distance = query_settings["min_distance"]
+        max_distance = query_settings["max_distance"]
 
         # Range of possible query hours
-        min_hour = queries_settings["min_hour"]
-        max_hour = queries_settings["max_hour"]
+        min_hour = query_settings["min_hour"]
+        max_hour = query_settings["max_hour"]
 
         # Total number of random queries to generate
-        total_number = queries_settings["number"]
+        total_number = query_settings["number"]
 
         all_stops = timetable.stops
         for i in range(total_number):
@@ -171,7 +251,7 @@ def get_queries(queries_settings: Mapping, timetable: RaptorTimetable) -> Sequen
             logger.debug(f"Query generated: {query}")
     else:
         logger.debug(f"Generating specified queries...")
-        for q_obj in queries_settings["queries"]:
+        for q_obj in query_settings["queries"]:
             query = Query(origin=q_obj["from"], destination=q_obj["to"], dep_time=q_obj["at"])
             queries.append(query)
 
