@@ -180,7 +180,7 @@ def read_timetable(input_folder: str, timetable_name: str) -> RaptorTimetable | 
 
     def load_joblib(name):
         logger.debug(f"Loading '{name}'")
-        with open(Path(input_folder, f"{name}.pcl"), "rb") as handle:
+        with open(Path(input_folder, name), "rb") as handle:
             return joblib.load(handle)
 
     if not os.path.exists(input_folder):
@@ -210,7 +210,7 @@ def write_timetable(output_folder: str, timetable_name: str, timetable: RaptorTi
     """
 
     def write_joblib(state, name):
-        with open(Path(output_folder, f"{name}.pcl"), "wb") as handle:
+        with open(Path(output_folder, name), "wb") as handle:
             joblib.dump(state, handle)
 
     logger.info("Writing PyRaptor timetable to output directory")

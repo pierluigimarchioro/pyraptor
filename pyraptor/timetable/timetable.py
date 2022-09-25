@@ -57,8 +57,8 @@ class GtfsTimetable(TimetableInfo):
     transfers: pd.DataFrame = None
 
 
-TIMETABLE_FILENAME = "timetable"
-SHARED_MOB_TIMETABLE_FILENAME = "timetable_sm"
+TIMETABLE_FILENAME = "timetable.pcl"
+SHARED_MOB_TIMETABLE_FILENAME = "timetable_sm.pcl"
 
 
 def parse_arguments():
