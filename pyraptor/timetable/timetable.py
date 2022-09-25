@@ -344,6 +344,7 @@ def read_gtfs_timetable(
     agencies_df = _process_agencies_table(input_folder=input_folder, agency_names=agency_names)
 
     agency_ids = agencies_df["agency_id"].values
+    logger.debug(f"Agencies included: {agency_ids}")
 
     # Read routes
     logger.debug("Reading Routes")
@@ -389,11 +390,9 @@ def _process_agencies_table(input_folder: str, agency_names: Sequence[str]) -> p
 
     # Filter only if at least one name is specified
     if len(agency_names) > 0:
-        agencies_df = agencies_df.loc[agencies_df["agency_name"].isin(agency_names)][
-            ["agency_id", "agency_name"]
-        ]
+        agencies_df = agencies_df.loc[agencies_df["agency_name"].isin(agency_names)]
 
-    return agencies_df
+    return agencies_df[["agency_id", "agency_name"]]
 
 
 def _process_routes_table(input_folder: str, agency_ids: Iterable) -> pd.DataFrame:
@@ -503,9 +502,11 @@ def _process_stops_table(input_folder: str, stop_times: pd.DataFrame) -> pd.Data
 
     # Make sure that stop_code is of string type
     stop_code_col = "stop_code"
-    stops[stop_code_col] = stops[stop_code_col].astype(str)
+    if stop_code_col in stops.columns:
+        stops[stop_code_col] = stops[stop_code_col].astype(str)
+        stops[stop_code_col] = stops[stop_code_col].str.upper()
 
-    stops[stop_code_col] = stops.stop_code.str.upper()
+        stops_col_selector.append(stop_code_col)
 
     # Filter out the general station rows (location_type == 1 and parent_station == empty)
     # Rationale is that general station are just "container stops" for their child stops
@@ -756,7 +757,13 @@ def _trips_processor_job(
                 # Timestamps
                 dts_arr = stop_time.arrival_time
                 dts_dep = stop_time.departure_time
-                trav_dist = stop_time.shape_dist_traveled
+
+                # shape_dist_traveled is optional; default is set to 0.0
+                shape_dist_traveled_col = "shape_dist_traveled"
+                if shape_dist_traveled_col in stop_time:
+                    trav_dist = stop_time.shape_dist_traveled
+                else:
+                    trav_dist = 0.0
 
                 # Trip Stop Times
                 stop = stops_info.get_stop(stop_time.stop_id)
