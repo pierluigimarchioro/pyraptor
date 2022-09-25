@@ -171,6 +171,9 @@ class CalendarHandler:
     of the provided GTFS feed.
     """
 
+    calendar: pd.DataFrame | None
+    calendar_dates: pd.DataFrame | None
+
     def __init__(self, input_folder: str | bytes | os.PathLike):
         """
         :param input_folder: path to the folder containing the calendar
@@ -278,7 +281,7 @@ class CalendarHandler:
 
         # If the only calendar table is calendar_dates, then this is the
         # alternate way of representing the service calendar
-        return (self.calendar is None
+        return ((self.calendar is None or len(self.calendar) == 0)
                 and self.calendar_dates is not None
                 and len(self.calendar_dates) > 0)
 
@@ -291,6 +294,9 @@ class CalendarHandler:
         :param valid_service_ids:
         :return:
         """
+
+        # TODO this step takes a significant amount of time
+        #   consider to parallelize by dividing valid_service_ids in batches
         active_service_ids = []
         for s_id in valid_service_ids:
             ex_type = self._get_exception_for_service_date(service_id=s_id, date=date)
