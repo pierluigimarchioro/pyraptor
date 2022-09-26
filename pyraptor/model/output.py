@@ -15,6 +15,8 @@ from pyraptor.model.criteria import Criterion, pareto_set, MultiCriteriaLabel, P
 from pyraptor.model.timetable import Stop, Trip, TimetableInfo
 from pyraptor.util import sec2str, mkdir_if_not_exists
 
+# TODO maybe refactor Leg and Journey not to rely on multi-criteria labels
+
 
 @dataclass
 class Leg:
