@@ -135,7 +135,8 @@ CRITERIA_CLASSES: Mapping[str, Type[Criterion]] = {
 }
 CRITERIA_PROVIDER: CriteriaProvider | None = None
 
-INPUT_FOLDER: str = "./../data/output"
+DEFAULT_TIMETABLE_PATH: str = "./../data/output/timetable.pcl"
+DEFAULT_SM_TIMETABLE_PATH: str = "./../data/output/timetable_sm.pcl"
 STATION_NAMES: List[str] = []
 STATION_NAMES_SM: List[str] = []
 TIMETABLE: RaptorTimetable | None = None
@@ -325,11 +326,20 @@ def show_journey_descriptions(algo_output_dir: str, time: float) -> flask.templa
 def parse_arguments():
     parser = argparse.ArgumentParser()
     parser.add_argument(
-        "-i",
-        "--input",
+        "-tt",
+        "--timetable_path",
         type=str,
-        default=INPUT_FOLDER,
-        help="Input directory containing timetable.pcl (and names.json)",
+        default=DEFAULT_TIMETABLE_PATH,
+        help="Path to a timetable file "
+             f"Defaults to: {DEFAULT_TIMETABLE_PATH}",
+    )
+    parser.add_argument(
+        "-smtt",
+        "--sm_timetable_path",
+        type=str,
+        default=DEFAULT_SM_TIMETABLE_PATH,
+        help="Path to a shared mob timetable file. "
+             f"Defaults to: {DEFAULT_SM_TIMETABLE_PATH}",
     )
     parser.add_argument(
         "-d",
@@ -337,20 +347,21 @@ def parse_arguments():
         type=bool,
         action=argparse.BooleanOptionalAction,
         default=DEBUG,
-        help="Debug mode"
+        help="Enable/Disable Debug Mode"
     )
 
     arguments = parser.parse_args()
     return arguments
 
 
-def run_demo(input_folder: str, debug: bool):
-    logger.debug("Input folder            : {}", input_folder)
-    logger.debug("Debug mode              : {}", debug)
-
-    # input to global variables
-    global INPUT_FOLDER
-    INPUT_FOLDER = input_folder
+def run_demo(
+        timetable_path: str,
+        sm_timetable_path: str,
+        debug: bool
+):
+    logger.debug("Timetable Path            : {}", timetable_path)
+    logger.debug("Shared Mob Timetable Path : {}", sm_timetable_path)
+    logger.debug("Debug mode                : {}", debug)
 
     global DEBUG
     DEBUG = debug
@@ -358,13 +369,19 @@ def run_demo(input_folder: str, debug: bool):
     # loading timetables
 
     global TIMETABLE
-    TIMETABLE = read_timetable(input_folder=input_folder, timetable_name=TIMETABLE_FILENAME)
+    TIMETABLE = read_timetable(
+        input_folder=os.path.dirname(timetable_path),
+        timetable_name=os.path.basename(timetable_path)
+    )
 
     global STATION_NAMES
     STATION_NAMES = _get_station_names(TIMETABLE)
 
     global TIMETABLE_SM
-    TIMETABLE_SM = read_timetable(input_folder=input_folder, timetable_name=SHARED_MOB_TIMETABLE_FILENAME)
+    TIMETABLE_SM = read_timetable(
+        input_folder=os.path.dirname(sm_timetable_path),
+        timetable_name=os.path.basename(sm_timetable_path)
+    )
 
     global STATION_NAMES_SM
     STATION_NAMES_SM = _get_station_names(TIMETABLE_SM)
@@ -390,11 +407,15 @@ def _get_station_names(timetable: RaptorTimetable):
     return names
 
 
-if __name__ == "__main__":
-
+def main():
     args = parse_arguments()
-    print(args)
+
     run_demo(
-        input_folder=args.input,
+        timetable_path=args.timetable_path,
+        sm_timetable_path=args.sm_timetable_path,
         debug=args.debug
     )
+
+
+if __name__ == "__main__":
+    main()

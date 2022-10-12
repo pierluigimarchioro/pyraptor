@@ -30,7 +30,7 @@ from pyraptor.model.criteria import (
     CriteriaProvider
 )
 from pyraptor.query import query_raptor
-from pyraptor.model.shared_mobility import RaptorTimetableSM
+from pyraptor.model.shared_mobility import RaptorTimetableSM, SharedMobilityFeed
 from pyraptor.model.timetable import RaptorTimetable, Stop
 from pyraptor.timetable.io import read_timetable
 from pyraptor.timetable.timetable import generate_timetable, TIMETABLE_FILENAME, SHARED_MOB_TIMETABLE_FILENAME
@@ -173,7 +173,10 @@ def run_timetable_configuration(timetables_dir: str, output_dir: str, timetable_
     results_df.to_csv(output_file, index=False)
 
 
-def _generate_timetables(timetables_dir: str, timetable_config: Mapping) -> Tuple[RaptorTimetable, RaptorTimetableSM | None]:
+def _generate_timetables(
+        timetables_dir: str,
+        timetable_config: Mapping
+) -> Tuple[RaptorTimetable, RaptorTimetableSM | None]:
     """
     Returns a pair of timetables generated with the provided configuration object.
     There is always a "normal" timetable, while the shared-mob timetable might be None,
@@ -215,13 +218,15 @@ def _generate_timetables(timetables_dir: str, timetable_config: Mapping) -> Tupl
 
     print(os.path.abspath(timetable_path))
     if not use_cached or not os.path.exists(timetable_path) or refreshed_gtfs:
-        logger.info(f"[{timetable_id}] Generating RAPTOR timetable...")
+        logger.info(f"[{timetable_id}] Generating RAPTOR timetable "
+                    f"at path {os.path.join(current_tt_dir, TIMETABLE_FILENAME)} ...")
         # Generate non-sm timetable
         generate_timetable(
             input_folder=raw_gtfs_dir,
             output_folder=current_tt_dir,
             departure_date=timetable_config["date"],
             agencies=[],
+            timetable_name=TIMETABLE_FILENAME
         )
         logger.info(f"[{timetable_id}] RAPTOR timetable generated")
     else:
@@ -232,21 +237,23 @@ def _generate_timetables(timetables_dir: str, timetable_config: Mapping) -> Tupl
     timetable_sm: RaptorTimetableSM | None = None
     if "gbfs" in timetable_config:
         if not use_cached or not os.path.exists(timetable_sm_path) or refreshed_gtfs:
-            logger.info(f"[{timetable_id}] Generating Shared-Mobility RAPTOR timetable...")
+            logger.info(f"[{timetable_id}] Generating Shared-Mobility RAPTOR timetable"
+                        f"at path {os.path.join(current_tt_dir, SHARED_MOB_TIMETABLE_FILENAME)} ...")
 
-            # Generate shared mob config file
-            # TODO consider Dep. Inj. instead of having to write to a file
-            sm_config_path = os.path.join(current_tt_dir, "sm_feeds_config.json")
-            json.dump(timetable_config["gbfs"], open(sm_config_path, 'w'))
+            # Get shared mob feeds info
+            sm_feeds = [SharedMobilityFeed(url=item["url"],
+                                           lang=item["lang"])
+                        for item in timetable_config["gbfs"]["feeds"]]
 
-            # Generate non-sm timetable
+            # Generate sm timetable
             generate_timetable(
                 input_folder=raw_gtfs_dir,
                 output_folder=current_tt_dir,
                 departure_date=timetable_config["date"],
                 agencies=[],
                 shared_mobility=True,
-                feeds_path=sm_config_path
+                sm_feeds=sm_feeds,
+                timetable_name=SHARED_MOB_TIMETABLE_FILENAME
             )
             logger.info(f"[{timetable_id}] Shared-Mobility RAPTOR timetable generated")
         else:
@@ -257,10 +264,12 @@ def _generate_timetables(timetables_dir: str, timetable_config: Mapping) -> Tupl
     return timetable, timetable_sm
 
 
-def _download_gtfs(download_url: str,
-                   download_dir: str,
-                   remove_zip: bool = True,
-                   overwrite: bool = False):
+def _download_gtfs(
+        download_url: str,
+        download_dir: str,
+        remove_zip: bool = True,
+        overwrite: bool = False
+):
     """
     Downloads gtfs-format file from given url.
     file is then parsed in order be managed with pandas software library.
@@ -279,7 +288,7 @@ def _download_gtfs(download_url: str,
     # directory exists, it is not empty and overwrite flag is off
     if os.path.exists(download_dir) and len(os.listdir(download_dir)) > 0 and not overwrite:
         # preserve old file
-        raise Exception(f"Cannot download: it could overwrite existing files")
+        raise Exception(f"Cannot download: new feed could overwrite existing files")
     else:
         _clear_dir_content(dir_path=download_dir)
 
@@ -297,7 +306,7 @@ def _download_gtfs(download_url: str,
         zip_file_path=downloaded_file_path
     )
 
-    logger.debug("GTFS feed successfully prepared.")
+    logger.debug("GTFS feed successfully downloaded.")
 
 
 def _download_file(download_url: str, out_dir: str) -> str:
