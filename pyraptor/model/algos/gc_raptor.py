@@ -171,6 +171,7 @@ class GeneralizedCostRaptor(BaseSharedMobRaptor[GeneralizedCostLabel, Generalize
                     currently_marked_stops=new_marked_stops
                 )
 
+                # TODO update comment
                 # Step 3: merge B_k(p) into B_r
                 # In the non-weighted MC variant, it is B_{k-1}(p) that is merged into B_r,
                 #   creating a bag where the best labels from the previous round,
