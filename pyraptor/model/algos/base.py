@@ -100,7 +100,7 @@ class BaseRaptorAlgorithm(ABC, Generic[_LabelType, _BagType]):
 
         # Only cap rounds if max_rounds != -1
         k = 1
-        while (len(marked_stops) > 0
+        while (max_rounds == -1
                or (k <= max_rounds and max_rounds != -1)):
             logger.info(f"Analyzing possibilities at round {k}")
             logger.debug(f"Marked stops to evaluate: {len(marked_stops)}")
@@ -268,7 +268,7 @@ class BaseRaptorAlgorithm(ABC, Generic[_LabelType, _BagType]):
                     continue
                 self.stop_forward_dependencies[old_lbl.boarding_stop].remove(stop_to_update)
 
-            # Update the bags of the current stop to update
+            # Update the bag of the current stop to update
             self.round_stop_bags[k][stop_to_update] = updated_bag
             currently_marked_stops.add(stop_to_update)
 
@@ -395,16 +395,18 @@ class BaseRaptorAlgorithm(ABC, Generic[_LabelType, _BagType]):
                 updated_fwd_dep_bag = old_fwd_dep_bag.update(with_labels=updated_fwd_dep_labels)
                 updated_fwd_deps[fwd_dep_stop] = old_fwd_dep_bag.update(with_labels=updated_fwd_dep_labels)
 
-                rec_updated_fwd_deps = self._update_forward_dependencies(
-                    k=k,
-                    updated_stop=fwd_dep_stop,
-                    updated_bag=updated_fwd_dep_bag
-                )
+                # TODO go forward only if update
+                if updated_fwd_dep_bag.updated:
+                    rec_updated_fwd_deps = self._update_forward_dependencies(
+                        k=k,
+                        updated_stop=fwd_dep_stop,
+                        updated_bag=updated_fwd_dep_bag
+                    )
 
-                # It is noted that the merge between the current and the recursively created
-                # mappings cannot lead to conflict (i.e. a key is present in more than one mapping),
-                # because RAPTOR itineraries (paths) do not contain cycles
-                updated_fwd_deps = ChainMap(updated_fwd_deps, rec_updated_fwd_deps)
+                    # It is noted that the merge between the current and the recursively created
+                    # mappings cannot lead to conflict (i.e. a key is present in more than one mapping),
+                    # because RAPTOR itineraries (paths) do not contain cycles
+                    updated_fwd_deps = ChainMap(updated_fwd_deps, rec_updated_fwd_deps)
 
         # Return the computed fwd updates
         return updated_fwd_deps
@@ -522,7 +524,7 @@ class BaseSharedMobRaptor(BaseRaptorAlgorithm[_LabelType, _BagType], ABC):
 
         # Only cap rounds if max_rounds != -1
         k = 1
-        while (len(marked_stops) > 0
+        while (max_rounds == -1
                or (k <= max_rounds and max_rounds != -1)):
             logger.info(f"Analyzing possibilities at round {k}")
             logger.debug(f"Marked stops to evaluate: {len(marked_stops)}")
