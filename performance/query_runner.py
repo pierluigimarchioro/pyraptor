@@ -165,7 +165,7 @@ def run_timetable_configuration(timetables_dir: str, output_dir: str, timetable_
             }
             runner_results.append(result)
 
-    # TODO timetable_id is not sanitized
+    # timetable_id is not sanitized, but it is not much of a problem in this case
     output_file = os.path.join(output_dir, f"{timetable_id}_{OUT_FILENAME}")
     logger.info(f"Runner execution terminated. Saving output to {output_file}")
 
@@ -421,17 +421,47 @@ def generate_queries(query_settings: Mapping, timetable: RaptorTimetable) -> Seq
         # Total number of random queries to generate
         total_number = query_settings["number"]
 
+        # TODO another strat is to generate all the possible stop pairs preemptively,
+        #   and then randomly choose from that set. It is safer than the current approach
+        #   because now we can get stuck in a loop
+
         all_stops = timetable.stops
-        for i in range(total_number):
-            logger.debug(f"Generating random query #{i} of {total_number}")
+        chosen_sources = set()
+        chosen_dests = set()
+        while len(queries) < total_number:
+            logger.debug(f"Generating random query #{len(queries)} of {total_number}")
 
             # Get two random stops whose distance from each other is in the valid range
-            origin_stop: Stop = all_stops.set_index[rnd.randint(0, len(all_stops) - 1)]
-            dest_stop: Stop = all_stops.set_index[rnd.randint(0, len(all_stops) - 1)]
+            origin_stop_idx = rnd.randint(0, len(all_stops) - 1)
+            origin_stop: Stop = all_stops.set_index[origin_stop_idx]
+            while origin_stop in chosen_sources:
+                origin_stop_idx += 1
+                origin_stop = all_stops.set_index[origin_stop_idx]
 
+            # Save the generated random index to sequentially
+            # iterate on stops until a suitable one is found
+            # The original index is kept too: if a round trip is made,
+            # no more suitable stops exist, which means that the source has to be discarded
+            dest_stop_idx = rnd.randint(0, len(all_stops) - 1)
+            original_dest_stop_idx = dest_stop_idx
+            did_round_trip: bool = False
+
+            dest_stop: Stop = all_stops.set_index[rnd.randint(0, len(all_stops) - 1)]
             while (origin_stop == dest_stop
-                   or not (min_distance <= Stop.stop_distance(origin_stop, dest_stop) <= max_distance)):
-                dest_stop = all_stops.set_index[rnd.randint(0, len(all_stops) - 1)]
+                   or not (min_distance <= Stop.stop_distance(origin_stop, dest_stop) <= max_distance)
+                   or dest_stop in chosen_dests):
+                dest_stop_idx = (dest_stop_idx + 1) % len(all_stops)
+
+                # A round trip is made: choose another source stop
+                if dest_stop_idx == original_dest_stop_idx:
+                    did_round_trip = True
+                    break
+
+                dest_stop = all_stops.set_index[dest_stop_idx]
+
+            # New iteration of the while loop: choose another source stop
+            if did_round_trip:
+                continue
 
             # Generate random query time in the provided range
             query_hour = rnd.randint(min_hour, max_hour)
@@ -440,6 +470,9 @@ def generate_queries(query_settings: Mapping, timetable: RaptorTimetable) -> Seq
             query = Query(origin=origin_stop.name, destination=dest_stop.name, dep_time=query_time)
             queries.append(query)
             logger.debug(f"Query generated: {query}")
+
+            chosen_sources.add(origin_stop)
+            chosen_dests.add(dest_stop)
     else:
         logger.info(f"Using provided queries...")
         for q_obj in query_settings["queries"]:
