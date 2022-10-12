@@ -15,7 +15,7 @@ from pyraptor.model.algos.base import SharedMobilityConfig
 from pyraptor.model.algos.raptor import RaptorAlgorithm
 from pyraptor.model.algos.gc_raptor import GeneralizedCostRaptor
 from pyraptor.model.criteria import MultiCriteriaLabel, FileCriteriaProvider, CriteriaProvider, ParetoBag
-from pyraptor.model.output import AlgorithmOutput, get_journeys_to_destinations
+from pyraptor.model.output import AlgorithmOutput, get_journeys_to_destinations, Journey, Leg
 from pyraptor.model.shared_mobility import RaptorTimetableSM
 from pyraptor.model.timetable import RaptorTimetable, Stop, TransportType
 from pyraptor.timetable.io import read_timetable
@@ -56,6 +56,7 @@ def query_raptor(
     :param destination_station: name of the station to arrive at
     :param departure_time: departure time in the format %H:%M:%S
     :param rounds: number of iterations to perform
+    :param enable_fwd_deps: if True, the Forward Dependencies Heuristic is enabled
     :param criteria_provider: provider of parameterized criteria for multi-criteria variants
     :param enable_sm: if True, shared mobility data is included in the itinerary computation.
         If False, provided shared mob data is ignored
@@ -136,6 +137,26 @@ def query_raptor(
 
     if len(destination_journeys) == 0:
         logger.warning(f"No valid journeys found for destination `{destination_station}`")
+
+        # TODO this is a "hack" to get the cost of the destination label
+        #   in the query runner a Journey object is only used for the total_cost() property
+        dest_stop = next(filter(lambda s: s.name == destination_station, timetable.stops), None)
+
+        if len(best_bags[dest_stop].labels) != 0:
+            dest_label = best_bags[dest_stop].labels[0]
+            destination_journeys.append(
+                Journey(
+                    legs=[
+                        Leg(
+                            from_stop=dest_label.boarding_stop,
+                            to_stop=dest_stop,
+                            trip=dest_label.trip,
+                            criteria=dest_label.criteria
+                        )
+                    ]
+                ))
+        else:
+            logger.warning("Destination is TRULY unreachable")
     else:
         for j in destination_journeys:
             j.print()
@@ -365,7 +386,6 @@ def _parse_arguments():
 
 
 if __name__ == "__main__":
-
     args = _parse_arguments()
 
     cached_timetable = _load_timetable(input_folder=args.input, enable_sm=args.enable_sm)
