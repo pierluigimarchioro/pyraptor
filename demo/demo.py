@@ -14,7 +14,6 @@ from loguru import logger
 
 from pyraptor.model.shared_mobility import RaptorTimetableSM
 from pyraptor.timetable.io import read_timetable
-from pyraptor.timetable.timetable import SHARED_MOB_TIMETABLE_FILENAME, TIMETABLE_FILENAME
 from pyraptor.model.criteria import (
     CriteriaProvider,
     ArrivalTimeCriterion,
@@ -291,16 +290,8 @@ def wmc_raptor_run():
 
 
 def visualize(algo_output: AlgorithmOutput, algo_output_dir: str, open_browser: bool = True):
-    algo_out_path = path.join(algo_output_dir, ALGO_OUTPUT_FILENAME)
-
-    # TODO refactor the visualization script to accept AlgorithmOutput instance as arg
-    AlgorithmOutput.save(
-        algo_output=algo_output,
-        output_dir=algo_output_dir
-    )
-
     visualize_output(
-        algo_output_path=algo_out_path,
+        algo_output=algo_output,
         visualization_dir=algo_output_dir,
         open_browser=open_browser
     )
