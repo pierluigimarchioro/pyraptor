@@ -74,18 +74,20 @@ class Graph:
                     all_durations.append(durations[n])
                     tot_duration = tot_duration + durations[n]
                     n = parents[n]
-
                 path_step.reverse()
-                path_found.append(self.timetable.stops.get_stop(start).name)
                 path_found.reverse()
-                times.append(curr_time[start])
                 times.reverse()
-                all_durations.append(durations[n])
                 all_durations.reverse()
                 tot_duration = tot_duration + durations[start]
 
                 print('Path found:')
-                for s, t, d in zip(path_found, times, all_durations):
+                print('Stop: {} - Arrival time: {} - Duration: {}'.format(self.timetable.stops.get_stop(start).name,
+                                                                          sec2str(curr_time[start]),
+                                                                          sec2str(durations[n])))
+                for s, t, d, m in zip(path_found, times, all_durations, path_step):
+                    print('---- dep time: {} - type: {} - route: {} ----'.format(
+                        sec2str(m.departure_time) if self.is_int(m.departure_time) else m.departure_time,
+                        m.transport_type, m.route_id))
                     print('Stop: {} - Arrival time: {} - Duration: {}'.format(s, sec2str(t), sec2str(d)))
                 print('total duration: ', sec2str(tot_duration))
 
@@ -95,41 +97,38 @@ class Graph:
 
             # for all the neighbors of the current node do
             for step in self.get_neighbors(n):
-                # if n == "A_11018" and step.stop_to.name == "MILANO BOVISA FNM":
-                #     print("time found")
-
+                # check if departure time is after arrival time at the current stop or it wouldn't make sense
                 if not self.is_int(step.departure_time) or curr_time[n] <= step.departure_time:
+
+                    if self.is_int(step.arrive_time):  # check if it’s a footpath
+                        tmpcurrtime = step.arrive_time
+                        tmpduration = step.duration + (step.departure_time - curr_time[n])
+                    else:
+                        tmpcurrtime = curr_time[n] + step.duration
+                        tmpduration = step.duration
 
                     # if the current node is not present in both open_lst and closed_lst
                     # add it to open_lst and note n as it's parents
                     if step.stop_to.id not in open_lst and step.stop_to.id not in closed_lst:
-                        open_lst.add(step.stop_to.id)
-
-                        if self.is_int(step.arrive_time):  # this cover all hours and waiting time
-                            curr_time[step.stop_to.id] = step.arrive_time  # old: curr_time[n] + step.duration
-                            durations[step.stop_to.id] = step.duration + (step.departure_time - curr_time[n])
-                        else:
-                            curr_time[step.stop_to.id] = curr_time[n] + step.duration
-                            durations[step.stop_to.id] = step.duration
+                        curr_time[step.stop_to.id] = tmpcurrtime
+                        durations[step.stop_to.id] = tmpduration
                         parents[step.stop_to.id] = n
                         all_step[step.stop_to.id] = step
+
+                        open_lst.add(step.stop_to.id)
 
                     # otherwise, check if it's quicker to first visit n, than step
                     # and if it is, update parents data and curr_dist data
                     # and if the node was in the closed_lst, move it to open_lst
                     else:
                         if (self.is_int(step.arrive_time) and curr_time[step.stop_to.id] > step.arrive_time) \
-                                or (not self.is_int(step.arrive_time) and curr_time[step.stop_to.id] > curr_time[n] + step.duration):
+                                or (not self.is_int(step.arrive_time)
+                                    and curr_time[step.stop_to.id] > curr_time[n] + step.duration):
 
-                            if self.is_int(step.arrive_time):
-                                curr_time[step.stop_to.id] = step.arrive_time
-                                durations[step.stop_to.id] = step.duration + (step.departure_time - curr_time[n])
-                            else:
-                                curr_time[step.stop_to.id] = curr_time[n] + step.duration
-                                durations[step.stop_to.id] = step.duration
+                            curr_time[step.stop_to.id] = tmpcurrtime
+                            durations[step.stop_to.id] = tmpduration
                             parents[step.stop_to.id] = n
                             all_step[step.stop_to.id] = step
-                            # todo consider to make a method instead of these 2 blocks of the same code
 
                             if step.stop_to.id in closed_lst:
                                 open_lst.add(step.stop_to.id)
