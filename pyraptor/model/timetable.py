@@ -99,10 +99,10 @@ class Stop:
     """Stop"""
 
     id = attr.ib(default=None)
-    name = attr.ib(default=None)
+    name: str = attr.ib(default=None)
     station: Station = attr.ib(default=None)
-    platform_code = attr.ib(default=None)
-    index = attr.ib(default=None)
+    platform_code: int = attr.ib(default=None)
+    index: int = attr.ib(default=None)
     geo: Coordinates = attr.ib(default=None)
 
     def __hash__(self):
@@ -140,7 +140,7 @@ class Stops(Generic[_Stop]):
     def __repr__(self):
         return f"Stops(n_stops={len(self.set_idx)})"
 
-    def __getitem__(self, stop_id):
+    def __getitem__(self, stop_id: str | Any) -> Stop:
         return self.set_idx[stop_id]
 
     def __len__(self):
@@ -149,14 +149,14 @@ class Stops(Generic[_Stop]):
     def __iter__(self):
         return iter(self.set_idx.values())
 
-    def get_stop(self, stop_id) -> _Stop:
+    def get_stop(self, stop_id: str | Any) -> _Stop:
         """Get stop"""
         if stop_id not in self.set_idx:
             raise ValueError(f"Stop ID {stop_id} not present in Stops")
         stop: _Stop = self.set_idx[stop_id]
         return stop
 
-    def get_by_index(self, stop_index) -> _Stop:
+    def get_by_index(self, stop_index: int) -> _Stop:
         """Get stop by index"""
         return self.set_index[stop_index]
 

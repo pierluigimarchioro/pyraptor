@@ -7,12 +7,15 @@ It computes journeys with different:
 from __future__ import annotations
 
 import argparse
+import copy
 import json
 import os.path
+import random
 import random as rnd
 import shutil
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
+from statistics import mean
 from typing import Dict, List, Type, Tuple
 from zipfile import ZipFile
 
@@ -39,8 +42,6 @@ from pyraptor.util import mkdir_if_not_exists
 OUT_FILENAME = "runner_out.csv"  # output file with performance info
 
 
-# TODO define some classes for the configuration objects (e.g. timetable config, raptor config)
-#   tp facilitate dependency injection
 # TODO would be useful to test this runner with different GTFS to see where the timetable generation
 #   procedure fails/lacks the proper checks
 #   GTFS candidates:
@@ -411,7 +412,7 @@ def generate_queries(query_settings: Mapping, timetable: RaptorTimetable) -> Seq
     :return: sequence of queries
     """
 
-    queries: List[Query] = []
+    generated_queries: List[Query] = []
 
     # If True, generate random queries
     # if False, consider the queries in the field "queries"
@@ -428,69 +429,63 @@ def generate_queries(query_settings: Mapping, timetable: RaptorTimetable) -> Seq
         max_hour = query_settings["max_hour"]
 
         # Total number of random queries to generate
-        total_number = query_settings["number"]
+        n_to_generate = query_settings["number"]
 
-        # TODO another strat is to generate all the possible stop pairs preemptively,
-        #   and then randomly choose from that set. It is safer than the current approach
-        #   because now we can get stuck in a loop
+        # Shuffle the stops collection to randomize the order of the stop pairs
+        all_origins = list(timetable.stops.set_idx.values())
+        all_dests = copy.copy(all_origins)
+        random.shuffle(all_origins)
+        random.shuffle(all_dests)
 
-        all_stops = timetable.stops
-        chosen_sources = set()
-        chosen_dests = set()
-        while len(queries) < total_number:
-            logger.debug(f"Generating random query #{len(queries)} of {total_number}")
+        # Find stop pairs by trying to find a suitable destination for each stop
+        origin_idx = 0
+        dest_idx = 1
+        while len(generated_queries) <= n_to_generate and origin_idx < len(all_origins):
+            logger.debug(f"Generating random query #{len(generated_queries)} of {n_to_generate}")
 
-            # Get two random stops whose distance from each other is in the valid range
-            origin_stop_idx = rnd.randint(0, len(all_stops) - 1)
-            origin_stop: Stop = all_stops.set_index[origin_stop_idx]
-            while origin_stop in chosen_sources:
-                origin_stop_idx += 1
-                origin_stop = all_stops.set_index[origin_stop_idx]
+            origin_stop: Stop = all_origins[origin_idx]
+            dest_stop: Stop | None = None
 
-            # Save the generated random index to sequentially
-            # iterate on stops until a suitable one is found
-            # The original index is kept too: if a round trip is made,
-            # no more suitable stops exist, which means that the source has to be discarded
-            dest_stop_idx = rnd.randint(0, len(all_stops) - 1)
-            original_dest_stop_idx = dest_stop_idx
-            did_round_trip: bool = False
+            while dest_idx < len(all_origins):
+                if (dest_stop is not None
+                        and min_distance <= Stop.stop_distance(origin_stop, dest_stop) <= max_distance):
+                    # Generate random query time in the provided range
+                    query_hour = rnd.randint(min_hour, max_hour)
+                    query_time = f"{query_hour}:00:00"
 
-            dest_stop: Stop = all_stops.set_index[rnd.randint(0, len(all_stops) - 1)]
-            while (origin_stop == dest_stop
-                   or not (min_distance <= Stop.stop_distance(origin_stop, dest_stop) <= max_distance)
-                   or dest_stop in chosen_dests):
-                dest_stop_idx = (dest_stop_idx + 1) % len(all_stops)
+                    query = Query(origin=origin_stop.name, destination=dest_stop.name, dep_time=query_time)
+                    generated_queries.append(query)
 
-                # A round trip is made: choose another source stop
-                if dest_stop_idx == original_dest_stop_idx:
-                    did_round_trip = True
+                    logger.debug(f"Query generated: {query}")
+
+                    # Stop pair with current origin generated, now move to new origin
                     break
+                else:
+                    dest_stop: Stop = all_origins[dest_idx]
+                    dest_idx += 1
 
-                dest_stop = all_stops.set_index[dest_stop_idx]
+            # Reset destination index and move forward with origin index
+            dest_idx = 0
+            origin_idx += 1
 
-            # New iteration of the while loop: choose another source stop
-            if did_round_trip:
-                continue
+            # Re-shuffle destinations
+            # Without this, if (A, B) are matched, another stop C close to A will also be matched with B.
+            # If destinations are randomized everytime, however, it is easier to find another stop != C.
+            random.shuffle(all_dests)
 
-            # Generate random query time in the provided range
-            query_hour = rnd.randint(min_hour, max_hour)
-            query_time = f"{query_hour}:00:00"
-
-            query = Query(origin=origin_stop.name, destination=dest_stop.name, dep_time=query_time)
-            queries.append(query)
-            logger.debug(f"Query generated: {query}")
-
-            chosen_sources.add(origin_stop)
-            chosen_dests.add(dest_stop)
+        if len(generated_queries) < n_to_generate:
+            raise Exception(f"The timetable does not have enough stops pairs"
+                            f"whose distance is in the provided interval [{min_distance}, {max_distance}]."
+                            f"Pairs found: {len(generated_queries)}")
     else:
         logger.info(f"Using provided queries...")
         for q_obj in query_settings["queries"]:
             query = Query(origin=q_obj["from"], destination=q_obj["to"], dep_time=q_obj["at"])
-            queries.append(query)
+            generated_queries.append(query)
 
             logger.debug(f"Query generated: {query}")
 
-    return queries
+    return generated_queries
 
 
 def run_raptor_config(
@@ -500,7 +495,6 @@ def run_raptor_config(
         max_rounds: int
 ) -> Tuple[float, float]:
     """
-    R
     :param raptor_config: RAPTOR run configuration, i.e. a "raptor_configs" object
         in the runner_config.json file
     :param timetable: RAPTOR timetable
@@ -551,9 +545,9 @@ def run_raptor_config(
             or len(algo_output.journeys) == 0):
         journey_cost = -1
     else:
-        # TODO as of now, algorithms output just one journey.
-        #  How to handle in case multiple ones are produced? Average?
-        journey_cost = algo_output.journeys[0].total_cost()
+        # Compute the average cost since there can be more than one journey
+        costs = [j.total_cost() for j in algo_output.journeys]
+        journey_cost = mean(costs)
 
     return query_time, journey_cost
 
