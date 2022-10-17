@@ -39,9 +39,7 @@ from pyraptor.model.criteria import (
 
 
 # TODO Future refactoring:
-#   - rename to GeneralizedCostRaptor (rename all the routes in demo.py too)
 #   - make use only of single MultiCriteriaLabel, no bags
-#   - enable_fwd_deps parameter in run method -> add fwd deps heuristic in base.py
 class GeneralizedCostRaptor(BaseSharedMobRaptor[GeneralizedCostLabel, GeneralizedCostBag]):
     """
     Implementation of the More Criteria RAPTOR Algorithm discussed in the original RAPTOR paper,
@@ -81,7 +79,8 @@ class GeneralizedCostRaptor(BaseSharedMobRaptor[GeneralizedCostLabel, Generalize
     def _initialization(
             self,
             from_stops: Iterable[Stop],
-            dep_secs: int) -> List[Stop]:
+            dep_secs: int
+    ) -> List[Stop]:
 
         # Initialize Round 0 with empty bags.
         # Following rounds are initialized by copying the previous one

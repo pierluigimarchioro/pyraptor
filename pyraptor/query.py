@@ -391,8 +391,6 @@ if __name__ == "__main__":
     cached_timetable = _load_timetable(input_folder=args.input, enable_sm=args.enable_sm)
     file_criteria_provider = FileCriteriaProvider(criteria_config_path=args.mc_config)
 
-    # TODO refactor to delegate stuff like reading files to the outside, i.e.
-    #   - do not pass output_folder and instead return AlgorithmOutput
     elapsed_time, algo_output = query_raptor(
         variant=args.variant,
         timetable=cached_timetable,

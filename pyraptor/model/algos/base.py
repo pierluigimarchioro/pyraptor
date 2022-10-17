@@ -580,7 +580,6 @@ class BaseSharedMobRaptor(BaseRaptorAlgorithm[_LabelType, _BagType], ABC):
 
             k += 1
 
-        # TODO k-1 instead of max_rounds?
         return self.round_stop_bags[max_rounds]
 
     def _initialize_shared_mob(self, origin_stops: Sequence[Stop]):
