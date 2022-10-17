@@ -687,11 +687,14 @@ class GeneralizedCostCriterion(Criterion):
 @dataclass(frozen=True)
 class Bag(ABC, Generic[_LabelType]):
     """
-    Abstract class that defines a bag of labels associated to some stop.
+    Abstract class that defines a bag (collection) of labels associated to some stop.
     """
 
     labels: List[_LabelType] = field(default_factory=list)
-    updated: bool = False
+    """Collection of labels associated to this bag"""
+
+    improved: bool = False
+    """True if this bag was created after a merging that brought some improvements"""
 
     def __len__(self):
         return len(self.labels)
@@ -700,12 +703,14 @@ class Bag(ABC, Generic[_LabelType]):
         return f"Bag({self.labels})"
 
     @abstractmethod
-    def update(self, with_labels: List[_LabelType]) -> Bag:
+    def merge(self, with_labels: List[_LabelType]) -> Bag:
         """
-        Returns a new bag instance updated with the provided labels
-        :param with_labels: labels to merge with
-        """
+        Returns a new bag instance updated with the provided labels.
 
+        :param with_labels: labels to merge with
+        :return: bag that contains only the best labels between the
+            ones provided and the ones in the current instance
+        """
         pass
 
 
@@ -714,7 +719,7 @@ class EarliestArrivalTimeBag(Bag[EarliestArrivalTimeLabel]):
     Label Bag used in Earliest Arrival Time RAPTOR
     """
 
-    def update(self, with_labels: List[EarliestArrivalTimeLabel]) -> EarliestArrivalTimeBag:
+    def merge(self, with_labels: List[EarliestArrivalTimeLabel]) -> EarliestArrivalTimeBag:
         """
         Returns an updated bag containing the label with the best arrival time
 
@@ -733,56 +738,61 @@ class GeneralizedCostBag(Bag[GeneralizedCostLabel]):
     Label Bag used in Generalized Cost RAPTOR
     """
 
-    def update(self, with_labels: List[GeneralizedCostLabel]) -> GeneralizedCostBag:
+    def merge(self, with_labels: List[GeneralizedCostLabel]) -> GeneralizedCostBag:
         """
         Returns an updated bag containing the label with the lowest generalized cost
 
         :param with_labels: labels to update the bag with
         :return:
         """
+
         if len(with_labels) == 0 and len(self.labels) == 0:
-            return GeneralizedCostBag(updated=False)
+            return GeneralizedCostBag(improved=False)
 
         prev_best = (
             None
             if len(self.labels) == 0
-            else list(sorted(self.labels, key=lambda lbl: lbl.generalized_cost))[0]
+            else min(self.labels, key=lambda lbl: lbl.generalized_cost)
         )
-        best_label = list(sorted(self.labels + with_labels, key=lambda lbl: lbl.generalized_cost))[0]
+        best_label = min(self.labels + with_labels, key=lambda lbl: lbl.generalized_cost)
 
-        # TODO proper update check?
         was_improved = prev_best != best_label
-        return GeneralizedCostBag(labels=[best_label], updated=was_improved)
+        return GeneralizedCostBag(labels=[best_label], improved=was_improved)
 
 
 @dataclass(frozen=True)
 class ParetoBag(Bag[MultiCriteriaLabel]):
     """
-    Class that represents a Pareto-set of labels
+    Class that represents a Pareto-set of labels, i.e. a set of pair-wise non-dominating labels,
+    where no label is worse than any other in at least one criterion
     """
+    # TODO this class is currently not used, but will be when McRaptor will be implemented again.
+    #   Remember to check if all the methods are useful/properly implemented
 
     def __repr__(self):
-        return f"ParetoBag({self.labels}, updated={self.updated})"
+        return f"ParetoBag({self.labels}, updated={self.improved})"
 
     def add(self, label: MultiCriteriaLabel):
         """Add"""
+
         self.labels.append(label)
 
-    def update(self, with_labels: List[MultiCriteriaLabel]) -> ParetoBag:
-        """Merge other bag in current bag and return updated Bag"""
-
+    def merge(self, with_labels: List[MultiCriteriaLabel]) -> ParetoBag:
         pareto_labels = self.labels + with_labels
 
         if len(pareto_labels) == 0:
-            return ParetoBag(labels=[], updated=False)
+            return ParetoBag(labels=[], improved=False)
 
         pareto_labels = pareto_set(pareto_labels)
         bag_update = True if pareto_labels != self.labels else False
 
-        return ParetoBag(labels=pareto_labels, updated=bag_update)
+        return ParetoBag(labels=pareto_labels, improved=bag_update)
 
     def labels_with_trip(self):
-        """All labels with trips, i.e. all labels that are reachable with a trip with given criterion"""
+        """
+        All labels with trips, i.e. all labels that are reachable with a trip with given criterion
+        """
+
         return [lbl for lbl in self.labels if lbl.trip is not None]
 
 
@@ -795,36 +805,35 @@ def pareto_set(labels: List[MultiCriteriaLabel], keep_equal=False):
     :return: list with pairwise non-dominating labels
     """
 
-    # TODO refactor by implementing leq, geq, eq with is_dominating?
-    is_efficient = np.ones(len(labels), dtype=bool)
-    label_criteria = np.array([label.criteria for label in labels])
-    for i, criteria in enumerate(label_criteria):
-        if is_efficient[i]:
-            # Keep any point with a lower cost
+    best_mask = np.ones(len(labels), dtype=bool)
+    all_labels_criteria = np.array([label.criteria for label in labels])
+    for current_lbl_idx, criteria in enumerate(all_labels_criteria):
+        if best_mask[current_lbl_idx]:
+            # Here the sets of criteria of each label are compared with all the others
+            # This is strict domination, where at least one criterion must be better for
+            #   a label to be considered dominating (not the `np.any` and the strict `<`)
+            # `keep_equal` option also keeps labels with an equal set of criteria
             if keep_equal:
-                # keep point with all labels equal or one lower
-                # Note: list1 < list2 determines if list1 is smaller than list2
-                #   based on lexicographic ordering
-                #   (i.e. the smaller list is the one with the smaller leftmost element)
-                is_efficient[is_efficient] = np.any(
-                    label_criteria[is_efficient] < criteria, axis=1
-                ) + np.all(label_criteria[is_efficient] == criteria, axis=1)
+                best_mask[best_mask] = np.any(
+                    all_labels_criteria[best_mask] < criteria, axis=1
+                ) + np.all(all_labels_criteria[best_mask] == criteria, axis=1)
 
             else:
-                is_efficient[is_efficient] = np.any(
-                    label_criteria[is_efficient] < criteria, axis=1
+                best_mask[best_mask] = np.any(
+                    all_labels_criteria[best_mask] < criteria, axis=1
                 )
 
-            is_efficient[i] = True  # And keep self
+            # Keep the label that has been compared with all the others
+            best_mask[current_lbl_idx] = True
 
-    return list(compress(labels, is_efficient))
+    return list(compress(labels, best_mask))
 
 
 @dataclass
 class CriterionConfiguration:
     """
     Class that represents the configuration for some criterion.
-    It defines weight and upper_bound parameters
+    It defines weight and upper_bound parameters.
     """
 
     weight: float

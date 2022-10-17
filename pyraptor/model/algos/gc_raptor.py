@@ -18,7 +18,7 @@ from typing import List, Tuple, Dict
 
 from loguru import logger
 
-from pyraptor.model.algos.base import BaseSharedMobRaptor, SharedMobilityConfig
+from pyraptor.model.algos.base import BaseRaptor, SharedMobilityConfig
 from pyraptor.model.shared_mobility import RaptorTimetableSM
 from pyraptor.model.timetable import (
     Stop,
@@ -38,9 +38,7 @@ from pyraptor.model.criteria import (
 )
 
 
-# TODO Future refactoring:
-#   - make use only of single MultiCriteriaLabel, no bags
-class GeneralizedCostRaptor(BaseSharedMobRaptor[GeneralizedCostLabel, GeneralizedCostBag]):
+class GeneralizedCostRaptor(BaseRaptor[GeneralizedCostLabel]):
     """
     Implementation of the More Criteria RAPTOR Algorithm discussed in the original RAPTOR paper,
     with some modifications and improvements:
@@ -182,11 +180,11 @@ class GeneralizedCostRaptor(BaseSharedMobRaptor[GeneralizedCostLabel, Generalize
                 #   This is why B_k(p) is used instead.
                 current_round_stop_bag = self.round_stop_bags[k][current_stop]
                 if len(current_round_stop_bag.labels) > 0:
-                    route_bag = route_bag.update(with_labels=self.round_stop_bags[k][current_stop].labels)
+                    route_bag = route_bag.merge(with_labels=self.round_stop_bags[k][current_stop].labels)
                 else:
                     # This happens if the current stop hasn't been visited in the current round
                     # (it has an empty bag): in this case, we take the results of the prev round
-                    route_bag = route_bag.update(with_labels=self.round_stop_bags[k - 1][current_stop].labels)
+                    route_bag = route_bag.merge(with_labels=self.round_stop_bags[k - 1][current_stop].labels)
 
                 # Assign the earliest boardable trips to all the labels in the route_bag
                 updated_labels = []
@@ -271,7 +269,7 @@ class GeneralizedCostRaptor(BaseSharedMobRaptor[GeneralizedCostLabel, Generalize
 
                     # TODO old
                     # temp_bag.add(label)
-                    temp_bag = temp_bag.update(with_labels=[label])
+                    temp_bag = temp_bag.merge(with_labels=[label])
 
                 # Merge temp bag into B_k(p_j)
                 self._update_stop(

@@ -5,14 +5,14 @@ from typing import List, Tuple, Set, Dict
 
 from loguru import logger
 
-from pyraptor.model.algos.base import BaseSharedMobRaptor
+from pyraptor.model.algos.base import BaseRaptor
 from pyraptor.model.timetable import Transfers
 from pyraptor.model.timetable import Stop, Route, TransferTrip
 from pyraptor.model.criteria import EarliestArrivalTimeLabel, EarliestArrivalTimeBag, LabelUpdate
 from pyraptor.util import LARGE_NUMBER
 
 
-class RaptorAlgorithm(BaseSharedMobRaptor[EarliestArrivalTimeLabel, EarliestArrivalTimeBag]):
+class RaptorAlgorithm(BaseRaptor[EarliestArrivalTimeLabel]):
     """
     Implementation of the basic RAPTOR algorithm, with some improvements:
         - transfers from the origin stops are evaluated immediately to widen

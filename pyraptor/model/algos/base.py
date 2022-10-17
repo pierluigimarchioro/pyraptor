@@ -19,28 +19,41 @@ from pyraptor.model.shared_mobility import (
     TRANSPORT_TYPE_SPEEDS, RaptorTimetableSM)
 from pyraptor.model.timetable import RaptorTimetable, Route, Stop, TransportType, Transfer, TransferTrip
 
-_BagType = TypeVar("_BagType", bound=Bag)  # TODO Bind to some LabelBag Interface
-"""Type of the bag of labels assigned to each stop by the RAPTOR algorithm"""
-
 _LabelType = TypeVar("_LabelType", bound=BaseLabel)
 """Type of the label used by the RAPTOR algorithm"""
 
 
-# TODO merge this and BaseSMRaptor into one class?
-class BaseRaptorAlgorithm(ABC, Generic[_LabelType, _BagType]):
+@dataclass(frozen=True)
+class SharedMobilityConfig:
+    preferred_vehicle: TransportType
+    """Preferred vehicle type for shared mob transport"""
+
+    enable_car: bool
+    """If True, car transport is enabled"""
+
+
+class BaseRaptor(ABC, Generic[_LabelType]):
     """
     Base class that defines the structure of RAPTOR algorithm implementations.
 
-    It also provides some improvements over the original algorithm
-    described in the RAPTOR paper:
+    When compared to the original RAPTOR discussed in the homonymous paper
+    (https://www.microsoft.com/en-us/research/wp-content/uploads/2012/01/raptor_alenex.pdf),
+    it provides some additional functionalities, namely:
+
     - transfers from the origin stops are evaluated immediately to widen
         the set of reachable stops before the first round is executed
+    - shared-mobility stations, based on real-time GBFS feeds, can be evaluated as part
+        of the itinerary search (option has to be enabled)
+    - a heuristic that improves computation times in most multi-criteria scenarios
+        can be enabled (Forward Dependencies Heuristic)
     """
 
-    timetable: RaptorTimetable
-    """RAPTOR timetable, containing stops, routes, trips and transfers data"""
+    timetable: RaptorTimetable | RaptorTimetableSM
+    """RAPTOR timetable, containing stops, routes, trips and transfers data. 
+    It could also contain shared mobility data, which will be used by the algorithm
+    only if the related option is enabled"""
 
-    round_stop_bags: Dict[int, Dict[Stop, _BagType]]
+    round_stop_bags: Dict[int, Dict[Stop, Bag[_LabelType]]]
     """Dictionary that keeps the stop-bag associations 
     created in each round of the algorithm"""
 
@@ -52,20 +65,67 @@ class BaseRaptorAlgorithm(ABC, Generic[_LabelType, _BagType]):
     For example, in a journey x1, x2, ..., xn, stop x2 depends on
     stop x1 because it comes later, hence the name 'forward' dependency"""
 
-    def __init__(self, timetable: RaptorTimetable, enable_fwd_deps_heuristic: bool = True):
+    enable_sm: bool
+    """If True, shared mobility data is included in the itinerary computation"""
+
+    sm_config: SharedMobilityConfig
+    """Shared mobility configuration data. Ignored if `enable_sm` is False."""
+
+    visited_renting_stations: List[RentingStation]
+    """List containing all the renting stations visited during the computation"""
+
+    no_source: List[RentingStation]
+    """List of renting stations not available as source"""
+
+    no_dest: List[RentingStation]
+    """List of renting stations not available as destination"""
+
+    vehicle_transfers: VehicleTransfers
+    """Collection of vehicle transfers between visited renting stations,
+    populated during the computation"""
+
+    def __init__(
+            self,
+            timetable: RaptorTimetable | RaptorTimetableSM,
+            enable_fwd_deps_heuristic: bool = True,
+            enable_sm: bool = False,
+            sm_config: SharedMobilityConfig = None
+    ):
+        """
+        :param timetable: RAPTOR timetable
+        :param enable_fwd_deps_heuristic: if True, the algorithm makes use
+            of the forward dependencies heuristic
+        :param enable_sm: if True, shared mobility data is included in the itinerary computation.
+            If False, any provided shared mobility data is ignored.
+        :param sm_config: shared mobility configuration data. Ignored if `enable_sm` is False.
+        """
+
         self.timetable = timetable
         self.round_stop_bags = {}
         self.enable_fwd_deps_heuristic = enable_fwd_deps_heuristic
 
-    @abstractmethod
+        # Shared Mobility attrs initialization
+        self.enable_sm = enable_sm
+
+        if enable_sm and not isinstance(timetable, RaptorTimetableSM):
+            raise ValueError("The provided timetable does not contain the necessary shared mobility data")
+
+        self.sm_config = sm_config
+        self.visited_renting_stations = []
+        self.no_source = []
+        self.no_dest = []
+        self.vehicle_transfers = VehicleTransfers()
+
     def run(
             self,
             from_stops: Iterable[Stop],
             dep_secs: int,
             max_rounds: int = -1
-    ) -> Mapping[Stop, _BagType]:
+    ) -> Mapping[Stop, Bag[_LabelType]]:
         """
-        Executes the round-based algorithm and returns the stop-label mappings, keyed by round.
+        Executes the RAPTOR algorithm and returns a map that pairs each stop with
+        a collection of labels, which contain the information about the best journey(s)
+        to reach said stops.
 
         :param from_stops: collection of stops to depart from
         :param dep_secs: departure time in seconds from midnight
@@ -81,6 +141,12 @@ class BaseRaptorAlgorithm(ABC, Generic[_LabelType, _BagType]):
             dep_secs=dep_secs
         )
 
+        # Setup shared mob data only if enabled
+        # Important to do this BEFORE calculating immediate transfers,
+        # else there is a possibility that available shared mob station won't be included
+        if self.enable_sm:
+            self._initialize_shared_mob(origin_stops=initial_marked_stops)
+
         # Get stops immediately reachable with a transfer
         # and add them to the marked stops list
         logger.debug("Computing transfers from origin stops")
@@ -89,6 +155,10 @@ class BaseRaptorAlgorithm(ABC, Generic[_LabelType, _BagType]):
             marked_stops=initial_marked_stops,
             transfers=self.timetable.transfers
         )
+
+        # Add any immediately reachable via transfer
+        if self.enable_sm:
+            self._update_visited_renting_stations(stops=immediately_reachable_stops)
 
         n_stops_1 = len(initial_marked_stops)  # debugging
         marked_stops = list(
@@ -111,14 +181,14 @@ class BaseRaptorAlgorithm(ABC, Generic[_LabelType, _BagType]):
             # Get (route, marked stop) pairs, where marked stop
             # is the first reachable stop of the route
             marked_route_stops = self._accumulate_routes(marked_stops)
-            logger.debug(f"{len(marked_route_stops)} routes to evaluate")
+            logger.debug(f"{len(marked_route_stops)} routes marked")
 
             # Update stop arrival times calculated basing on reachable stops
             trip_marked_stops = self._traverse_routes(
                 k=k,
                 marked_route_stops=marked_route_stops
             )
-            logger.debug(f"Marked {len(trip_marked_stops)} public transport improved stops")
+            logger.debug(f"{len(trip_marked_stops)} stops marked with public transport trips")
 
             # Improve arrival times with foot transfers starting from
             # the stops marked at the previous step
@@ -127,7 +197,21 @@ class BaseRaptorAlgorithm(ABC, Generic[_LabelType, _BagType]):
                 marked_stops=trip_marked_stops,
                 transfers=self.timetable.transfers
             )
-            logger.debug(f"Marked {len(transfer_marked_stops)} foot transfer improved stops")
+            logger.debug(f"{len(transfer_marked_stops)} stops marked with foot transfers")
+
+            if self.enable_sm:
+                # Mark stops that were improved with shared mob data
+                shared_mob_marked_stops = self._improve_with_sm_transfers(
+                    k=k,
+
+                    # Only transfer stops can be passed because shared mob stations
+                    # are reachable just by foot transfers
+                    marked_stops=transfer_marked_stops
+                )
+                logger.debug(f"{len(shared_mob_marked_stops)} stops improved with shared-mobility")
+
+                # Shared mob legs are a special kind of transfer legs
+                transfer_marked_stops = set(transfer_marked_stops).union(shared_mob_marked_stops)
 
             marked_stops = set(trip_marked_stops).union(transfer_marked_stops)
 
@@ -158,6 +242,56 @@ class BaseRaptorAlgorithm(ABC, Generic[_LabelType, _BagType]):
         """
         pass
 
+    def _initialize_shared_mob(self, origin_stops: Sequence[Stop]):
+        """
+        Executes shared mobility data initialization phase.
+
+        :param origin_stops: stops to depart from
+        """
+
+        # Download information about shared-mob stops availability
+        self._update_availability_info()
+        sm_feeds_info = [
+            f'{feed.system_id} ({[t.name for t in feed.transport_types]})'
+            for feed in self.timetable.shared_mobility_feeds
+        ]
+        logger.debug(f"Shared mobility feeds: {sm_feeds_info} ")
+        logger.debug(f"{len(self.no_source)} shared-mob stops not available as source: {self.no_source} ")
+        logger.debug(f"{len(self.no_dest)} shared-mob stops not available as destination: {self.no_dest} ")
+
+        # Mark any renting station to depart from as visited
+        self._update_visited_renting_stations(stops=origin_stops)
+
+        logger.debug(f"Starting from {len(origin_stops)} stops "
+                     f"({len(self.visited_renting_stations)} are renting stations)")
+
+    def _update_availability_info(self):
+        """
+        Updates shared-mob stations availability based on real-time information provided
+        by the shared-mob system feeds.
+        """
+
+        for feed in self.timetable.shared_mobility_feeds:
+            feed.renting_stations.update()
+
+        no_source_: List[List[RentingStation]] = [
+            feed.renting_stations.no_source for feed in
+            self.timetable.shared_mobility_feeds
+        ]
+        no_dest_: List[List[RentingStation]] = [
+            feed.renting_stations.no_destination for feed in
+            self.timetable.shared_mobility_feeds
+        ]
+
+        self.no_source: List[RentingStation] = [i for sub in no_source_ for i in sub]  # flatten
+        self.no_dest: List[RentingStation] = [i for sub in no_dest_ for i in sub]  # flatten
+
+    def _update_visited_renting_stations(self, stops: Iterable[Stop]):
+        for s in stops:
+            if (isinstance(s, RentingStation)
+                    and s not in self.visited_renting_stations):
+                self.visited_renting_stations.append(s)
+
     def _accumulate_routes(self, marked_stops: List[Stop]) -> List[Tuple[Route, Stop]]:
         """
         Generates a list of (R, S) pairs where:
@@ -183,8 +317,8 @@ class BaseRaptorAlgorithm(ABC, Generic[_LabelType, _BagType]):
                         > route.stop_index(marked_stop)
                 ):
                     marked_route_stops[route] = marked_stop
-        marked_route_stops = [(r, p) for r, p in marked_route_stops.items()]
 
+        marked_route_stops = [(r, p) for r, p in marked_route_stops.items()]
         return marked_route_stops
 
     @abstractmethod
@@ -234,383 +368,6 @@ class BaseRaptorAlgorithm(ABC, Generic[_LabelType, _BagType]):
 
         pass
 
-    def _update_stop(
-            self,
-            k: int,
-            stop_to_update: Stop,
-            update_with: List[_LabelType],
-            currently_marked_stops: Set[Stop]
-    ):
-        """
-        # TODO docs
-        :param k:
-        :param stop_to_update:
-        :param update_with:
-        :param currently_marked_stops:
-        :return:
-        """
-
-        updated_bag = self.round_stop_bags[k][stop_to_update].update(with_labels=update_with)
-
-        # Mark the stop if bag is updated and update the best label(s) for that stop
-        # Updated bag means that the current stop brought some improvements
-        if updated_bag.updated:
-            # Add the current stop to the forward dependencies of the new boarding stop
-            for lbl in updated_bag.labels:
-                self.stop_forward_dependencies[lbl.boarding_stop].append(stop_to_update)
-
-            # Remove the current stop from forward dependencies of the old boarding stop
-            old_bag = self.round_stop_bags[k][stop_to_update]
-            for old_lbl in old_bag.labels:
-                if old_lbl.boarding_stop is None:
-                    # First initialization of labels has boarding stop == None
-                    # In that case, skip
-                    continue
-                self.stop_forward_dependencies[old_lbl.boarding_stop].remove(stop_to_update)
-
-            # Update the bag of the current stop to update
-            self.round_stop_bags[k][stop_to_update] = updated_bag
-            currently_marked_stops.add(stop_to_update)
-
-            # Only run heuristic if enabled
-            if self.enable_fwd_deps_heuristic:
-                updated_fwd_dependencies = self._update_forward_dependencies(
-                    k=k,
-                    updated_stop=stop_to_update,
-                    updated_bag=updated_bag
-                )
-
-                # Now update all the bags of the stops dependent on the current one
-                # with what was previously calculated
-                for dep_stop, dep_labels in updated_fwd_dependencies.items():
-                    old_bag = self.round_stop_bags[k][dep_stop]
-                    self.round_stop_bags[k][dep_stop] = old_bag.update(with_labels=dep_labels.labels)
-
-    def _update_forward_dependencies(
-            self,
-            k: int,
-            updated_stop: Stop,
-            updated_bag: _BagType
-    ) -> MutableMapping[Stop, _BagType]:
-        """
-        # TODO sistemare docs
-        This step is needed because Weighted MC RAPTOR can't guarantee that temporal
-        dependencies between labels won't be broken by future updates to the labels:
-        since time is a criteria just like the others, it can be 0-weighted, which means
-        it won't be considered when dominating labels are identified. This also means
-        that a dominating label for a stop P at round X can worsen the arrival time for
-        said stop P at round X-1, therefore potentially breaking the time relationships
-        between stop and all the stops that depend on it (i.e. are visited later in the journey).
-
-        Example:
-        Given some stops X,Y and Z, at the end of round K you can arrive at Y from X at time T
-        and at Z from Y at time T+1.
-        At some point during the next round, then, it is found that there is a path
-        that improves the generalized cost of going from X to Y, but said path worsens the
-        arrival time at Y, from X, to T+2. This would mean that you could arrive at Z, from Y,
-        at time T+1, but the best (minimum cost) path to Y has an arrival time of T+2.
-        This is an absurd.
-
-        It is therefore necessary, when some label A is updated, to recursively update
-        all the labels that depend on A, i.e. that come later than A in an itinerary that contains A.
-        This forward dependencies update for A, so called because said labels, as aforementioned,
-        are a later part of the journey with respect to A, cannot however always be performed:
-        it might be that, at some point during the dependency updates, no available trips are
-        found after the new arrival time. This means that this process must resolve in
-        one of two ways:
-        1. If, at some point, it is found that there are no available paths, all the
-            dependency updates must be rolled back, and the original update must be discarded;
-        2. If the dependency updates are all successful, apply them and keep the original update.
-
-        :param k: current round
-        :param updated_stop: stop whose bag (labels) was updated and whose forward dependencies
-            must be updated
-        :param updated_bag: bag containing the updated labels
-        :return: tuple containing:
-            - a boolean that indicates if the update process was successful
-            - the updated forward dependencies if the update process was successful,
-                else an empty dictionary
-        """
-
-        updated_fwd_deps: MutableMapping[Stop, _BagType] = ChainMap()
-
-        for updated_label in updated_bag.labels:
-            fwd_dependent_stops: Iterable[Stop] = self.stop_forward_dependencies[updated_stop]
-
-            for fwd_dep_stop in fwd_dependent_stops:
-                # It is certain that a dependent stop has at least one label assigned to it:
-                # since it is dependent, it means that it has been reached by the algorithm
-                updated_fwd_dep_labels = []
-                old_fwd_dep_bag = self.round_stop_bags[k][fwd_dep_stop]
-                for fwd_dep_label in old_fwd_dep_bag.labels:
-                    if fwd_dep_label.trip is None:
-                        # TODO why can this happen?
-                        continue
-
-                    # Consider the trip of the dependent label: it is certain that
-                    # such trip contains both the updated stop (which acts as the boarding stop)
-                    # and the dependent stop (which acts as the arrival stop).
-                    if isinstance(fwd_dep_label.trip, TransferTrip):
-                        old_transfer_trip = fwd_dep_label.trip
-                        transfer_time = (
-                                old_transfer_trip.stop_times[1].dts_arr - old_transfer_trip.stop_times[0].dts_dep
-                        )
-
-                        new_arrival_time = updated_label.arrival_time + transfer_time
-                        new_transfer_trip = TransferTrip(
-                            from_stop=updated_stop,
-                            to_stop=fwd_dep_stop,
-                            dep_time=updated_label.arrival_time,
-                            arr_time=new_arrival_time,
-                            transport_type=old_transfer_trip.route_info.transport_type
-                        )
-
-                        update_data = LabelUpdate(
-                            boarding_stop=updated_stop,
-                            arrival_stop=fwd_dep_stop,
-                            new_trip=new_transfer_trip,
-                            boarding_stop_label=updated_label
-                        )
-                    else:
-                        current_route = fwd_dep_label.trip.route_info.route
-                        new_earliest_trip = current_route.earliest_trip(
-                            dts_arr=updated_label.arrival_time,
-                            stop=updated_stop
-                        )
-
-                        if new_earliest_trip is None:
-                            # No trip available means that the label can't be updated:
-                            # continue the loop onto the next fwd dep
-                            continue
-                        else:
-                            update_data = LabelUpdate(
-                                boarding_stop=updated_stop,
-                                arrival_stop=fwd_dep_stop,
-                                new_trip=new_earliest_trip,
-                                boarding_stop_label=updated_label
-                            )
-
-                    updated_fwd_dep_labels.append(fwd_dep_label.update(data=update_data))
-
-                updated_fwd_dep_bag = old_fwd_dep_bag.update(with_labels=updated_fwd_dep_labels)
-                updated_fwd_deps[fwd_dep_stop] = old_fwd_dep_bag.update(with_labels=updated_fwd_dep_labels)
-
-                # TODO go forward only if update
-                if updated_fwd_dep_bag.updated:
-                    rec_updated_fwd_deps = self._update_forward_dependencies(
-                        k=k,
-                        updated_stop=fwd_dep_stop,
-                        updated_bag=updated_fwd_dep_bag
-                    )
-
-                    # It is noted that the merge between the current and the recursively created
-                    # mappings cannot lead to conflict (i.e. a key is present in more than one mapping),
-                    # because RAPTOR itineraries (paths) do not contain cycles
-                    updated_fwd_deps = ChainMap(updated_fwd_deps, rec_updated_fwd_deps)
-
-        # Return the computed fwd updates
-        return updated_fwd_deps
-
-
-@dataclass(frozen=True)
-class SharedMobilityConfig:
-    preferred_vehicle: TransportType
-    """Preferred vehicle type for shared mob transport"""
-
-    enable_car: bool
-    """If True, car transport is enabled"""
-
-
-class BaseSharedMobRaptor(BaseRaptorAlgorithm[_LabelType, _BagType], ABC):
-    """
-    Base class for RAPTOR implementations that use shared mobility data.
-
-    It improves on basic RAPTOR implementations by making it possible to include
-    shared mobility, real-time data in the itinerary computation.
-    """
-
-    timetable: RaptorTimetableSM
-    """RAPTOR timetable, containing stops, routes, trips and transfers data,
-    as well as shared mobility transfer data"""
-
-    enable_sm: bool
-    """If True, shared mobility data is included in the itinerary computation"""
-
-    sm_config: SharedMobilityConfig
-    """Shared mobility configuration data. Ignored if `enable_sm` is False."""
-
-    visited_renting_stations: List[RentingStation]
-    """List containing all the renting stations visited during the computation"""
-
-    no_source: List[RentingStation]
-    """List of renting stations not available as source"""
-
-    no_dest: List[RentingStation]
-    """List of renting stations not available as destination"""
-
-    vehicle_transfers: VehicleTransfers
-    """Collection of vehicle transfers between visited renting stations,
-    populated during the computation"""
-
-    def __init__(
-            self,
-            timetable: RaptorTimetable | RaptorTimetableSM,
-            enable_fwd_deps_heuristic: bool = True,
-            enable_sm: bool = False,
-            sm_config: SharedMobilityConfig = None
-    ):
-        """
-        :param timetable: RAPTOR timetable
-        :param enable_sm: if True, shared mobility data is included in the itinerary computation.
-            If False, any provided shared mobility data is ignored.
-        :param sm_config: shared mobility configuration data. Ignored if `enable_sm` is False.
-        """
-
-        super(BaseSharedMobRaptor, self).__init__(
-            timetable=timetable,
-            enable_fwd_deps_heuristic=enable_fwd_deps_heuristic
-        )
-
-        self.enable_sm = enable_sm
-
-        if enable_sm and not isinstance(timetable, RaptorTimetableSM):
-            raise ValueError("The provided timetable does not contain the necessary shared mobility data")
-
-        self.sm_config = sm_config
-
-        self.visited_renting_stations = []
-        self.no_source = []
-        self.no_dest = []
-        self.vehicle_transfers = VehicleTransfers()
-
-    def run(
-            self,
-            from_stops: Iterable[Stop],
-            dep_secs: int,
-            max_rounds: int = -1
-    ) -> Mapping[Stop, _BagType]:
-        # Initialize data structures and origin stops
-        initial_marked_stops = self._initialization(
-            from_stops=from_stops,
-            dep_secs=dep_secs
-        )
-
-        # Setup shared mob data only if enabled
-        # Important to do this BEFORE calculating immediate transfers,
-        # else there is a possibility that available shared mob station won't be included
-        if self.enable_sm:
-            self._initialize_shared_mob(origin_stops=initial_marked_stops)
-
-        # Get stops immediately reachable with a transfer
-        # and add them to the marked stops list
-        logger.debug("Computing transfers from origin stops")
-        immediately_reachable_stops = self._improve_with_transfers(
-            k=0,  # still initialization round
-            marked_stops=initial_marked_stops,
-            transfers=self.timetable.transfers
-        )
-
-        # Add any immediately reachable via transfer
-        if self.enable_sm:
-            self._update_visited_renting_stations(stops=immediately_reachable_stops)
-
-        n_stops_1 = len(initial_marked_stops)  # debugging
-        marked_stops = list(
-            set(initial_marked_stops).union(immediately_reachable_stops)
-        )
-        n_stops_2 = len(marked_stops)  # debugging
-        logger.debug(f"Added {n_stops_2 - n_stops_1} stops immediately reachable on foot:\n"
-                     f"{list(set(immediately_reachable_stops))}")
-
-        # Only cap rounds if max_rounds != -1
-        k = 1
-        while (max_rounds == -1
-               or (k <= max_rounds and max_rounds != -1)):
-            logger.info(f"Analyzing possibilities at round {k}")
-            logger.debug(f"Marked stops to evaluate: {len(marked_stops)}")
-
-            # Initialize round k (current) with the labels of round k-1 (previous)
-            self.round_stop_bags[k] = copy(self.round_stop_bags[k - 1])
-
-            # Get (route, marked stop) pairs, where marked stop
-            # is the first reachable stop of the route
-            marked_route_stops = self._accumulate_routes(marked_stops)
-            logger.debug(f"{len(marked_route_stops)} routes to evaluate")
-
-            # Update stop arrival times calculated basing on reachable stops
-            trip_marked_stops = self._traverse_routes(
-                k=k,
-                marked_route_stops=marked_route_stops
-            )
-            logger.debug(f"Marked {len(trip_marked_stops)} public transport improved stops")
-
-            # Improve arrival times with foot transfers starting from
-            # the stops marked at the previous step
-            transfer_marked_stops = self._improve_with_transfers(
-                k=k,
-                marked_stops=trip_marked_stops,
-                transfers=self.timetable.transfers
-            )
-            logger.debug(f"Marked {len(transfer_marked_stops)} foot transfer improved stops")
-
-            if self.enable_sm:
-                # Mark stops that were improved with shared mob data
-                shared_mob_marked_stops = self._improve_with_sm_transfers(
-                    k=k,
-
-                    # Only transfer stops can be passed because shared mob stations
-                    # are reachable just by foot transfers
-                    marked_stops=transfer_marked_stops
-                )
-                logger.debug(f"Marked {len(shared_mob_marked_stops)} shared-mob improved stops")
-
-                # Shared mob legs are a special kind of transfer legs
-                transfer_marked_stops = set(transfer_marked_stops).union(shared_mob_marked_stops)
-
-            marked_stops = set(trip_marked_stops).union(transfer_marked_stops)
-
-            if len(marked_stops) == 0:
-                logger.info("No more stops to evaluate in the following rounds. Terminating...")
-
-                # Since there are no more stops to evaluate, the current round has found
-                # reached the best paths, so return it
-                return self.round_stop_bags[k]
-            else:
-                logger.debug(f"{len(marked_stops)} stops to evaluate in the next round")
-
-            k += 1
-
-        return self.round_stop_bags[max_rounds]
-
-    def _initialize_shared_mob(self, origin_stops: Sequence[Stop]):
-        """
-        Executes shared mobility data initialization phase.
-
-        :param origin_stops: stops to depart from
-        """
-
-        # Download information about shared-mob stops availability
-        self._update_availability_info()
-        sm_feeds_info = [
-            f'{feed.system_id} ({[t.name for t in feed.transport_types]})'
-            for feed in self.timetable.shared_mobility_feeds
-        ]
-        logger.debug(f"Shared mobility feeds: {sm_feeds_info} ")
-        logger.debug(f"{len(self.no_source)} shared-mob stops not available as source: {self.no_source} ")
-        logger.debug(f"{len(self.no_dest)} shared-mob stops not available as destination: {self.no_dest} ")
-
-        # Mark any renting station to depart from as visited
-        self._update_visited_renting_stations(stops=origin_stops)
-
-        logger.debug(f"Starting from {len(origin_stops)} stops "
-                     f"({len(self.visited_renting_stations)} are renting stations)")
-
-    def _update_visited_renting_stations(self, stops: Iterable[Stop]):
-        for s in stops:
-            if (isinstance(s, RentingStation)
-                    and s not in self.visited_renting_stations):
-                self.visited_renting_stations.append(s)
-
     def _improve_with_sm_transfers(
             self,
             k: int,
@@ -634,7 +391,7 @@ class BaseSharedMobRaptor(BaseRaptorAlgorithm[_LabelType, _BagType], ABC):
         marked_renting_stations: List[RentingStation] = filter_shared_mobility(marked_stops)
         logger.debug(f"{len(marked_renting_stations)} marked renting stations")
 
-        # We create a VehicleTransfer links each old renting station with newfound ones,
+        # Create a VehicleTransfer that links each old renting station with newfound ones,
         # according to system_id (id of the shared-mob dataset) and availability
         new_v_transfers = VehicleTransfers()
         for old in self.visited_renting_stations:
@@ -715,23 +472,182 @@ class BaseSharedMobRaptor(BaseRaptorAlgorithm[_LabelType, _BagType], ABC):
                 if stop_a not in self.no_source and stop_b not in self.no_dest:
                     return t_ab
 
-    def _update_availability_info(self):
+    def _update_stop(
+            self,
+            k: int,
+            stop_to_update: Stop,
+            update_with: List[_LabelType],
+            currently_marked_stops: Set[Stop]
+    ):
         """
-        Updates stops availability based on real-time information provided
-        by the shared-mob system feeds.
+        # TODO docs
+        :param k:
+        :param stop_to_update:
+        :param update_with:
+        :param currently_marked_stops:
+        :return:
         """
 
-        for feed in self.timetable.shared_mobility_feeds:
-            feed.renting_stations.update()
+        updated_bag = self.round_stop_bags[k][stop_to_update].merge(with_labels=update_with)
 
-        no_source_: List[List[RentingStation]] = [
-            feed.renting_stations.no_source for feed in
-            self.timetable.shared_mobility_feeds
-        ]
-        no_dest_: List[List[RentingStation]] = [
-            feed.renting_stations.no_destination for feed in
-            self.timetable.shared_mobility_feeds
-        ]
+        # Mark the stop if bag is updated and update the best label(s) for that stop
+        # Updated bag means that the current stop brought some improvements
+        if updated_bag.improved:
+            # Add the current stop to the forward dependencies of the new boarding stop
+            for lbl in updated_bag.labels:
+                self.stop_forward_dependencies[lbl.boarding_stop].append(stop_to_update)
 
-        self.no_source: List[RentingStation] = [i for sub in no_source_ for i in sub]  # flatten
-        self.no_dest: List[RentingStation] = [i for sub in no_dest_ for i in sub]  # flatten
+            # Remove the current stop from forward dependencies of the old boarding stop
+            old_bag = self.round_stop_bags[k][stop_to_update]
+            for old_lbl in old_bag.labels:
+                if old_lbl.boarding_stop is None:
+                    # First initialization of labels has boarding stop == None
+                    # In that case, skip
+                    continue
+                self.stop_forward_dependencies[old_lbl.boarding_stop].remove(stop_to_update)
+
+            # Update the bag of the current stop to update
+            self.round_stop_bags[k][stop_to_update] = updated_bag
+            currently_marked_stops.add(stop_to_update)
+
+            # Only run heuristic if enabled
+            if self.enable_fwd_deps_heuristic:
+                updated_fwd_dependencies = self._update_forward_dependencies(
+                    k=k,
+                    updated_stop=stop_to_update,
+                    updated_bag=updated_bag
+                )
+
+                # Now update all the bags of the stops dependent on the current one
+                # with what was previously calculated
+                for dep_stop, dep_labels in updated_fwd_dependencies.items():
+                    old_bag = self.round_stop_bags[k][dep_stop]
+                    self.round_stop_bags[k][dep_stop] = old_bag.merge(with_labels=dep_labels.labels)
+
+    def _update_forward_dependencies(
+            self,
+            k: int,
+            updated_stop: Stop,
+            updated_bag: Bag[_LabelType]
+    ) -> MutableMapping[Stop, Bag[_LabelType]]:
+        """
+        # TODO sistemare docs
+        This step is needed because Weighted MC RAPTOR can't guarantee that temporal
+        dependencies between labels won't be broken by future updates to the labels:
+        since time is a criteria just like the others, it can be 0-weighted, which means
+        it won't be considered when dominating labels are identified. This also means
+        that a dominating label for a stop P at round X can worsen the arrival time for
+        said stop P at round X-1, therefore potentially breaking the time relationships
+        between stop and all the stops that depend on it (i.e. are visited later in the journey).
+
+        Example:
+        Given some stops X,Y and Z, at the end of round K you can arrive at Y from X at time T
+        and at Z from Y at time T+1.
+        At some point during the next round, then, it is found that there is a path
+        that improves the generalized cost of going from X to Y, but said path worsens the
+        arrival time at Y, from X, to T+2. This would mean that you could arrive at Z, from Y,
+        at time T+1, but the best (minimum cost) path to Y has an arrival time of T+2.
+        This is an absurd.
+
+        It is therefore necessary, when some label A is updated, to recursively update
+        all the labels that depend on A, i.e. that come later than A in an itinerary that contains A.
+        This forward dependencies update for A, so called because said labels, as aforementioned,
+        are a later part of the journey with respect to A, cannot however always be performed:
+        it might be that, at some point during the dependency updates, no available trips are
+        found after the new arrival time. This means that this process must resolve in
+        one of two ways:
+        1. If, at some point, it is found that there are no available paths, all the
+            dependency updates must be rolled back, and the original update must be discarded;
+        2. If the dependency updates are all successful, apply them and keep the original update.
+
+        :param k: current round
+        :param updated_stop: stop whose bag (labels) was updated and whose forward dependencies
+            must be updated
+        :param updated_bag: bag containing the updated labels
+        :return: tuple containing:
+            - a boolean that indicates if the update process was successful
+            - the updated forward dependencies if the update process was successful,
+                else an empty dictionary
+        """
+
+        updated_fwd_deps: MutableMapping[Stop, Bag[_LabelType]] = ChainMap()
+
+        for updated_label in updated_bag.labels:
+            fwd_dependent_stops: Iterable[Stop] = self.stop_forward_dependencies[updated_stop]
+
+            for fwd_dep_stop in fwd_dependent_stops:
+                # It is certain that a dependent stop has at least one label assigned to it:
+                # since it is dependent, it means that it has been reached by the algorithm
+                updated_fwd_dep_labels = []
+                old_fwd_dep_bag = self.round_stop_bags[k][fwd_dep_stop]
+                for fwd_dep_label in old_fwd_dep_bag.labels:
+                    if fwd_dep_label.trip is None:
+                        # TODO why can this happen? - maybe with proper testing it can be pin-pointed
+                        continue
+
+                    # Consider the trip of the fwd dependent label: it is certain that
+                    # such trip contains both the updated stop (which acts as the boarding stop)
+                    # and the dependent stop (which acts as the arrival stop).
+                    if isinstance(fwd_dep_label.trip, TransferTrip):
+                        old_transfer_trip = fwd_dep_label.trip
+                        transfer_time = (
+                                old_transfer_trip.stop_times[1].dts_arr - old_transfer_trip.stop_times[0].dts_dep
+                        )
+
+                        new_arrival_time = updated_label.arrival_time + transfer_time
+                        new_transfer_trip = TransferTrip(
+                            from_stop=updated_stop,
+                            to_stop=fwd_dep_stop,
+                            dep_time=updated_label.arrival_time,
+                            arr_time=new_arrival_time,
+                            transport_type=old_transfer_trip.route_info.transport_type
+                        )
+
+                        update_data = LabelUpdate(
+                            boarding_stop=updated_stop,
+                            arrival_stop=fwd_dep_stop,
+                            new_trip=new_transfer_trip,
+                            boarding_stop_label=updated_label
+                        )
+                    else:
+                        current_route = fwd_dep_label.trip.route_info.route
+                        new_earliest_trip = current_route.earliest_trip(
+                            dts_arr=updated_label.arrival_time,
+                            stop=updated_stop
+                        )
+
+                        if new_earliest_trip is None:
+                            # No trip available means that the label can't be updated:
+                            # continue the loop onto the next fwd dep
+                            continue
+                        else:
+                            update_data = LabelUpdate(
+                                boarding_stop=updated_stop,
+                                arrival_stop=fwd_dep_stop,
+                                new_trip=new_earliest_trip,
+                                boarding_stop_label=updated_label
+                            )
+
+                    updated_fwd_dep_labels.append(fwd_dep_label.update(data=update_data))
+
+                # Merge the old bag with the updated labels of the forward dependencies
+                # This ensures that only the best labels before
+                # and after the fwd deps update are kept
+                updated_fwd_dep_bag = old_fwd_dep_bag.merge(with_labels=updated_fwd_dep_labels)
+                updated_fwd_deps[fwd_dep_stop] = old_fwd_dep_bag.merge(with_labels=updated_fwd_dep_labels)
+
+                # Only continue if there was any improvement
+                if updated_fwd_dep_bag.improved:
+                    rec_updated_fwd_deps = self._update_forward_dependencies(
+                        k=k,
+                        updated_stop=fwd_dep_stop,
+                        updated_bag=updated_fwd_dep_bag
+                    )
+
+                    # It is noted that the merge between the current and the recursively created
+                    # mappings cannot lead to conflict (i.e. a key is present in more than one mapping),
+                    # because RAPTOR itineraries (paths) do not contain cycles
+                    updated_fwd_deps = ChainMap(updated_fwd_deps, rec_updated_fwd_deps)
+
+        # Return the computed fwd updates
+        return updated_fwd_deps
