@@ -29,8 +29,11 @@ class RaptorVariants(Enum):
     variants for which querying is supported
     """
 
-    EarliestArrivalTime = "basic"
+    EarliestArrivalTime = "et"
     GeneralizedCost = "gc"
+
+    def __str__(self):
+        return self.value
 
 
 def query_raptor(
@@ -341,6 +344,7 @@ def _parse_arguments():
         "--variant",
         type=str,
         default=RaptorVariants.EarliestArrivalTime.value,
+        choices=[str(raptor_var) for raptor_var in RaptorVariants],
         help="""
         Variant of the RAPTOR algorithm to execute. Possible values:\n
             - `basic`: base RAPTOR
