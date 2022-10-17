@@ -136,7 +136,7 @@ class MultiCriteriaLabel(BaseLabel):
     """Sequence of criteria used to establish domination"""
 
     @staticmethod
-    def from_eat_label(label: EarliestArrivalTimeLabel) -> MultiCriteriaLabel:
+    def from_et_label(label: EarliestArrivalTimeLabel) -> MultiCriteriaLabel:
         """
         Creates a multi-criteria label from an Earliest Arrival Time RAPTOR label instance.
         The new multi-criteria label has a total cost of 1.

@@ -264,7 +264,7 @@ def _execute_raptor_variant(
         for stop, bag in results.items():
             mc_labels = []
             for label in bag.labels:
-                mc_lbl = MultiCriteriaLabel.from_eat_label(label)  # TODO find cleaner way to get label
+                mc_lbl = MultiCriteriaLabel.from_et_label(label)  # TODO find cleaner way to get label
 
                 mc_labels.append(mc_lbl)
 
