@@ -183,7 +183,8 @@ class MultiCriteriaLabel(BaseLabel):
         )
 
     def is_dominating(self, other: MultiCriteriaLabel) -> bool:
-        # TODO strict domination here? this is not strict
+        # TODO strict domination here? this is not strict - is this method even needed?
+        #    after implementing McRAPTOR, consider removing if unused
         return self.criteria <= other.criteria
 
 
@@ -352,21 +353,9 @@ class Criterion(ABC):
 _C = TypeVar('_C', bound=Criterion)
 
 
-# TODO this note is obsolete because now only one label is passed as arg
-# NOTE: what if `stop` is associated with two labels with an equal cost?
-# In that case, `best_label` would contain just one of the two, with the choice
-# being non-deterministic. This could create errors when calculating the criteria
-# and reconstructing the journey. In this implementation, however, it is certain that at most
-# one label is associated with each stop at any given time, because pareto_set() and Bag.merge()
-# implementations just keep the best one (keep_equal arg is False), and non-deterministically choose
-# one between labels with the same cost. It is however worthy to point out this potential breaking point.
-# A possible solution would be to remove the concept of Bag and keeping just a single label,
-# therefore forcing the above situation to happen (instead of relying on the implementation details
-# of the Bag.merge() method)
+# TODO Make this a method of BaseLabel and implement it in each subclass
 def _get_best_criterion(
         criterion_class: Type[_C],
-
-        # TODO try to use polymorphism -> might as well become a method of the label class
         label: MultiCriteriaLabel | GeneralizedCostLabel
 ) -> _C:
     """

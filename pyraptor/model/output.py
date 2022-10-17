@@ -5,7 +5,7 @@ from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
 from time import perf_counter
-from typing import Dict, List, Callable, Tuple, Any
+from typing import Dict, List, Callable, Tuple
 
 import joblib
 import numpy as np
@@ -15,12 +15,13 @@ from pyraptor.model.criteria import Criterion, pareto_set, MultiCriteriaLabel, P
 from pyraptor.model.timetable import Stop, Trip, TimetableInfo
 from pyraptor.util import sec2str, mkdir_if_not_exists
 
-# TODO maybe refactor Leg and Journey not to rely on multi-criteria labels
-
 
 @dataclass
 class Leg:
-    """Leg"""
+    """
+    Class that represents a leg of some journey, that is, a transfer between a pair of stops
+    performed by boarding some trip.
+    """
 
     from_stop: Stop
     to_stop: Stop
@@ -29,7 +30,9 @@ class Leg:
 
     @property
     def dep(self) -> int:
-        """Departure time in seconds past midnight"""
+        """
+        Departure time in seconds past midnight
+        """
 
         try:
             return [
@@ -43,7 +46,9 @@ class Leg:
 
     @property
     def arr(self) -> int:
-        """Arrival time in seconds past midnight"""
+        """
+        Arrival time in seconds past midnight
+        """
 
         try:
             return [
@@ -53,6 +58,8 @@ class Leg:
             raise Exception(f"No arrival time for to_stop: {self.to_stop}.\n"
                             f"Current Leg: {self}. \n Original Error: {ex}")
 
+    # TODO see todo in Journey class: I don't think this belongs here
+    #   Leg should not know about Generalized Cost
     @property
     def total_cost(self) -> float:
         return sum(self.criteria, start=0.0)
@@ -71,8 +78,10 @@ class Leg:
         Check if Leg is allowed before another leg, that is if the accumulated value of
         the criteria of the current leg is less or equal to the accumulated value of
         those of the other leg (current leg is instance of this class).
-        E.g. Leg X+1 criteria must be >= their counter-parts in Leg X, because
-            Leg X+1 comes later.
+        E.g. Leg_{X+1}.criteria must be >= their counter-parts in Leg_{X}, because
+            Leg_{X+1} comes later.
+        Additionally, the arrival time of Leg_{X} must be before the departure time of Leg_{X+1},
+        else the trip of the later leg can't be boarded.
         """
 
         criteria_compatible = np.all(
@@ -85,7 +94,10 @@ class Leg:
         return all([criteria_compatible, arrival_before_departure])
 
     def to_dict(self, leg_index: int = None) -> Dict:
-        """Leg to readable dictionary"""
+        """
+        Leg to readable dictionary
+        """
+
         return dict(
             trip_leg_idx=leg_index,
             departure_time=self.dep,
@@ -183,12 +195,18 @@ class Journey:
         return out_str
 
     def number_of_trips(self):
-        """Return number of distinct trips"""
+        """
+        Return number of distinct trips
+        """
+
         trips = set([lbl.trip for lbl in self.legs])
         return len(trips)
 
     def prepend_leg(self, leg: Leg) -> Journey:
-        """Add leg to journey"""
+        """
+        Add leg to journey
+        """
+
         legs = self.legs
         legs.insert(0, leg)
         jrny = Journey(legs=legs)
@@ -198,6 +216,8 @@ class Journey:
         """
         Removes all empty legs (where the trip is not set)
         and transfer legs between stops of the same station.
+        # TODO does this actually remove transfer legs between same-station stops?
+            is it because in that case the trip is None? because the check isn't here
 
         :return: updated journey
         """
@@ -214,8 +234,8 @@ class Journey:
     def is_valid(self) -> bool:
         """
         Returns true if the journey is considered valid.
-        Notably, a journey is valid if, for each leg, leg k arrival time
-        is not greater than leg k+1 departure time.
+        Notably, a journey is valid if, each leg X is compatible before
+        the immediately successive leg X+1.
 
         :return: True if journey is valid, False otherwise
         """
@@ -227,19 +247,31 @@ class Journey:
         return True
 
     def from_stop(self) -> Stop:
-        """Origin stop of Journey"""
+        """
+        Origin stop of Journey
+        """
+
         return self.legs[0].from_stop
 
     def to_stop(self) -> Stop:
-        """Destination stop of Journey"""
+        """
+        Destination stop of Journey
+        """
+
         return self.legs[-1].to_stop
 
     def dep(self) -> int:
-        """Departure time"""
+        """
+        Departure time
+        """
+
         return self.legs[0].dep
 
     def arr(self) -> int:
-        """Arrival time"""
+        """
+        Arrival time
+        """
+
         return self.legs[-1].arr
 
     def travel_time(self) -> int:
@@ -255,6 +287,8 @@ class Journey:
 
         return self.legs[-1].criteria
 
+    # TODO name should be changed to generalized_cost. Additionally, does this attribute belong here?
+    #   I think journeys should not know about generalized cost or any RAPTOR implementation detail
     def total_cost(self) -> float:
         """
         Returns the total cost of the journey
@@ -264,7 +298,10 @@ class Journey:
         return sum(self.criteria(), start=0.0)
 
     def dominates(self, jrny: Journey):
-        """Dominates other Journey"""
+        """
+        Dominates other Journey
+        """
+
         return (
             True
             if (self.total_cost() <= jrny.total_cost())
@@ -273,7 +310,9 @@ class Journey:
         )
 
     def print(self, dep_secs: int = None, logger_: Callable[[str], None] = logger.info):
-        """Prints the current journey instance on the provided logger"""
+        """
+        Prints the current journey instance on the provided logger
+        """
 
         logger_(str(self))
 
@@ -281,15 +320,29 @@ class Journey:
             logger_(f" ({sec2str(self.arr() - dep_secs)} from request time {sec2str(dep_secs)})")
 
     def to_list(self) -> List[Dict]:
-        """Convert journey to list of legs as dict"""
+        """
+        Convert journey to list of legs as dict
+        """
+
         return [leg.to_dict(leg_index=idx) for idx, leg in enumerate(self.legs)]
 
 
 def get_journeys_to_destinations(
         origin_stops: Iterable[Stop],
-        destination_stops: Dict[Any, Iterable[Stop]],
-        best_bags: Mapping[Stop, ParetoBag]
-) -> Mapping[Any, Sequence[Journey]]:
+        destination_stops: Dict[str, Iterable[Stop]],
+        best_bags: Mapping[Stop, ParetoBag]  # TODO why ParetoBag? can't it be generalized?
+) -> Mapping[str, Sequence[Journey]]:
+    """
+    Returns a mapping that pairs each set of destination stops with a valid set of journeys.
+
+    :param origin_stops: set of departure stops that the journeys start at
+    :param destination_stops: mapping that pairs a set of destinations with some identifier,
+        usually a stop or station name.
+    :param best_bags: result of a RAPTOR algorithm execution, that is a mapping where
+        each stop is paired with its best bag of labels
+    :return:
+    """
+
     # Calculate journeys to all destinations
     logger.info("Calculating journeys to all destinations")
     s = perf_counter()
@@ -315,7 +368,7 @@ def get_journeys_to_destinations(
 
 def _best_legs_to_destination_station(
         to_stops: Iterable[Stop],
-        last_round_bag: Mapping[Stop, ParetoBag]
+        last_round_bag: Mapping[Stop, ParetoBag]  # TODO why ParetoBag? can't it be generalized?
 ) -> Sequence[Leg]:
     """
     Find the last legs to destination station that are reached by non-dominated labels.
