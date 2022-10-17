@@ -929,7 +929,7 @@ def _execute_jobs(
         yield res
 
 
-def main():
+def _main():
     args = parse_arguments()
 
     logger.info(f"Reading shared-mob data from {args.feeds}")
@@ -949,4 +949,4 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    _main()

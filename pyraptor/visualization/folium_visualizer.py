@@ -380,7 +380,7 @@ def visualize_output(
         visualization.save(path_=out_file_path, open_browser=open_browser)
 
 
-def main():
+def _main():
     args = parse_arguments()
 
     try:
@@ -397,4 +397,4 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    _main()

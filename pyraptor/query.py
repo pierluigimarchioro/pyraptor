@@ -385,7 +385,7 @@ def _parse_arguments():
     return arguments
 
 
-if __name__ == "__main__":
+def _main():
     args = _parse_arguments()
 
     cached_timetable = _load_timetable(input_folder=args.input, enable_sm=args.enable_sm)
@@ -411,3 +411,7 @@ if __name__ == "__main__":
     )
 
     logger.info(f"Elapsed time: {elapsed_time} sec ({sec2minutes(elapsed_time)})")
+
+
+if __name__ == "__main__":
+    _main()
