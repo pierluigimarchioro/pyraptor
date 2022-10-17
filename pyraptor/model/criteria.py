@@ -727,10 +727,18 @@ class EarliestArrivalTimeBag(Bag[EarliestArrivalTimeLabel]):
         :return:
         """
 
-        earliest_label = list(sorted(self.labels + with_labels, key=lambda lbl: lbl.arrival_time))[0]
+        if len(with_labels) == 0 and len(self.labels) == 0:
+            return EarliestArrivalTimeBag(improved=False)
 
-        # TODO proper update check?
-        return EarliestArrivalTimeBag(labels=[earliest_label], updated=True)
+        prev_best = (
+            None
+            if len(self.labels) == 0
+            else min(self.labels, key=lambda lbl: lbl.arrival_time)
+        )
+        best_label = min(self.labels + with_labels, key=lambda lbl: lbl.arrival_time)
+
+        was_improved = prev_best != best_label
+        return EarliestArrivalTimeBag(labels=[best_label], improved=was_improved)
 
 
 class GeneralizedCostBag(Bag[GeneralizedCostLabel]):
