@@ -764,9 +764,8 @@ def _trips_processor_job(
                 dts_arr = stop_time.arrival_time
                 dts_dep = stop_time.departure_time
 
-                # TODO add proper check of shape_dist_traveled: attribute is optional
-                #   or maybe just add a default in _process_stop_times function
-                trav_dist = stop_time.shape_dist_traveled
+                # `shape_dist_traveled` is optional, hence the need to check
+                trav_dist = getattr(stop_time, "shape_dist_traveled", 0.0)
 
                 # Trip Stop Times
                 stop = stops_info.get_stop(stop_time.stop_id)
