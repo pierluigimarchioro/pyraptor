@@ -928,7 +928,7 @@ class CriterionConfiguration:
     upper_bound: float
 
 
-class CriteriaProvider:
+class CriteriaFactory:
     """
     Class that represents a criteria factory whose goal is to create properly
     parameterized criterion instances based on some specified configuration
@@ -948,7 +948,7 @@ class CriteriaProvider:
 
         return self._criteria_config
 
-    def get_criteria(self, defaults: Dict[Type[Criterion], float] = None) -> Sequence[Criterion]:
+    def create_criteria(self, defaults: Dict[Type[Criterion], float] = None) -> Sequence[Criterion]:
         """
         Returns a collection of criteria objects that are based the configuration provided
         to this instance

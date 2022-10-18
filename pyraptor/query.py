@@ -14,7 +14,7 @@ from loguru import logger
 from pyraptor.model.algos.base import SharedMobilityConfig
 from pyraptor.model.algos.et_raptor import EarliestArrivalTimeRaptor
 from pyraptor.model.algos.gc_raptor import GeneralizedCostRaptor
-from pyraptor.model.criteria import MultiCriteriaLabel, FileCriteriaProvider, CriteriaProvider, ParetoBag
+from pyraptor.model.criteria import MultiCriteriaLabel, FileCriteriaProvider, CriteriaFactory, ParetoBag
 from pyraptor.model.output import AlgorithmOutput, get_journeys_to_destinations, Journey, Leg
 from pyraptor.model.shared_mobility import RaptorTimetableSM
 from pyraptor.model.timetable import RaptorTimetable, Stop, TransportType
@@ -44,7 +44,7 @@ def query_raptor(
         rounds: int,
         variant: str,
         enable_fwd_deps: bool = True,
-        criteria_provider: CriteriaProvider = None,
+        criteria_provider: CriteriaFactory = None,
         enable_sm: bool = False,
         preferred_vehicle: str = None,
         enable_car: bool = None
@@ -80,7 +80,7 @@ def query_raptor(
     logger.debug("Enable car               : {}", enable_car)
 
     logger.debug("Criteria Configuration:")
-    for c in criteria_provider.get_criteria():
+    for c in criteria_provider.create_criteria():
         logger.debug(repr(c))
 
     start_time = timer()
@@ -207,7 +207,7 @@ def _execute_raptor_variant(
         dep_secs: int,
         rounds: int,
         enable_fwd_deps: bool,
-        criteria_provider: CriteriaProvider,
+        criteria_provider: CriteriaFactory,
         enable_sm: bool,
         preferred_vehicle: TransportType,
         enable_car: bool

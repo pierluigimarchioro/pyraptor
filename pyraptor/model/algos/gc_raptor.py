@@ -30,7 +30,7 @@ from pyraptor.model.timetable import (
 from pyraptor.model.criteria import (
     GeneralizedCostLabel,
     GeneralizedCostBag,
-    CriteriaProvider,
+    CriteriaFactory,
     ArrivalTimeCriterion,
     LabelUpdate,
     DEFAULT_ORIGIN_TRIP
@@ -50,7 +50,7 @@ class GeneralizedCostRaptor(BaseRaptor[GeneralizedCostLabel, GeneralizedCostBag]
             enable_fwd_deps_heuristic: bool,
             enable_sm: bool,
             sm_config: SharedMobilityConfig,
-            criteria_provider: CriteriaProvider,
+            criteria_provider: CriteriaFactory,
     ):
         """
         :param timetable: object containing the data that will be used by the algorithm
@@ -65,7 +65,7 @@ class GeneralizedCostRaptor(BaseRaptor[GeneralizedCostLabel, GeneralizedCostBag]
             enable_fwd_deps_heuristic=enable_fwd_deps_heuristic
         )
 
-        self.criteria_provider: CriteriaProvider = criteria_provider
+        self.criteria_provider: CriteriaFactory = criteria_provider
         """Object that provides properly parameterized criteria for
             the algorithm to use"""
 
@@ -89,7 +89,7 @@ class GeneralizedCostRaptor(BaseRaptor[GeneralizedCostLabel, GeneralizedCostBag]
 
         # Initialize origin stops labels, bags and dependencies
         for from_stop in from_stops:
-            with_departure_time = self.criteria_provider.get_criteria(
+            with_departure_time = self.criteria_provider.create_criteria(
                 defaults={
                     # Default arrival time for origin stops is the departure time
                     ArrivalTimeCriterion: dep_secs

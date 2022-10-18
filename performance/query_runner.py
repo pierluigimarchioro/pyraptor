@@ -30,7 +30,7 @@ from pyraptor.model.criteria import (
     DistanceCriterion,
     EmissionsCriterion,
     CriterionConfiguration,
-    CriteriaProvider
+    CriteriaFactory
 )
 from pyraptor.query import query_raptor
 from pyraptor.model.shared_mobility import RaptorTimetableSM, SharedMobilityFeed
@@ -525,7 +525,7 @@ def run_raptor_config(
                 upper_bound=c_params["upper_bound"]
             )
 
-        criteria_provider = CriteriaProvider(criteria_config=criteria_config)
+        criteria_provider = CriteriaFactory(criteria_config=criteria_config)
 
     query_time, algo_output = query_raptor(
         variant=variant,

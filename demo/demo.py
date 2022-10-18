@@ -15,7 +15,7 @@ from loguru import logger
 from pyraptor.model.shared_mobility import RaptorTimetableSM
 from pyraptor.timetable.io import read_timetable
 from pyraptor.model.criteria import (
-    CriteriaProvider,
+    CriteriaFactory,
     ArrivalTimeCriterion,
     TransfersCriterion,
     DistanceCriterion,
@@ -132,7 +132,7 @@ CRITERIA_CLASSES: Mapping[str, Type[Criterion]] = {
     "distance": DistanceCriterion,
     "co2": EmissionsCriterion
 }
-CRITERIA_PROVIDER: CriteriaProvider | None = None
+CRITERIA_PROVIDER: CriteriaFactory | None = None
 
 DEFAULT_TIMETABLE_PATH: str = "./../data/output/timetable.pcl"
 DEFAULT_SM_TIMETABLE_PATH: str = "./../data/output/timetable_sm.pcl"
@@ -221,7 +221,7 @@ def wmc_raptor():
 
 @app.route("/wmc_raptor_weights")
 def wmc_raptor_weights():
-    criteria_by_class = {c.__class__: c for c in CRITERIA_PROVIDER.get_criteria()}
+    criteria_by_class = {c.__class__: c for c in CRITERIA_PROVIDER.create_criteria()}
 
     return render_template('wmc_raptor_weights.html',
                            arrival_time=criteria_by_class[ArrivalTimeCriterion],
@@ -251,7 +251,7 @@ def wmc_raptor_weights_save():
             )
 
         global CRITERIA_PROVIDER
-        CRITERIA_PROVIDER = CriteriaProvider(criteria_config=criteria_cfg)
+        CRITERIA_PROVIDER = CriteriaFactory(criteria_config=criteria_cfg)
 
         return redirect(url_for('wmc_raptor'))
 
@@ -378,7 +378,7 @@ def run_demo(
     STATION_NAMES_SM = _get_station_names(TIMETABLE_SM)
 
     global CRITERIA_PROVIDER
-    CRITERIA_PROVIDER = CriteriaProvider(
+    CRITERIA_PROVIDER = CriteriaFactory(
         criteria_config={
             ArrivalTimeCriterion: CriterionConfiguration(weight=1, upper_bound=86400),
             TransfersCriterion: CriterionConfiguration(weight=1, upper_bound=25),
