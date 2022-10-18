@@ -12,7 +12,7 @@ from timeit import default_timer as timer
 from loguru import logger
 
 from pyraptor.model.algos.base import SharedMobilityConfig
-from pyraptor.model.algos.raptor import EarliestArrivalTimeRaptor
+from pyraptor.model.algos.et_raptor import EarliestArrivalTimeRaptor
 from pyraptor.model.algos.gc_raptor import GeneralizedCostRaptor
 from pyraptor.model.criteria import MultiCriteriaLabel, FileCriteriaProvider, CriteriaProvider, ParetoBag
 from pyraptor.model.output import AlgorithmOutput, get_journeys_to_destinations, Journey, Leg
