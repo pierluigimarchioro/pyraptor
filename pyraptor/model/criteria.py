@@ -702,7 +702,27 @@ class Bag(ABC, Generic[_LabelType]):
         pass
 
 
-class EarliestArrivalTimeBag(Bag[EarliestArrivalTimeLabel]):
+# Suppress warning that SingleLabelBag must implement ABC
+# noinspection PyAbstractClass
+
+
+class SingleLabelBag(Bag[_LabelType]):
+    """
+    Abstract class that represents a bag that always contains at most one label.
+    """
+
+    def get_label(self) -> _LabelType | None:
+        """
+        Returns the only label contained in this bag, or None if there aren't any.
+        :return: label instance or None if there are no labels
+        """
+
+        assert len(self.labels) <= 1, "There should never be more than one label"
+
+        return self.labels[0] if len(self.labels) > 0 else None
+
+
+class EarliestArrivalTimeBag(SingleLabelBag[EarliestArrivalTimeLabel]):
     """
     Label Bag used in Earliest Arrival Time RAPTOR
     """
@@ -729,7 +749,7 @@ class EarliestArrivalTimeBag(Bag[EarliestArrivalTimeLabel]):
         return EarliestArrivalTimeBag(labels=[best_label], improved=was_improved)
 
 
-class GeneralizedCostBag(Bag[GeneralizedCostLabel]):
+class GeneralizedCostBag(SingleLabelBag[GeneralizedCostLabel]):
     """
     Label Bag used in Generalized Cost RAPTOR
     """
@@ -762,6 +782,7 @@ class ParetoBag(Bag[MultiCriteriaLabel]):
     Class that represents a Pareto-set of labels, i.e. a set of pair-wise non-dominating labels,
     where no label is worse than any other in at least one criterion
     """
+
     # TODO this class is currently not used, but will be when McRaptor will be implemented again.
     #   Remember to check if all the methods are useful/properly implemented
 

@@ -12,7 +12,7 @@ from pyraptor.model.criteria import EarliestArrivalTimeLabel, EarliestArrivalTim
 from pyraptor.util import LARGE_NUMBER
 
 
-class EarliestArrivalTimeRaptor(BaseRaptor[EarliestArrivalTimeLabel]):
+class EarliestArrivalTimeRaptor(BaseRaptor[EarliestArrivalTimeLabel, EarliestArrivalTimeBag]):
     """
     Implementation of the Earliest Arrival Time RAPTOR algorithm.
     Just a single criterion is optimized, that is, arrival time.
@@ -56,7 +56,6 @@ class EarliestArrivalTimeRaptor(BaseRaptor[EarliestArrivalTimeLabel]):
 
         # For each route
         for marked_route, marked_stop in marked_route_stops:
-
             # Current trip for this marked stop
             current_trip = None
 
@@ -73,12 +72,9 @@ class EarliestArrivalTimeRaptor(BaseRaptor[EarliestArrivalTimeLabel]):
                 if current_trip is not None:
                     # Arrival time at stop, i.e. arr(current_trip, next_stop)
                     new_arrival_time = current_trip.get_stop_time(current_stop).dts_arr
-
-                            # TODO find a cleaner way (SingleLabelBag(Bag[_LabelType])??)
-                            #   mettere direttamente attributo arrival_time o gen_cost su bag?
                     best_arrival_time = self.round_stop_bags[k][
                         current_stop
-                    ].labels[0].arrival_time
+                    ].get_label().arrival_time
 
                     if new_arrival_time < best_arrival_time:
                         # Update arrival by trip, i.e.
@@ -90,10 +86,7 @@ class EarliestArrivalTimeRaptor(BaseRaptor[EarliestArrivalTimeLabel]):
                             boarding_stop=boarding_stop,
                             arrival_stop=current_stop,
                             new_trip=current_trip,
-
-                            # TODO find a cleaner way (SingleLabelBag(Bag[_LabelType])??)
-                            #   mettere direttamente attributo arrival_time o gen_cost su bag?
-                            boarding_stop_label=self.round_stop_bags[k][boarding_stop].labels[0]
+                            boarding_stop_label=self.round_stop_bags[k][boarding_stop].get_label()
                         )
                         self._update_arrival_stop(
                             k=k,
@@ -111,7 +104,7 @@ class EarliestArrivalTimeRaptor(BaseRaptor[EarliestArrivalTimeLabel]):
                 #   bag[k] is (iirc) initialized with bag[k-1] values
                 previous_earliest_arrival_time = self.round_stop_bags[k][
                     current_stop
-                ].labels[0].arrival_time  # TODO find a cleaner way (SingleLabelBag(Bag[_LabelType])??)
+                ].get_label().arrival_time
                 earliest_trip_stop_time = marked_route.earliest_trip_stop_time(
                     previous_earliest_arrival_time, current_stop
                 )
@@ -150,17 +143,15 @@ class EarliestArrivalTimeRaptor(BaseRaptor[EarliestArrivalTimeLabel]):
                 t.to_stop for t in transfers if t.from_stop == current_stop
             ]
 
-            # TODO find a cleaner way (SingleLabelBag(Bag[_LabelType])??)
-            time_sofar = self.round_stop_bags[k][current_stop].labels[0].arrival_time
+            time_sofar = self.round_stop_bags[k][current_stop].get_label().arrival_time
             for arrival_stop in other_station_stops:
                 transfer = transfers.stop_to_stop_idx[(current_stop, arrival_stop)]
 
                 arrival_time_with_transfer = time_sofar + transfer.transfer_time
 
-                # TODO find a cleaner way (SingleLabelBag(Bag[_LabelType])??)
                 previous_earliest_arrival = self.round_stop_bags[k][
                     arrival_stop
-                ].labels[0].arrival_time
+                ].get_label().arrival_time
 
                 # Domination criteria: update only if arrival time is improved
                 if arrival_time_with_transfer < previous_earliest_arrival:
@@ -177,10 +168,7 @@ class EarliestArrivalTimeRaptor(BaseRaptor[EarliestArrivalTimeLabel]):
                         boarding_stop=current_stop,
                         arrival_stop=arrival_stop,
                         new_trip=transfer_trip,
-
-                            # TODO find a cleaner way (SingleLabelBag(Bag[_LabelType])??)
-                            #   mettere direttamente attributo arrival_time o gen_cost su bag?
-                        boarding_stop_label=self.round_stop_bags[k][current_stop].labels[0]
+                        boarding_stop_label=self.round_stop_bags[k][current_stop].get_label()
                     )
                     self._update_arrival_stop(
                         k=k,
@@ -208,8 +196,7 @@ class EarliestArrivalTimeRaptor(BaseRaptor[EarliestArrivalTimeLabel]):
         :param currently_marked_stops: stops currently marked
         """
 
-        # TODO find a cleaner way (SingleLabelBag(Bag[_LabelType])??)
-        arrival_label = self.round_stop_bags[k][update_data.arrival_stop].labels[0]
+        arrival_label = self.round_stop_bags[k][update_data.arrival_stop].get_label()
         arrival_label = arrival_label.update(
             data=update_data
         )

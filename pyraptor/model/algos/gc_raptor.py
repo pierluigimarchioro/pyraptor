@@ -38,7 +38,7 @@ from pyraptor.model.criteria import (
 )
 
 
-class GeneralizedCostRaptor(BaseRaptor[GeneralizedCostLabel]):
+class GeneralizedCostRaptor(BaseRaptor[GeneralizedCostLabel, GeneralizedCostBag]):
     """
     Implementation of the Generalized Cost RAPTOR algorithm.
     Just a single criterion is optimized, that is, generalized cost, which is obtained
@@ -144,9 +144,7 @@ class GeneralizedCostRaptor(BaseRaptor[GeneralizedCostLabel]):
                         boarding_stop=label.boarding_stop,
                         arrival_stop=current_stop,
                         new_trip=label.trip,
-
-                        # TODO find cleaner way - is it correct?
-                        boarding_stop_label=self.round_stop_bags[k][label.boarding_stop].labels[0]
+                        boarding_stop_label=self.round_stop_bags[k][label.boarding_stop].get_label()
                     )
                     label = label.update(data=update_data)
 
@@ -205,9 +203,7 @@ class GeneralizedCostRaptor(BaseRaptor[GeneralizedCostLabel]):
                             boarding_stop=boarding_stop,
                             arrival_stop=current_stop,
                             new_trip=earliest_trip,
-
-                            # TODO find cleaner way - is it correct?
-                            boarding_stop_label=self.round_stop_bags[k][boarding_stop].labels[0]
+                            boarding_stop_label=self.round_stop_bags[k][boarding_stop].get_label()
                         )
                         label = label.update(data=update_data)
 
@@ -257,9 +253,7 @@ class GeneralizedCostRaptor(BaseRaptor[GeneralizedCostLabel]):
                         boarding_stop=current_stop,
                         arrival_stop=stop_to_improve,
                         new_trip=transfer_trip,
-
-                        # TODO find cleaner way - is it correct?
-                        boarding_stop_label=self.round_stop_bags[k][current_stop].labels[0]
+                        boarding_stop_label=self.round_stop_bags[k][current_stop].get_label()
                     )
                     label = label.update(data=update_data)
 

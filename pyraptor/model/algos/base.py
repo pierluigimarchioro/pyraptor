@@ -21,7 +21,10 @@ from pyraptor.model.timetable import RaptorTimetable, Route, Stop, TransportType
 
 
 _LabelType = TypeVar("_LabelType", bound=BaseLabel)
-"""Type of the label used by the RAPTOR algorithm"""
+"""Type of the labels used by the RAPTOR algorithm"""
+
+_BagType = TypeVar("_BagType", bound=Bag)
+"""Type of the label bags used by the RAPTOR algorithm"""
 
 
 @dataclass(frozen=True)
@@ -33,7 +36,7 @@ class SharedMobilityConfig:
     """If True, car transport is enabled"""
 
 
-class BaseRaptor(ABC, Generic[_LabelType]):
+class BaseRaptor(ABC, Generic[_LabelType, _BagType]):
     """
     Base class that defines the structure of RAPTOR algorithm implementations.
 
@@ -54,7 +57,7 @@ class BaseRaptor(ABC, Generic[_LabelType]):
     It could also contain shared mobility data, which will be used by the algorithm
     only if the related option is enabled"""
 
-    round_stop_bags: Dict[int, Dict[Stop, Bag[_LabelType]]]
+    round_stop_bags: Dict[int, Dict[Stop, _BagType]]
     """Dictionary that keeps the stop-bag associations 
     created in each round of the algorithm"""
 
@@ -122,7 +125,7 @@ class BaseRaptor(ABC, Generic[_LabelType]):
             from_stops: Iterable[Stop],
             dep_secs: int,
             max_rounds: int = -1
-    ) -> Mapping[Stop, Bag[_LabelType]]:
+    ) -> Mapping[Stop, _BagType]:
         """
         Executes the RAPTOR algorithm and returns a map that pairs each stop with
         a collection of labels, which contain the information about the best journey(s)
@@ -527,8 +530,8 @@ class BaseRaptor(ABC, Generic[_LabelType]):
             self,
             k: int,
             updated_stop: Stop,
-            updated_bag: Bag[_LabelType]
-    ) -> MutableMapping[Stop, Bag[_LabelType]]:
+            updated_bag: _BagType
+    ) -> MutableMapping[Stop, _BagType]:
         """
         # TODO sistemare docs
         This step is needed because Weighted MC RAPTOR can't guarantee that temporal
