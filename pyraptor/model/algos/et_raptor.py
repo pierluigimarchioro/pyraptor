@@ -9,7 +9,6 @@ from pyraptor.model.algos.base import BaseRaptor
 from pyraptor.model.timetable import Transfers
 from pyraptor.model.timetable import Stop, Route, TransferTrip
 from pyraptor.model.criteria import EarliestArrivalTimeLabel, EarliestArrivalTimeBag, LabelUpdate
-from pyraptor.util import LARGE_NUMBER
 
 
 class EarliestArrivalTimeRaptor(BaseRaptor[EarliestArrivalTimeLabel, EarliestArrivalTimeBag]):
@@ -24,7 +23,7 @@ class EarliestArrivalTimeRaptor(BaseRaptor[EarliestArrivalTimeLabel, EarliestArr
         self.round_stop_bags[0] = {}
         for p in self.timetable.stops:
             self.round_stop_bags[0][p] = EarliestArrivalTimeBag(
-                labels=[EarliestArrivalTimeLabel(arrival_time=LARGE_NUMBER)]
+                labels=[EarliestArrivalTimeLabel()]
             )
 
         # Initialize bags with starting stops taking dep_secs to reach

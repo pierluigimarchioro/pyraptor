@@ -8,7 +8,6 @@ from dataclasses import dataclass, field
 from itertools import compress
 from typing import List, Type, Dict, TypeVar, Generic
 
-import attr
 import numpy as np
 from loguru import logger
 
@@ -16,7 +15,6 @@ from pyraptor.model.timetable import TransportType, Trip, Stop
 from pyraptor.util import sec2str, LARGE_NUMBER
 
 
-@dataclass(frozen=True)
 class BaseLabel(ABC):
     """
     Abstract class representing the base characteristics that a RAPTOR label
@@ -31,18 +29,38 @@ class BaseLabel(ABC):
     https://www.microsoft.com/en-us/research/wp-content/uploads/2012/01/raptor_alenex.pdf
     """
 
-    trip: Trip = None
+    trip: Trip
     """Trip to take to arrive at the destination stop at `earliest_arrival_time`"""
 
-    boarding_stop: Stop = None
+    boarding_stop: Stop
     """Stop at which the trip is boarded"""
 
-    # TODO add arrival stop here?
+    arrival_stop: Stop
+    """Stop at which the trip is hopped off"""
 
-    arrival_time: int = None
+    arrival_time: int
     """Earliest time to get to the destination stop by boarding the current trip"""
 
     # TODO label_update_log?
+
+    def __init__(
+            self,
+            trip: Trip = None,
+            boarding_stop: Stop = None,
+            arrival_stop: Stop = None,
+            arrival_time: int = LARGE_NUMBER
+    ):
+        """
+        :param trip: trip associated to this label
+        :param boarding_stop: stop that the associated trip is boarded at
+        :param arrival_stop: stop that the associated trip is hopped off at
+        :param arrival_time: time of arrival at the arrival stop
+        """
+
+        self.trip = trip
+        self.boarding_stop = boarding_stop
+        self.arrival_stop = arrival_stop
+        self.arrival_time = arrival_time
 
     @abstractmethod
     def update(self, data: LabelUpdate) -> BaseLabel:
@@ -90,7 +108,6 @@ class LabelUpdate(Generic[_LabelType]):
     on previous stops information (e.g. current_cost = previous_cost + K)"""
 
 
-@dataclass(frozen=True)
 class EarliestArrivalTimeLabel(BaseLabel):
     """
     Class that represents a label used in the Earliest Arrival Time RAPTOR variant
@@ -108,6 +125,7 @@ class EarliestArrivalTimeLabel(BaseLabel):
         return EarliestArrivalTimeLabel(
             arrival_time=earliest_arrival_time,
             boarding_stop=boarding_stop,
+            arrival_stop=data.arrival_stop,
             trip=trip
         )
 
@@ -119,7 +137,6 @@ class EarliestArrivalTimeLabel(BaseLabel):
                 f"trip={self.trip}, boarding_stop={self.boarding_stop})")
 
 
-@dataclass(frozen=True)
 class MultiCriteriaLabel(BaseLabel):
     """
     Class that represents a multi-criteria label.
@@ -129,30 +146,56 @@ class MultiCriteriaLabel(BaseLabel):
     (https://www.microsoft.com/en-us/research/wp-content/uploads/2012/01/raptor_alenex.pdf)
     """
 
-    arrival_stop: Stop = attr.ib(default=None)
+    arrival_stop: Stop
     """Stop that this label is associated to"""
 
-    criteria: Sequence[Criterion] = attr.ib(default=list)
-    """Sequence of criteria used to establish domination"""
+    criteria: Sequence[Criterion]
+    """Set of criteria to optimize"""
+
+    def __init__(
+            self,
+            trip: Trip = None,
+            boarding_stop: Stop = None,
+            arrival_stop: Stop = None,
+            arrival_time: int = LARGE_NUMBER,
+            criteria: Sequence[Criterion] = None
+    ):
+        """
+        :param trip: trip associated to this label
+        :param boarding_stop: stop that the associated trip is boarded at
+        :param arrival_stop: stop that the associated trip is hopped off at
+        :param arrival_time: time of arrival at the arrival stop
+        :param criteria: set of criteria to optimize
+        """
+
+        super(MultiCriteriaLabel, self).__init__(
+            trip=trip,
+            boarding_stop=boarding_stop,
+            arrival_stop=arrival_stop,
+            arrival_time=arrival_time
+        )
+
+        self.criteria = criteria
 
     @staticmethod
-    def from_et_label(label: EarliestArrivalTimeLabel) -> MultiCriteriaLabel:
+    def from_et_label(et_label: EarliestArrivalTimeLabel) -> MultiCriteriaLabel:
         """
         Creates a multi-criteria label from an Earliest Arrival Time RAPTOR label instance.
         The new multi-criteria label has a total cost of 1.
 
-        :param label: base RAPTOR label to convert to multi-criteria
+        :param et_label: Earliest Arrival Time RAPTOR label to convert
         :return: converted multi-criteria label
         """
 
         # Args except raw_value are not important
         arr_criterion = ArrivalTimeCriterion(
-            raw_value=label.arrival_time
+            raw_value=et_label.arrival_time
         )
         mc_lbl = MultiCriteriaLabel(
-            arrival_time=label.arrival_time,
-            boarding_stop=label.boarding_stop,
-            trip=label.trip,
+            arrival_time=et_label.arrival_time,
+            boarding_stop=et_label.boarding_stop,
+            trip=et_label.trip,
+            arrival_stop=et_label.arrival_stop,
             criteria=[arr_criterion]
         )
 
@@ -182,19 +225,46 @@ class MultiCriteriaLabel(BaseLabel):
         )
 
     def is_strictly_dominating(self, other: MultiCriteriaLabel) -> bool:
-        # TODO strict domination here? this is not strict - is this method even needed?
+        # TODO strict domination here? is this method even needed?
         #    after implementing McRAPTOR, consider removing if unused
-        return self.criteria <= other.criteria
+        return self.criteria < other.criteria
 
 
-@dataclass(frozen=True)
-class GeneralizedCostLabel(BaseLabel):
+class GeneralizedCostLabel(MultiCriteriaLabel):
     """
     Label that considers only generalized cost as domination criterion
     """
 
-    gc_criterion: GeneralizedCostCriterion = attr.ib(default=None)
-    """Generalized cost criterion instance used to calculate generalized cost"""
+    gc_criterion: GeneralizedCostCriterion
+    """Generalized cost criterion instance used to calculate generalized cost.
+    This is the only criterion optimized in labels of this type."""
+
+    def __init__(
+            self,
+            trip: Trip = None,
+            boarding_stop: Stop = None,
+            arrival_stop: Stop = None,
+            arrival_time: int = LARGE_NUMBER,
+            criteria: Sequence[Criterion] = None
+    ):
+        """
+        :param trip: trip associated to this label
+        :param boarding_stop: stop that the associated trip is boarded at
+        :param arrival_stop: stop that the associated trip is hopped off at
+        :param arrival_time: time of arrival at the arrival stop
+        :param criteria: criteria used to calculate the generalized cost
+        """
+
+        gc = GeneralizedCostCriterion(criteria=criteria)
+        super(GeneralizedCostLabel, self).__init__(
+            trip=trip,
+            boarding_stop=boarding_stop,
+            arrival_stop=arrival_stop,
+            arrival_time=arrival_time,
+            criteria=[gc]
+        )
+
+        self.gc_criterion = gc
 
     @property
     def generalized_cost(self) -> float:
@@ -217,8 +287,9 @@ class GeneralizedCostLabel(BaseLabel):
         return GeneralizedCostLabel(
             arrival_time=updated_arr_time,
             boarding_stop=updated_dep_stop,
+            arrival_stop=data.arrival_stop,
             trip=updated_trip,
-            gc_criterion=updated_gc_criterion
+            criteria=updated_gc_criterion.criteria
         )
 
     def is_strictly_dominating(self, other: GeneralizedCostLabel) -> bool:
@@ -367,13 +438,13 @@ def _get_best_criterion(
     :return: instance of the specified criterion type
     """
 
-    assert isinstance(label, (MultiCriteriaLabel, GeneralizedCostLabel)), f"Unhandled label type: {type(label)}"
+    assert isinstance(label, (MultiCriteriaLabel, GeneralizedCostLabel)), \
+        f"Cannot retrieve criteria from label type: {type(label)}"
 
-    criteria = None
-    if isinstance(label, MultiCriteriaLabel):
-        criteria = label.criteria
-    elif isinstance(label, GeneralizedCostLabel):
+    if isinstance(label, GeneralizedCostLabel):
         criteria = label.gc_criterion.criteria
+    else:
+        criteria = label.criteria
 
     criterion = next(
         filter(lambda c: isinstance(c, criterion_class), criteria),

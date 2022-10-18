@@ -30,7 +30,6 @@ from pyraptor.model.timetable import (
 from pyraptor.model.criteria import (
     GeneralizedCostLabel,
     GeneralizedCostBag,
-    GeneralizedCostCriterion,
     CriteriaProvider,
     ArrivalTimeCriterion,
     LabelUpdate,
@@ -97,14 +96,14 @@ class GeneralizedCostRaptor(BaseRaptor[GeneralizedCostLabel, GeneralizedCostBag]
                 }
             )
 
-            mc_label = GeneralizedCostLabel(
+            gc_label = GeneralizedCostLabel(
                 arrival_time=dep_secs,
                 boarding_stop=from_stop,
                 trip=DEFAULT_ORIGIN_TRIP,
-                gc_criterion=GeneralizedCostCriterion(criteria=with_departure_time)
+                criteria=with_departure_time
             )
 
-            self.round_stop_bags[0][from_stop] = GeneralizedCostBag(labels=[mc_label])
+            self.round_stop_bags[0][from_stop] = GeneralizedCostBag(labels=[gc_label])
 
             # From stop has a dependency on itself since it's an origin stop
             self.stop_forward_dependencies[from_stop] = [from_stop]
