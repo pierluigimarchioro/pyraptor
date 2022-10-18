@@ -342,7 +342,6 @@ class BaseRaptor(ABC, Generic[_LabelType]):
         :return: new list of marked stops,
             i.e. stops for which an improvement in some criteria was made
         """
-
         pass
 
     @abstractmethod
