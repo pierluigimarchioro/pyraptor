@@ -14,10 +14,8 @@ from pyraptor.util import LARGE_NUMBER
 
 class EarliestArrivalTimeRaptor(BaseRaptor[EarliestArrivalTimeLabel]):
     """
-    Implementation of the basic RAPTOR algorithm, with some improvements:
-        - transfers from the origin stops are evaluated immediately to widen
-            the set of reachable stops before the first round is executed
-        - it is possible to include shared mobility, real-time data in the computation
+    Implementation of the Earliest Arrival Time RAPTOR algorithm.
+    Just a single criterion is optimized, that is, arrival time.
     """
 
     def _initialization(self, from_stops: Iterable[Stop], dep_secs: int) -> List[Stop]:

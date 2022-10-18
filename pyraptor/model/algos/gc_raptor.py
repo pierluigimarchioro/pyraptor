@@ -40,13 +40,9 @@ from pyraptor.model.criteria import (
 
 class GeneralizedCostRaptor(BaseRaptor[GeneralizedCostLabel]):
     """
-    Implementation of the More Criteria RAPTOR Algorithm discussed in the original RAPTOR paper,
-    with some modifications and improvements:
-        - each criterion is weighted and each label has a generalized cost that is used
-            to make comparison and determine domination
-        - transfers from the origin stops are evaluated immediately to widen
-            the set of reachable stops before the first round is executed
-        - it is possible to use shared mobility, real-time data
+    Implementation of the Generalized Cost RAPTOR algorithm.
+    Just a single criterion is optimized, that is, generalized cost, which is obtained
+    as the weighted and normalized sum of a set of criteria.
     """
 
     def __init__(
