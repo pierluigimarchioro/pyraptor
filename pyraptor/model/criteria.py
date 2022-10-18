@@ -56,13 +56,13 @@ class BaseLabel(ABC):
         pass
 
     @abstractmethod
-    def is_dominating(self, other: BaseLabel) -> bool:
+    def is_strictly_dominating(self, other: BaseLabel) -> bool:
         """
-        Returns true if the current label is dominating the provided label,
-        meaning that it is not worse in any of the valuation criteria.
+        Returns true if the current label is *strictly dominating* the provided label,
+        meaning that it is *strictly better* in at least one criterion.
 
         :param other: other label to compare
-        :return:
+        :return: True if the current label is strictly dominating
         """
         pass
 
@@ -111,7 +111,7 @@ class EarliestArrivalTimeLabel(BaseLabel):
             trip=trip
         )
 
-    def is_dominating(self, other: EarliestArrivalTimeLabel) -> bool:
+    def is_strictly_dominating(self, other: EarliestArrivalTimeLabel) -> bool:
         return self.arrival_time <= other.arrival_time
 
     def __repr__(self) -> str:
@@ -181,7 +181,7 @@ class MultiCriteriaLabel(BaseLabel):
             trip=updated_trip,
         )
 
-    def is_dominating(self, other: MultiCriteriaLabel) -> bool:
+    def is_strictly_dominating(self, other: MultiCriteriaLabel) -> bool:
         # TODO strict domination here? this is not strict - is this method even needed?
         #    after implementing McRAPTOR, consider removing if unused
         return self.criteria <= other.criteria
@@ -221,8 +221,8 @@ class GeneralizedCostLabel(BaseLabel):
             gc_criterion=updated_gc_criterion
         )
 
-    def is_dominating(self, other: GeneralizedCostLabel) -> bool:
-        return self.generalized_cost <= other.generalized_cost
+    def is_strictly_dominating(self, other: GeneralizedCostLabel) -> bool:
+        return self.generalized_cost < other.generalized_cost
 
 
 class Criterion(ABC):
