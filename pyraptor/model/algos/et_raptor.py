@@ -12,7 +12,7 @@ from pyraptor.model.criteria import EarliestArrivalTimeLabel, EarliestArrivalTim
 from pyraptor.util import LARGE_NUMBER
 
 
-class RaptorAlgorithm(BaseRaptor[EarliestArrivalTimeLabel]):
+class EarliestArrivalTimeRaptor(BaseRaptor[EarliestArrivalTimeLabel]):
     """
     Implementation of the basic RAPTOR algorithm, with some improvements:
         - transfers from the origin stops are evaluated immediately to widen
