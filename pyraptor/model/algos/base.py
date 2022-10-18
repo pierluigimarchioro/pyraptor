@@ -19,6 +19,7 @@ from pyraptor.model.shared_mobility import (
     TRANSPORT_TYPE_SPEEDS, RaptorTimetableSM)
 from pyraptor.model.timetable import RaptorTimetable, Route, Stop, TransportType, Transfer, TransferTrip
 
+
 _LabelType = TypeVar("_LabelType", bound=BaseLabel)
 """Type of the label used by the RAPTOR algorithm"""
 
@@ -365,7 +366,6 @@ class BaseRaptor(ABC, Generic[_LabelType]):
         :param transfers: transfers to use to seek improvements
         :return: list of stops marked because they were improved in some criteria via transfer
         """
-
         pass
 
     def _improve_with_sm_transfers(

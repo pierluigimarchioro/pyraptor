@@ -122,9 +122,8 @@ class EarliestArrivalTimeRaptor(BaseRaptor[EarliestArrivalTimeLabel]):
                 ):
                     # If the trip is different from the previous one, we board the trip
                     #   at current_stop, else the trip is still boarded at the old boarding stop.
-                    # This basically results in consecutive stops of the same journey
-                    #   only pointing to the first stop of each different trip in the journey,
-                    #   as opposed to pointing to each intermediate stop of each different trip.
+                    # This basically means that the boarding_stop will always be the earliest one,
+                    #   in terms of arrival order in the current route
                     if earliest_trip_stop_time.trip != current_trip:
                         boarding_stop = current_stop
 

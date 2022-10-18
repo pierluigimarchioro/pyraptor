@@ -81,7 +81,6 @@ class RentingStations(Stops, ABC):
         """
         Downloads static data
         """
-
         pass
 
     @abstractmethod
@@ -89,7 +88,6 @@ class RentingStations(Stops, ABC):
         """
         Update data using real-time feeds
         """
-
         pass
 
 
@@ -225,14 +223,12 @@ class GeofenceAreas(RentingStations):
         """
         Downloads static data
         """
-
         pass
 
     def update(self):
         """
         Update data using real-time feeds
         """
-
         pass
 
 
@@ -271,9 +267,10 @@ class VehicleTransfer(Transfer):
 
 
 class VehicleTransfers(Transfers):
-    """ This class represent a set of VehicleTransfers  """
-
-    """ Override superclass methods with stub, subsuming to VehicleTransfer """
+    """
+    This class represent a set of VehicleTransfers, that is, time-independent transfer
+    carried out with the use of some vehicle (e.g. bike, car, etc.)
+    """
 
     def add(self, transfer: VehicleTransfer):
         super(VehicleTransfers, self).add(transfer)
