@@ -159,8 +159,7 @@ class MultiCriteriaLabel(BaseLabel):
         return mc_lbl
 
     def update(self, data: LabelUpdate[MultiCriteriaLabel]) -> MultiCriteriaLabel:
-        if len(self.criteria) == 0:
-            raise Exception("Trying to update an instance with no criteria set")
+        assert len(self.criteria) != 0, "Trying to update an instance with no criteria set"
 
         updated_criteria = []
         for c in self.criteria:
@@ -368,20 +367,20 @@ def _get_best_criterion(
     :return: instance of the specified criterion type
     """
 
+    assert isinstance(label, (MultiCriteriaLabel, GeneralizedCostLabel)), f"Unhandled label type: {type(label)}"
+
+    criteria = None
     if isinstance(label, MultiCriteriaLabel):
         criteria = label.criteria
     elif isinstance(label, GeneralizedCostLabel):
         criteria = label.gc_criterion.criteria
-    else:
-        raise ValueError(f"Unhandled label type: {type(label)}")
 
     criterion = next(
         filter(lambda c: isinstance(c, criterion_class), criteria),
         None
     )
-    if criterion is None:
-        raise ValueError(f"The provided best labels do not include "
-                         f"a criterion of type {criterion_class.__name__}")
+    assert criterion is not None, (f"The provided best labels do not include "
+                                   f"a criterion of type {criterion_class.__name__}")
 
     return criterion
 
@@ -577,6 +576,7 @@ class ArrivalTimeCriterion(Criterion):
     def update(self, data: LabelUpdate) -> ArrivalTimeCriterion:
         new_arrival_time = data.new_trip.get_stop_time(data.arrival_stop).dts_arr
 
+        # This error might happen if the timetable was generated with incorrect data
         if new_arrival_time is None or np.isnan(new_arrival_time):
             logger.error(f"Arrival time for stop {data.arrival_stop} is None\n"
                          f"Stop time object: {data.new_trip.get_stop_time(data.arrival_stop)}")
@@ -658,8 +658,7 @@ class GeneralizedCostCriterion(Criterion):
         object.__setattr__(self, "raw_value", sum(self.criteria, start=0.0))
 
     def update(self, data: LabelUpdate) -> GeneralizedCostCriterion:
-        if len(self.criteria) == 0:
-            raise Exception("Trying to update an instance with no criteria set")
+        assert len(self.criteria) != 0, "Trying to update an instance with no criteria set"
 
         updated_criteria = []
         for c in self.criteria:

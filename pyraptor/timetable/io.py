@@ -25,7 +25,7 @@ def read_gtfs_tables(gtfs_dir: str) -> Dict[str, pd.DataFrame]:
     logger.info(f"Reading GTFS at {gtfs_dir}")
 
     if not os.path.exists(gtfs_dir):
-        raise Exception(f"No directory {gtfs_dir}")
+        raise NotADirectoryError(f"No directory '{gtfs_dir}'")
 
     gtfs_tables: Dict[str, pd.DataFrame] = {}
     for item in os.listdir(gtfs_dir):
@@ -83,7 +83,7 @@ def tables_to_gtfs(tables_dir: str, gtfs_filename: str, out_dir: str = None):
 
     # raises an exception if table directory doesn't exist
     if not os.path.exists(tables_dir):
-        raise Exception(f"No dir '{tables_dir}'")
+        raise NotADirectoryError(f"No directory '{tables_dir}'")
 
     gtfs_dir = tables_dir if out_dir is None else out_dir
     gtfs_path = os.path.join(gtfs_dir, gtfs_filename)

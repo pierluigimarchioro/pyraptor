@@ -193,7 +193,7 @@ def _process_shared_mob_args(
 
         # Car check
         if preferred_vehicle == TransportType.Car and not enable_car:
-            raise Exception("Preferred vehicle is car, but car-sharing transfers are disabled")
+            raise ValueError("Preferred vehicle is car, but car-sharing transfers are disabled")
 
         return preferred_vehicle_type
     else:

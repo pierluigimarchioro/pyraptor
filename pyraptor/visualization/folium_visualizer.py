@@ -384,10 +384,11 @@ def _main():
     args = parse_arguments()
 
     try:
-        logger.debug(f"Reading algorithm output from path {args.algo_output}")
+        logger.debug(f"Reading algorithm output from path '{args.algo_output}'")
         output: AlgorithmOutput = AlgorithmOutput.read_from_file(filepath=args.algo_output)
     except IOError as ex:
-        raise Exception(f"An error occurred while trying to read {args.algo_output}: {ex}")
+        raise IOError(f"An error occurred while trying to read '{args.algo_output}':\n"
+                      f"{ex}")
 
     visualize_output(
         algo_output=output,

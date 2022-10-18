@@ -214,7 +214,7 @@ class CalendarHandler:
         elif self._is_alternate_calendar_repr():
             return self._handle_alternate_calendar(on_date, valid_service_ids)
         else:
-            raise Exception("Unhandled Calendar Representation")
+            raise ValueError("Unhandled Calendar Representation. Check the validity of the GTFS feed")
 
     def _is_recommended_calendar_repr(self) -> bool:
         """

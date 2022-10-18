@@ -34,15 +34,12 @@ class Leg:
         Departure time in seconds past midnight
         """
 
-        try:
-            return [
-                tst.dts_dep for tst in self.trip.stop_times if self.from_stop == tst.stop
-            ][0]
-        except IndexError as ex:
-            raise Exception(f"No departure time for to_stop: {self.to_stop}.\n"
-                            f"Current Leg: {repr(self)}. \n Original Error: {ex} \n\n"
-                            f"Trying to find {self.from_stop}"
-                            f"in stop times: \n{[f'{repr(x)}' for x in self.trip.stop_times]}")
+        from_stop_time = list(filter(lambda tst: self.from_stop == tst.stop, self.trip.stop_times))
+
+        assert len(from_stop_time) == 1, (f"There should be exactly one stop time event"
+                                          f"for stop `{self.from_stop}`")
+
+        return from_stop_time[0].dts_dep
 
     @property
     def arr(self) -> int:
@@ -50,13 +47,12 @@ class Leg:
         Arrival time in seconds past midnight
         """
 
-        try:
-            return [
-                tst.dts_arr for tst in self.trip.stop_times if self.to_stop == tst.stop
-            ][0]
-        except IndexError as ex:
-            raise Exception(f"No arrival time for to_stop: {self.to_stop}.\n"
-                            f"Current Leg: {self}. \n Original Error: {ex}")
+        to_stop_time = list(filter(lambda tst: self.to_stop == tst.stop, self.trip.stop_times))
+
+        assert len(to_stop_time) == 1, (f"There should be exactly one stop time event"
+                                        f"for stop `{self.to_stop}`")
+
+        return to_stop_time[0].dts_arr
 
     # TODO see todo in Journey class: I don't think this belongs here
     #   Leg should not know about Generalized Cost
@@ -158,18 +154,17 @@ class Journey:
         prev_trip = first_trip if first_trip is not None else None
         n_changes = 1
         for leg in self:
+            assert leg.trip is not None, f"Leg trip cannot be {None}"
+
             current_trip = leg.trip
-            if current_trip is not None:
-                hint = current_trip.hint
+            hint = current_trip.hint
 
-                if current_trip != prev_trip:
-                    trip_change = f"-- Trip Change #{n_changes} -- "
-                    update_(trip_change)
-                    n_changes += 1
+            if current_trip != prev_trip:
+                trip_change = f"-- Trip Change #{n_changes} -- "
+                update_(trip_change)
+                n_changes += 1
 
-                prev_trip = current_trip
-            else:
-                raise Exception(f"Leg trip cannot be {None}. Value: {current_trip}")
+            prev_trip = current_trip
 
             msg = (
                     str(sec2str(leg.dep))
@@ -305,7 +300,7 @@ class Journey:
         return (
             True
             if (self.total_cost() <= jrny.total_cost())
-            and (self != jrny)
+               and (self != jrny)
             else False
         )
 

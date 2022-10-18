@@ -395,10 +395,10 @@ class RouteInfo:
     def __eq__(self, other):
         if other is None:
             return False
-        if isinstance(other, RouteInfo):
-            return other.transport_type == self.transport_type and other.name == self.name
-        else:
-            raise Exception(f"Cannot compare {RouteInfo.__name__} with {type(other)}")
+
+        assert isinstance(other, RouteInfo), f"Cannot compare {RouteInfo.__name__} with {type(other)}"
+
+        return other.transport_type == self.transport_type and other.name == self.name
 
 
 class TransferRouteInfo(RouteInfo):
@@ -534,8 +534,8 @@ class TransferTrip(Trip):
         # Add stop times for both origin and end stops
         travelling_time = arr_time - dep_time
 
-        if transport_type not in TRANSPORT_TYPE_SPEEDS.keys():
-            raise ValueError(f"Unhandled transport type `{transport_type}`: average speed is not defined")
+        assert transport_type in TRANSPORT_TYPE_SPEEDS.keys(), (f"Unhandled transport type `{transport_type}`: "
+                                                                f"average speed is not defined")
 
         travelled_distance = (travelling_time / 3600) * TRANSPORT_TYPE_SPEEDS[transport_type]
         arr_stop_time = TripStopTime(
