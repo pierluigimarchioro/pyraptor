@@ -14,7 +14,7 @@ from loguru import logger
 from pyraptor.model.algos.base import SharedMobilityConfig
 from pyraptor.model.algos.et_raptor import EarliestArrivalTimeRaptor
 from pyraptor.model.algos.gc_raptor import GeneralizedCostRaptor
-from pyraptor.model.criteria import MultiCriteriaLabel, FileCriteriaProvider, CriteriaFactory, ParetoBag
+from pyraptor.model.criteria import MultiCriteriaLabel, FileCriteriaProvider, CriteriaFactory, ParetoBag, Bag
 from pyraptor.model.output import AlgorithmOutput, get_journeys_to_destinations, Journey, Leg
 from pyraptor.model.shared_mobility import RaptorTimetableSM
 from pyraptor.model.timetable import RaptorTimetable, Stop, TransportType
@@ -211,7 +211,7 @@ def _execute_raptor_variant(
         enable_sm: bool,
         preferred_vehicle: TransportType,
         enable_car: bool
-) -> Mapping[Stop, ParetoBag]:
+) -> Mapping[Stop, Bag[MultiCriteriaLabel]]:
     """
     Executes the specified variant of the Raptor algorithm and returns a
     mapping that pairs each stop with its bag of best labels.
@@ -222,7 +222,7 @@ def _execute_raptor_variant(
         enable_car=enable_car
     )
 
-    def run_weighted_mc_raptor() -> Mapping[Stop, ParetoBag]:
+    def run_gc_raptor() -> Mapping[Stop, Bag[MultiCriteriaLabel]]:
         raptor = GeneralizedCostRaptor(
             timetable=timetable,
             enable_fwd_deps_heuristic=enable_fwd_deps,
@@ -230,27 +230,9 @@ def _execute_raptor_variant(
             sm_config=sm_config,
             criteria_provider=criteria_provider
         )
-        results = raptor.run(origin_stops, dep_secs, rounds)
+        return raptor.run(origin_stops, dep_secs, rounds)
 
-        # Convert best labels from Dict[Stop, Label] to Dict[Stop, Bag]
-        best_bags: Dict[Stop, ParetoBag] = {}
-        for stop, bag in results.items():
-            # TODO polymorphism for GC labels? What breaks everything is the dataclass decorator. Might remove
-            mc_labels = []
-            for label in bag.labels:
-                mc_lbl = MultiCriteriaLabel(
-                    arrival_time=label.arrival_time,
-                    boarding_stop=label.boarding_stop,
-                    trip=label.trip,
-                    criteria=label.gc_criterion.criteria
-                )
-
-                mc_labels.append(mc_lbl)
-            best_bags[stop] = ParetoBag(labels=mc_labels)
-
-        return best_bags
-
-    def run_base_raptor() -> Mapping[Stop, ParetoBag]:
+    def run_base_raptor() -> Mapping[Stop, Bag[MultiCriteriaLabel]]:
         raptor = EarliestArrivalTimeRaptor(
             timetable=timetable,
             enable_fwd_deps_heuristic=enable_fwd_deps,
@@ -272,9 +254,9 @@ def _execute_raptor_variant(
 
         return best_bags
 
-    variant_switch: Dict[RaptorVariants, Callable[[], Mapping[Stop, ParetoBag]]] = {
+    variant_switch: Dict[RaptorVariants, Callable[[], Mapping[Stop, Bag[MultiCriteriaLabel]]]] = {
         RaptorVariants.EarliestArrivalTime: run_base_raptor,
-        RaptorVariants.GeneralizedCost: run_weighted_mc_raptor
+        RaptorVariants.GeneralizedCost: run_gc_raptor
     }
 
     return variant_switch[variant]()
