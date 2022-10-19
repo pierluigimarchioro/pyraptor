@@ -777,11 +777,10 @@ class GeneralizedCostCriterion(Criterion, CriterionProvider):
             upper_bound=upper_bound
         )
 
-        # This is the way to set attributes in frozen dataclasses
-        object.__setattr__(self, "criteria", criteria)
+        self.criteria = criteria
 
         # Calculate and set generalized cost on init
-        object.__setattr__(self, "raw_value", sum(self.criteria, start=0.0))
+        self.raw_value = sum(self.criteria, start=0.0)
 
     def update(
             self,
