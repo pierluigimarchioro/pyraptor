@@ -239,20 +239,7 @@ def _execute_raptor_variant(
             enable_sm=enable_sm,
             sm_config=sm_config
         )
-        results = raptor.run(origin_stops, dep_secs, rounds)
-
-        # Convert best labels from Dict[Stop, Label] to Dict[Stop, Bag]
-        best_bags: Dict[Stop, ParetoBag] = {}
-        for stop, bag in results.items():
-            mc_labels = []
-            for label in bag.labels:
-                mc_lbl = MultiCriteriaLabel.from_et_label(label)  # TODO find cleaner way to get label
-
-                mc_labels.append(mc_lbl)
-
-            best_bags[stop] = ParetoBag(labels=mc_labels)
-
-        return best_bags
+        return raptor.run(origin_stops, dep_secs, rounds)
 
     variant_switch: Dict[RaptorVariants, Callable[[], Mapping[Stop, Bag[MultiCriteriaLabel]]]] = {
         RaptorVariants.EarliestArrivalTime: run_base_raptor,

@@ -11,6 +11,9 @@ from pyraptor.model.timetable import Stop, Route, TransferTrip
 from pyraptor.model.criteria import EarliestArrivalTimeLabel, EarliestArrivalTimeBag, LabelUpdate
 
 
+# TODO now ETLabels have arrival_stop as a field. Is it useful information?
+
+
 class EarliestArrivalTimeRaptor(BaseRaptor[EarliestArrivalTimeLabel, EarliestArrivalTimeBag]):
     """
     Implementation of the Earliest Arrival Time RAPTOR algorithm.

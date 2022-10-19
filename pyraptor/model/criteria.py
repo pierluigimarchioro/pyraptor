@@ -108,243 +108,6 @@ class LabelUpdate(Generic[_LabelType]):
     on previous stops information (e.g. current_cost = previous_cost + K)"""
 
 
-class EarliestArrivalTimeLabel(BaseLabel):
-    """
-    Class that represents a label used in the Earliest Arrival Time RAPTOR variant
-    described in the RAPTOR paper
-    (https://www.microsoft.com/en-us/research/wp-content/uploads/2012/01/raptor_alenex.pdf).
-    """
-
-    def update(self, data: LabelUpdate[EarliestArrivalTimeLabel]) -> EarliestArrivalTimeLabel:
-        trip = data.new_trip if self.trip != data.new_trip else self.trip
-        boarding_stop = data.boarding_stop if data.boarding_stop is not None else self.boarding_stop
-
-        # Earliest arrival time to the arrival stop on the updated trip
-        earliest_arrival_time = trip.get_stop_time(data.arrival_stop).dts_arr
-
-        return EarliestArrivalTimeLabel(
-            arrival_time=earliest_arrival_time,
-            boarding_stop=boarding_stop,
-            arrival_stop=data.arrival_stop,
-            trip=trip
-        )
-
-    def is_strictly_dominating(self, other: EarliestArrivalTimeLabel) -> bool:
-        return self.arrival_time <= other.arrival_time
-
-    def __repr__(self) -> str:
-        return (f"{EarliestArrivalTimeLabel.__name__}(earliest_arrival_time={self.arrival_time}, "
-                f"trip={self.trip}, boarding_stop={self.boarding_stop})")
-
-
-# Forward Reference to Criterion class, defined afterwards
-_C = TypeVar('_C', bound="Criterion")
-
-
-class CriterionProvider(ABC):
-    """
-    Abstract class that defines an interface that allows to retrieve
-    criterion instances of a specific type
-    """
-
-    @abstractmethod
-    def get_criterion(
-            self,
-            criterion_class: Type[_C],
-    ) -> _C:
-        """
-        Retrieve the criterion instance of the specified type
-        :param criterion_class: type of the criterion to retrieve
-        :return: criterion instance
-        """
-        pass
-
-
-class MultiCriteriaLabel(BaseLabel, CriterionProvider):
-    """
-    Class that represents a multi-criteria label.
-
-    The concept this is class is modeled after is that of the multi-label in the
-    `McRAPTOR` section of the RAPTOR paper
-    (https://www.microsoft.com/en-us/research/wp-content/uploads/2012/01/raptor_alenex.pdf)
-    """
-
-    arrival_stop: Stop
-    """Stop that this label is associated to"""
-
-    # TODO what if it was a mapping for easier retrieval?
-    criteria: Sequence[Criterion]
-    """Set of criteria to optimize"""
-
-    def __init__(
-            self,
-            trip: Trip = None,
-            boarding_stop: Stop = None,
-            arrival_stop: Stop = None,
-            arrival_time: int = LARGE_NUMBER,
-            criteria: Sequence[Criterion] = None
-    ):
-        """
-        :param trip: trip associated to this label
-        :param boarding_stop: stop that the associated trip is boarded at
-        :param arrival_stop: stop that the associated trip is hopped off at
-        :param arrival_time: time of arrival at the arrival stop
-        :param criteria: set of criteria to optimize
-        """
-
-        super(MultiCriteriaLabel, self).__init__(
-            trip=trip,
-            boarding_stop=boarding_stop,
-            arrival_stop=arrival_stop,
-            arrival_time=arrival_time
-        )
-
-        self.criteria = criteria
-
-    @staticmethod
-    def from_et_label(et_label: EarliestArrivalTimeLabel) -> MultiCriteriaLabel:
-        """
-        Creates a multi-criteria label from an Earliest Arrival Time RAPTOR label instance.
-        The new multi-criteria label has a total cost of 1.
-
-        :param et_label: Earliest Arrival Time RAPTOR label to convert
-        :return: converted multi-criteria label
-        """
-
-        # Args except raw_value are not important
-        arr_criterion = ArrivalTimeCriterion(
-            raw_value=et_label.arrival_time
-        )
-        mc_lbl = MultiCriteriaLabel(
-            arrival_time=et_label.arrival_time,
-            boarding_stop=et_label.boarding_stop,
-            trip=et_label.trip,
-            arrival_stop=et_label.arrival_stop,
-            criteria=[arr_criterion]
-        )
-
-        return mc_lbl
-
-    def update(self, data: LabelUpdate[MultiCriteriaLabel]) -> MultiCriteriaLabel:
-        assert len(self.criteria) != 0, "Trying to update an instance with no criteria set"
-
-        updated_criteria = []
-        for c in self.criteria:
-            updated_c = c.update(
-                data=data,
-                accumulated_criteria_provider=data.boarding_stop_label
-            )
-            updated_criteria.append(updated_c)
-
-        updated_trip = data.new_trip if data.new_trip is not None else self.trip
-        updated_dep_stop = data.boarding_stop if data.boarding_stop is not None else self.boarding_stop
-        updated_arr_stop = data.arrival_stop if data.arrival_stop is not None else self.arrival_stop
-
-        # Earliest arrival time to the arrival stop on the updated trip
-        updated_arr_time = updated_trip.get_stop_time(updated_arr_stop).dts_arr
-
-        return MultiCriteriaLabel(
-            arrival_time=updated_arr_time,
-            boarding_stop=updated_dep_stop,
-            arrival_stop=updated_arr_stop,
-            criteria=updated_criteria,
-            trip=updated_trip,
-        )
-
-    def get_criterion(
-            self,
-            criterion_class: Type[_C],
-    ) -> _C:
-        """
-        Returns the instance of the specified type of criterion from the current label.
-
-        :param criterion_class: type of the criterion to retrieve
-        :return: instance of the specified criterion type
-        """
-
-        criterion = next(
-            filter(lambda c: isinstance(c, criterion_class), self.criteria),
-            None
-        )
-        assert criterion is not None, (f"The current label does not include "
-                                       f"a criterion of type {criterion_class.__name__}")
-
-        return criterion
-
-    def is_strictly_dominating(self, other: MultiCriteriaLabel) -> bool:
-        # TODO strict domination here? is this method even needed?
-        #    after implementing McRAPTOR, consider removing if unused
-        return self.criteria < other.criteria
-
-
-class GeneralizedCostLabel(MultiCriteriaLabel):
-    """
-    Label that considers only generalized cost as domination criterion
-    """
-
-    gc_criterion: GeneralizedCostCriterion
-    """Generalized cost criterion instance used to calculate generalized cost.
-    This is the only criterion optimized in labels of this type."""
-
-    def __init__(
-            self,
-            trip: Trip = None,
-            boarding_stop: Stop = None,
-            arrival_stop: Stop = None,
-            arrival_time: int = LARGE_NUMBER,
-            criteria: Sequence[Criterion] = None
-    ):
-        """
-        :param trip: trip associated to this label
-        :param boarding_stop: stop that the associated trip is boarded at
-        :param arrival_stop: stop that the associated trip is hopped off at
-        :param arrival_time: time of arrival at the arrival stop
-        :param criteria: criteria used to calculate the generalized cost
-        """
-
-        super(GeneralizedCostLabel, self).__init__(
-            trip=trip,
-            boarding_stop=boarding_stop,
-            arrival_stop=arrival_stop,
-            arrival_time=arrival_time,
-            criteria=criteria
-        )
-
-        self.gc_criterion = GeneralizedCostCriterion(criteria=criteria)
-
-    @property
-    def generalized_cost(self) -> float:
-        """
-        Returns the total cost assigned to the label, which corresponds to
-        the weighted sum of its criteria.
-        :return: float instance representing the total cost
-        """
-
-        return self.gc_criterion.cost
-
-    def update(self, data: LabelUpdate[GeneralizedCostLabel]) -> GeneralizedCostLabel:
-        updated_trip = data.new_trip if data.new_trip is not None else self.trip
-        updated_dep_stop = data.boarding_stop if data.boarding_stop is not None else self.boarding_stop
-        updated_gc_criterion = self.gc_criterion.update(
-            data=data,
-            accumulated_criteria_provider=data.boarding_stop_label.gc_criterion
-        )
-
-        # Earliest arrival time to the arrival stop on the updated trip
-        updated_arr_time = updated_trip.get_stop_time(data.arrival_stop).dts_arr
-
-        return GeneralizedCostLabel(
-            arrival_time=updated_arr_time,
-            boarding_stop=updated_dep_stop,
-            arrival_stop=data.arrival_stop,
-            trip=updated_trip,
-            criteria=updated_gc_criterion.criteria
-        )
-
-    def is_strictly_dominating(self, other: GeneralizedCostLabel) -> bool:
-        return self.generalized_cost < other.generalized_cost
-
-
 class Criterion(ABC):
     """
     Base class for a RAPTOR label criterion
@@ -477,6 +240,29 @@ class Criterion(ABC):
         :param accumulated_criteria_provider: instance that allows to retrieve the values
             accumulated for each optimized criteria up until this point in the journey
         :return: updated criterion instance
+        """
+        pass
+
+
+# Forward Reference to Criterion class, defined afterwards
+_C = TypeVar('_C', bound="Criterion")
+
+
+class CriterionProvider(ABC):
+    """
+    Abstract class that defines an interface that allows to retrieve
+    criterion instances of a specific type
+    """
+
+    @abstractmethod
+    def get_criterion(
+            self,
+            criterion_class: Type[_C],
+    ) -> _C:
+        """
+        Retrieve the criterion instance of the specified type
+        :param criterion_class: type of the criterion to retrieve
+        :return: criterion instance
         """
         pass
 
@@ -831,6 +617,231 @@ class GeneralizedCostCriterion(Criterion, CriterionProvider):
                                        f"not include a criterion of type {criterion_class.__name__}")
 
         return criterion
+
+
+class MultiCriteriaLabel(BaseLabel, CriterionProvider):
+    """
+    Class that represents a multi-criteria label.
+
+    The concept this is class is modeled after is that of the multi-label in the
+    `McRAPTOR` section of the RAPTOR paper
+    (https://www.microsoft.com/en-us/research/wp-content/uploads/2012/01/raptor_alenex.pdf)
+    """
+
+    arrival_stop: Stop
+    """Stop that this label is associated to"""
+
+    # TODO what if it was a mapping for easier retrieval?
+    criteria: Sequence[Criterion]
+    """Set of criteria to optimize"""
+
+    def __init__(
+            self,
+            trip: Trip = None,
+            boarding_stop: Stop = None,
+            arrival_stop: Stop = None,
+            arrival_time: int = LARGE_NUMBER,
+            criteria: Sequence[Criterion] = None
+    ):
+        """
+        :param trip: trip associated to this label
+        :param boarding_stop: stop that the associated trip is boarded at
+        :param arrival_stop: stop that the associated trip is hopped off at
+        :param arrival_time: time of arrival at the arrival stop
+        :param criteria: set of criteria to optimize
+        """
+
+        super(MultiCriteriaLabel, self).__init__(
+            trip=trip,
+            boarding_stop=boarding_stop,
+            arrival_stop=arrival_stop,
+            arrival_time=arrival_time
+        )
+
+        self.criteria = criteria
+
+    def update(self, data: LabelUpdate[MultiCriteriaLabel]) -> MultiCriteriaLabel:
+        assert len(self.criteria) != 0, "Trying to update an instance with no criteria set"
+
+        updated_criteria = []
+        for c in self.criteria:
+            updated_c = c.update(
+                data=data,
+                accumulated_criteria_provider=data.boarding_stop_label
+            )
+            updated_criteria.append(updated_c)
+
+        updated_trip = data.new_trip if data.new_trip is not None else self.trip
+        updated_dep_stop = data.boarding_stop if data.boarding_stop is not None else self.boarding_stop
+        updated_arr_stop = data.arrival_stop if data.arrival_stop is not None else self.arrival_stop
+
+        # Earliest arrival time to the arrival stop on the updated trip
+        updated_arr_time = updated_trip.get_stop_time(updated_arr_stop).dts_arr
+
+        return MultiCriteriaLabel(
+            arrival_time=updated_arr_time,
+            boarding_stop=updated_dep_stop,
+            arrival_stop=updated_arr_stop,
+            criteria=updated_criteria,
+            trip=updated_trip,
+        )
+
+    def get_criterion(
+            self,
+            criterion_class: Type[_C],
+    ) -> _C:
+        """
+        Returns the instance of the specified type of criterion from the current label.
+
+        :param criterion_class: type of the criterion to retrieve
+        :return: instance of the specified criterion type
+        """
+
+        criterion = next(
+            filter(lambda c: isinstance(c, criterion_class), self.criteria),
+            None
+        )
+        assert criterion is not None, (f"The current label does not include "
+                                       f"a criterion of type {criterion_class.__name__}")
+
+        return criterion
+
+    def is_strictly_dominating(self, other: MultiCriteriaLabel) -> bool:
+        # TODO strict domination here? is this method even needed?
+        #    after implementing McRAPTOR, consider removing if unused
+        return self.criteria < other.criteria
+
+
+class EarliestArrivalTimeLabel(MultiCriteriaLabel):
+    """
+    Class that represents a label used in the Earliest Arrival Time RAPTOR variant
+    described in the RAPTOR paper
+    (https://www.microsoft.com/en-us/research/wp-content/uploads/2012/01/raptor_alenex.pdf).
+
+    Arrival time is the only optimization criterion.
+    """
+
+    at_criterion: ArrivalTimeCriterion
+    """Arrival Time Criterion instance used to calculate updated arrival times.
+    This is the only criterion optimized in labels of this type."""
+
+    def __init__(
+            self,
+            trip: Trip = None,
+            boarding_stop: Stop = None,
+            arrival_stop: Stop = None,
+            arrival_time: int = LARGE_NUMBER
+    ):
+        """
+        :param trip: trip associated to this label
+        :param boarding_stop: stop that the associated trip is boarded at
+        :param arrival_stop: stop that the associated trip is hopped off at
+        :param arrival_time: time of arrival at the arrival stop
+        """
+
+        at_criterion = ArrivalTimeCriterion(raw_value=arrival_time)
+        super(EarliestArrivalTimeLabel, self).__init__(
+            trip=trip,
+            boarding_stop=boarding_stop,
+            arrival_stop=arrival_stop,
+            arrival_time=arrival_time,
+            criteria=[at_criterion]  # Arrival Time is the only optimized criterion here
+        )
+
+        self.at_criterion = at_criterion
+
+    def update(self, data: LabelUpdate[EarliestArrivalTimeLabel]) -> EarliestArrivalTimeLabel:
+        trip = data.new_trip if self.trip != data.new_trip else self.trip
+        boarding_stop = data.boarding_stop if data.boarding_stop is not None else self.boarding_stop
+
+        # Earliest arrival time to the arrival stop on the updated trip
+        updated_at_criterion = self.at_criterion.update(
+            data=data,
+            accumulated_criteria_provider=data.boarding_stop_label
+        )
+
+        return EarliestArrivalTimeLabel(
+            arrival_time=int(updated_at_criterion.raw_value),
+            boarding_stop=boarding_stop,
+            arrival_stop=data.arrival_stop,
+            trip=trip
+        )
+
+    def is_strictly_dominating(self, other: EarliestArrivalTimeLabel) -> bool:
+        return self.arrival_time < other.arrival_time
+
+    def __repr__(self) -> str:
+        return (f"{EarliestArrivalTimeLabel.__name__}(earliest_arrival_time={self.arrival_time}, "
+                f"trip={self.trip}, boarding_stop={self.boarding_stop})")
+
+
+class GeneralizedCostLabel(MultiCriteriaLabel):
+    """
+    Label that considers only generalized cost as optimization criterion
+    """
+
+    gc_criterion: GeneralizedCostCriterion
+    """Generalized cost criterion instance used to calculate generalized cost.
+    This is the only criterion optimized in labels of this type."""
+
+    def __init__(
+            self,
+            trip: Trip = None,
+            boarding_stop: Stop = None,
+            arrival_stop: Stop = None,
+            arrival_time: int = LARGE_NUMBER,
+            criteria: Sequence[Criterion] = None
+    ):
+        """
+        :param trip: trip associated to this label
+        :param boarding_stop: stop that the associated trip is boarded at
+        :param arrival_stop: stop that the associated trip is hopped off at
+        :param arrival_time: time of arrival at the arrival stop
+        :param criteria: criteria used to calculate the generalized cost
+        """
+
+        gc_criterion = GeneralizedCostCriterion(criteria=criteria)
+        super(GeneralizedCostLabel, self).__init__(
+            trip=trip,
+            boarding_stop=boarding_stop,
+            arrival_stop=arrival_stop,
+            arrival_time=arrival_time,
+            criteria=[gc_criterion]  # GC is the only optimized criterion here
+        )
+
+        self.gc_criterion = gc_criterion
+
+    @property
+    def generalized_cost(self) -> float:
+        """
+        Returns the total cost assigned to the label, which corresponds to
+        the weighted sum of its criteria.
+        :return: float instance representing the total cost
+        """
+
+        return self.gc_criterion.cost
+
+    def update(self, data: LabelUpdate[GeneralizedCostLabel]) -> GeneralizedCostLabel:
+        updated_trip = data.new_trip if data.new_trip is not None else self.trip
+        updated_dep_stop = data.boarding_stop if data.boarding_stop is not None else self.boarding_stop
+        updated_gc_criterion = self.gc_criterion.update(
+            data=data,
+            accumulated_criteria_provider=data.boarding_stop_label.gc_criterion
+        )
+
+        # Earliest arrival time to the arrival stop on the updated trip
+        updated_arr_time = updated_trip.get_stop_time(data.arrival_stop).dts_arr
+
+        return GeneralizedCostLabel(
+            arrival_time=updated_arr_time,
+            boarding_stop=updated_dep_stop,
+            arrival_stop=data.arrival_stop,
+            trip=updated_trip,
+            criteria=updated_gc_criterion.criteria
+        )
+
+    def is_strictly_dominating(self, other: GeneralizedCostLabel) -> bool:
+        return self.generalized_cost < other.generalized_cost
 
 
 @dataclass(frozen=True)
