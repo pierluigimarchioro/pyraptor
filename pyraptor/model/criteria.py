@@ -750,23 +750,6 @@ class EarliestArrivalTimeLabel(MultiCriteriaLabel):
 
         self.at_criterion = at_criterion
 
-    def update(self, data: LabelUpdate[EarliestArrivalTimeLabel]) -> EarliestArrivalTimeLabel:
-        trip = data.new_trip if self.trip != data.new_trip else self.trip
-        boarding_stop = data.boarding_stop if data.boarding_stop is not None else self.boarding_stop
-
-        # Earliest arrival time to the arrival stop on the updated trip
-        updated_at_criterion = self.at_criterion.update(
-            data=data,
-            accumulated_criteria_provider=data.boarding_stop_label
-        )
-
-        return EarliestArrivalTimeLabel(
-            arrival_time=int(updated_at_criterion.raw_value),
-            boarding_stop=boarding_stop,
-            arrival_stop=data.arrival_stop,
-            trip=trip
-        )
-
     def is_strictly_dominating(self, other: EarliestArrivalTimeLabel) -> bool:
         return self.arrival_time < other.arrival_time
 
