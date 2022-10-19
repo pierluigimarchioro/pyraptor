@@ -325,7 +325,7 @@ class Journey:
 def get_journeys_to_destinations(
         origin_stops: Iterable[Stop],
         destination_stops: Dict[str, Iterable[Stop]],
-        best_bags: Mapping[Stop, Bag[MultiCriteriaLabel]]  # TODO why ParetoBag? can't it be generalized?
+        best_bags: Mapping[Stop, Bag[MultiCriteriaLabel]]
 ) -> Mapping[str, Sequence[Journey]]:
     """
     Returns a mapping that pairs each set of destination stops with a valid set of journeys.
@@ -363,7 +363,7 @@ def get_journeys_to_destinations(
 
 def _best_legs_to_destination_station(
         to_stops: Iterable[Stop],
-        last_round_bag: Mapping[Stop, Bag[MultiCriteriaLabel]]  # TODO why ParetoBag? can't it be generalized?
+        last_round_bag: Mapping[Stop, Bag[MultiCriteriaLabel]]
 ) -> Sequence[Leg]:
     """
     Find the last legs to destination station that are reached by non-dominated labels.
