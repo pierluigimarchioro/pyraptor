@@ -29,6 +29,8 @@ from pyraptor.model.output import AlgorithmOutput
 
 app = Flask(__name__)
 
+# TODO WMC RAPTOR was changed to Generalized Cost RAPTOR -> change wmc_raptor paths/functions to gc_raptor
+
 
 class Option:
     """ This class is helpful to iterate on both
