@@ -11,7 +11,7 @@ import joblib
 import numpy as np
 from loguru import logger
 
-from pyraptor.model.criteria import Criterion, pareto_set, MultiCriteriaLabel, ParetoBag
+from pyraptor.model.criteria import Criterion, pareto_set, MultiCriteriaLabel, Bag
 from pyraptor.model.timetable import Stop, Trip, TimetableInfo
 from pyraptor.util import sec2str, mkdir_if_not_exists
 
@@ -325,7 +325,7 @@ class Journey:
 def get_journeys_to_destinations(
         origin_stops: Iterable[Stop],
         destination_stops: Dict[str, Iterable[Stop]],
-        best_bags: Mapping[Stop, ParetoBag]  # TODO why ParetoBag? can't it be generalized?
+        best_bags: Mapping[Stop, Bag[MultiCriteriaLabel]]  # TODO why ParetoBag? can't it be generalized?
 ) -> Mapping[str, Sequence[Journey]]:
     """
     Returns a mapping that pairs each set of destination stops with a valid set of journeys.
@@ -363,7 +363,7 @@ def get_journeys_to_destinations(
 
 def _best_legs_to_destination_station(
         to_stops: Iterable[Stop],
-        last_round_bag: Mapping[Stop, ParetoBag]  # TODO why ParetoBag? can't it be generalized?
+        last_round_bag: Mapping[Stop, Bag[MultiCriteriaLabel]]  # TODO why ParetoBag? can't it be generalized?
 ) -> Sequence[Leg]:
     """
     Find the last legs to destination station that are reached by non-dominated labels.
@@ -396,7 +396,7 @@ def _best_legs_to_destination_station(
 def _reconstruct_journeys(
         from_stops: Iterable[Stop],
         destination_legs: Iterable[Leg],
-        best_labels: Mapping[Stop, ParetoBag],
+        best_labels: Mapping[Stop, Bag[MultiCriteriaLabel]],
         add_intermediate_legs: bool = False  # TODO parameterize at query level
 ) -> List[Journey]:
     """
