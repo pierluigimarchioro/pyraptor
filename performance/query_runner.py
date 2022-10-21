@@ -30,7 +30,7 @@ from pyraptor.model.criteria import (
     DistanceCriterion,
     EmissionsCriterion,
     CriterionConfiguration,
-    CriteriaFactory
+    CriteriaFactory, get_criterion, GeneralizedCostCriterion
 )
 from pyraptor.query import query_raptor
 from pyraptor.model.shared_mobility import RaptorTimetableSM, SharedMobilityFeed
@@ -543,10 +543,24 @@ def run_raptor_config(
 
     if (algo_output.journeys is None
             or len(algo_output.journeys) == 0):
+        # If destination unreachable, cost is set to -1
+        # to distinguish it from regular positive generalized costs
         journey_cost = -1
     else:
         # Compute the average cost since there can be more than one journey
-        costs = [j.total_cost() for j in algo_output.journeys]
+        gc_criterion_instances = []
+        for j in algo_output.journeys:
+            gc_criterion = get_criterion(j, GeneralizedCostCriterion, ignore_errors=True)
+
+            # It is not known if GeneralizedCost was actually defined as an opt. criterion
+            # In such a case, the cost is simulated by simply considering
+            #   all the optimized criteria
+            if gc_criterion is None:
+                gc_criterion = GeneralizedCostCriterion(criteria=j.get_criteria())
+
+            gc_criterion_instances.append(gc_criterion)
+
+        costs = [gc.raw_value for gc in gc_criterion_instances]
         journey_cost = mean(costs)
 
     return query_time, journey_cost
