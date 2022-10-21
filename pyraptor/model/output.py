@@ -11,13 +11,13 @@ import joblib
 import numpy as np
 from loguru import logger
 
-from pyraptor.model.criteria import Criterion, pareto_set, MultiCriteriaLabel, Bag
+from pyraptor.model.criteria import Criterion, pareto_set, MultiCriteriaLabel, Bag, CriteriaProvider
 from pyraptor.model.timetable import Stop, Trip, TimetableInfo
 from pyraptor.util import sec2str, mkdir_if_not_exists
 
 
 @dataclass
-class Leg:
+class Leg(CriteriaProvider):
     """
     Class that represents a leg of some journey, that is, a transfer between a pair of stops
     performed by boarding some trip.
@@ -26,7 +26,7 @@ class Leg:
     from_stop: Stop
     to_stop: Stop
     trip: Trip
-    criteria: Iterable[Criterion]
+    criteria: Sequence[Criterion]
 
     @property
     def dep(self) -> int:
@@ -53,12 +53,6 @@ class Leg:
                                           f"for stop `{self.to_stop}`")
 
         return to_stop_time.dts_arr
-
-    # TODO see todo in Journey class: I don't think this belongs here
-    #   Leg should not know about Generalized Cost
-    @property
-    def total_cost(self) -> float:
-        return sum(self.criteria, start=0.0)
 
     def is_same_station_transfer(self) -> bool:
         """
@@ -89,6 +83,9 @@ class Leg:
 
         return all([criteria_compatible, arrival_before_departure])
 
+    def get_criteria(self) -> Sequence[Criterion]:
+        return self.criteria
+
     def to_dict(self, leg_index: int = None) -> Dict:
         """
         Leg to readable dictionary
@@ -114,7 +111,7 @@ class Leg:
 
 
 @dataclass(frozen=True)
-class Journey:
+class Journey(CriteriaProvider):
     """
     Journey from origin to destination specified as Legs
     """
@@ -180,7 +177,7 @@ class Journey:
             update_(msg)
 
         update_("")
-        for c in self.criteria():
+        for c in self.get_criteria():
             update_(str(c))
 
         msg = f"Duration: {sec2str(self.travel_time())}"
@@ -273,24 +270,14 @@ class Journey:
         """Travel time in seconds"""
         return self.arr() - self.dep()
 
-    def criteria(self) -> Iterable[Criterion]:
+    def get_criteria(self) -> Sequence[Criterion]:
         """
-        Returns the final criteria for the journey, which correspond to
-        the criteria values of the final leg.
+        Returns the final values of each optimized criteria of the journey,
+        which correspond to the criteria values of the final leg.
         :return:
         """
 
         return self.legs[-1].criteria
-
-    # TODO name should be changed to generalized_cost. Additionally, does this attribute belong here?
-    #   I think journeys should not know about generalized cost or any RAPTOR implementation detail
-    def total_cost(self) -> float:
-        """
-        Returns the total cost of the journey
-        :return:
-        """
-
-        return sum(self.criteria(), start=0.0)
 
     def dominates(self, jrny: Journey):
         """
@@ -299,7 +286,7 @@ class Journey:
 
         return (
             True
-            if (self.total_cost() <= jrny.total_cost())
+            if (self.get_criteria() < jrny.get_criteria())
                 and (self != jrny)
             else False
         )

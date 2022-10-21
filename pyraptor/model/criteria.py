@@ -7,13 +7,17 @@ from collections.abc import Sequence, MutableSequence
 from copy import copy
 from dataclasses import dataclass, field
 from itertools import compress
-from typing import List, Type, Dict, TypeVar, Generic
+from typing import List, Type, Dict, TypeVar, Generic, Any
 
 import numpy as np
 from loguru import logger
 
 from pyraptor.model.timetable import TransportType, Trip, Stop
 from pyraptor.util import sec2str, LARGE_NUMBER
+
+
+# TODO module seems a bit big, consider splitting in: "criteria", "labels", "bags"
+#   also renaming the module to "optimization"
 
 
 # Forward reference to `BaseLabel` class
@@ -245,7 +249,7 @@ class Criterion(ABC):
     def update(
             self,
             data: LabelUpdate,
-            accumulated_criteria_provider: CriterionProvider
+            accumulated_criteria_provider: CriteriaProvider
     ) -> Criterion:
         """
         Update the current criterion instance with the provided data
@@ -262,23 +266,48 @@ class Criterion(ABC):
 _C = TypeVar('_C', bound="Criterion")
 
 
-class CriterionProvider(ABC):
+class CriteriaProvider(ABC):
     """
     Abstract class that defines an interface that allows to retrieve
-    criterion instances of a specific type
+    criteria instances from a specified provider
     """
 
     @abstractmethod
-    def get_criterion(
-            self,
-            criterion_class: Type[_C],
-    ) -> _C:
+    def get_criteria(self) -> Sequence[Criterion]:
         """
-        Retrieve the criterion instance of the specified type
-        :param criterion_class: type of the criterion to retrieve
+        Retrieves the criterion instance of the specified type
         :return: criterion instance
         """
         pass
+
+
+def get_criterion(
+        criteria_provider: CriteriaProvider,
+        criterion_class: Type[_C],
+        ignore_errors: bool = False
+) -> _C | None:
+    """
+    Returns the instance of the specified type of criterion from the current label.
+
+    :param criteria_provider: provider of criteria to retrieve the specified instance from
+    :param criterion_class: type of the criterion to retrieve
+    :param ignore_errors: if True, no error is raised if the specified criterion class
+        is not found, and None is returned instead
+    :return: instance of the specified criterion type or, if `ignore_errors` is set to False,
+        None if such a type was not found.
+    """
+
+    not_found_default = None
+    criterion = next(
+        filter(lambda c: isinstance(c, criterion_class), criteria_provider.get_criteria()),
+        not_found_default
+    )
+
+    if criterion is not_found_default and not ignore_errors:
+        raise ValueError(f"The provided {CriteriaProvider.__name__} instance does "
+                         f"not include a criterion of type {criterion_class.__name__}")
+
+    return criterion
 
 
 class DistanceCriterion(Criterion):
@@ -301,7 +330,7 @@ class DistanceCriterion(Criterion):
     def update(
             self,
             data: LabelUpdate[MultiCriteriaLabel],
-            accumulated_criteria_provider: CriterionProvider
+            accumulated_criteria_provider: CriteriaProvider
     ) -> DistanceCriterion:
         arrival_distance = self._get_total_arrival_distance(
             data=data,
@@ -317,7 +346,7 @@ class DistanceCriterion(Criterion):
     @staticmethod
     def _get_total_arrival_distance(
             data: LabelUpdate[MultiCriteriaLabel],
-            accumulated_criteria_provider: CriterionProvider
+            accumulated_criteria_provider: CriteriaProvider
     ) -> float:
         """
         Returns the updated distance (in km) for the criterion instance based on the
@@ -342,7 +371,8 @@ class DistanceCriterion(Criterion):
 
         # Extract the total distance of the previous stop (boarding stop) in the journey
         # from its distance criterion instance
-        prev_stop_dist_criterion = accumulated_criteria_provider.get_criterion(
+        prev_stop_dist_criterion = get_criterion(
+            criteria_provider=accumulated_criteria_provider,
             criterion_class=DistanceCriterion
         )
 
@@ -384,7 +414,7 @@ class EmissionsCriterion(Criterion):
     def update(
             self,
             data: LabelUpdate[MultiCriteriaLabel],
-            accumulated_criteria_provider: CriterionProvider
+            accumulated_criteria_provider: CriteriaProvider
     ) -> EmissionsCriterion:
         arrival_emissions = self._get_total_arrival_emissions(
             data=data,
@@ -400,7 +430,7 @@ class EmissionsCriterion(Criterion):
     @staticmethod
     def _get_total_arrival_emissions(
             data: LabelUpdate[MultiCriteriaLabel],
-            accumulated_criteria_provider: CriterionProvider
+            accumulated_criteria_provider: CriteriaProvider
     ) -> float:
         """
         Returns the updated total emissions (in co2 grams / passenger km) for
@@ -425,7 +455,8 @@ class EmissionsCriterion(Criterion):
         )
         same_trip_emissions = same_trip_distance * co2_multiplier
 
-        prev_stop_emissions_crit = accumulated_criteria_provider.get_criterion(
+        prev_stop_emissions_crit = get_criterion(
+            criteria_provider=accumulated_criteria_provider,
             criterion_class=EmissionsCriterion
         )
 
@@ -494,7 +525,7 @@ class ArrivalTimeCriterion(Criterion):
     def update(
             self,
             data: LabelUpdate[MultiCriteriaLabel],
-            accumulated_criteria_provider: CriterionProvider = None
+            accumulated_criteria_provider: CriteriaProvider = None
     ) -> ArrivalTimeCriterion:
         new_arrival_time = data.new_trip.get_stop_time(data.arrival_stop).dts_arr
 
@@ -538,7 +569,7 @@ class TransfersCriterion(Criterion):
     def update(
             self,
             data: LabelUpdate[MultiCriteriaLabel],
-            accumulated_criteria_provider: CriterionProvider
+            accumulated_criteria_provider: CriteriaProvider
     ) -> TransfersCriterion:
         # The transfer counter is updated only if:
         # - there is a trip change (new != old) and
@@ -547,7 +578,8 @@ class TransfersCriterion(Criterion):
         add_new_transfer = (data.new_trip != best_boarding_label.trip
                             and best_boarding_label.trip != DEFAULT_ORIGIN_TRIP)
 
-        transfers_at_boarding = accumulated_criteria_provider.get_criterion(
+        transfers_at_boarding = get_criterion(
+            criteria_provider=accumulated_criteria_provider,
             criterion_class=TransfersCriterion
         )
 
@@ -558,7 +590,7 @@ class TransfersCriterion(Criterion):
         )
 
 
-class GeneralizedCostCriterion(Criterion, CriterionProvider):
+class GeneralizedCostCriterion(Criterion, CriteriaProvider):
     criteria: Sequence[Criterion]
     """
     Set of criteria used to calculate the generalized cost
@@ -585,7 +617,7 @@ class GeneralizedCostCriterion(Criterion, CriterionProvider):
     def update(
             self,
             data: LabelUpdate[MultiCriteriaLabel],
-            accumulated_criteria_provider: CriterionProvider
+            accumulated_criteria_provider: CriteriaProvider
     ) -> GeneralizedCostCriterion:
         assert len(self.criteria) != 0, "Trying to update an instance with no criteria set"
 
@@ -595,7 +627,10 @@ class GeneralizedCostCriterion(Criterion, CriterionProvider):
         # E.g. MultiCriteriaLabel.criteria == { A, B, GeneralizedCost } and
         #   GeneralizedCost.criteria == { C, D, E }
         if not isinstance(accumulated_criteria_provider, GeneralizedCostCriterion):
-            accumulated_criteria_provider = data.boarding_stop_label.get_criterion(GeneralizedCostCriterion)
+            accumulated_criteria_provider = get_criterion(
+                criteria_provider=data.boarding_stop_label,
+                criterion_class=GeneralizedCostCriterion
+            )
 
         updated_criteria = []
         for c in self.criteria:
@@ -611,32 +646,14 @@ class GeneralizedCostCriterion(Criterion, CriterionProvider):
             upper_bound=self.upper_bound
         )
 
-    def get_criterion(
-            self,
-            criterion_class: Type[_C],
-    ) -> _C:
-        """
-        Returns the instance of the specified type of criterion from the current
-        Generalized Cost Criterion instance.
-
-        :param criterion_class: type of the criterion to retrieve
-        :return: instance of the specified criterion type
-        """
-
-        criterion = next(
-            filter(lambda c: isinstance(c, criterion_class), self.criteria),
-            None
-        )
-        assert criterion is not None, (f"The current {GeneralizedCostCriterion.__name__} instance does "
-                                       f"not include a criterion of type {criterion_class.__name__}")
-
-        return criterion
+    def get_criteria(self) -> Sequence[Criterion]:
+        return self.criteria
 
 
 _MCLabelType = TypeVar("_MCLabelType", bound="MultiCriteriaLabel")
 
 
-class MultiCriteriaLabel(BaseLabel[_MCLabelType], CriterionProvider, Generic[_MCLabelType]):
+class MultiCriteriaLabel(BaseLabel[_MCLabelType], CriteriaProvider, Generic[_MCLabelType]):
     """
     Class that represents a multi-criteria label.
 
@@ -712,25 +729,8 @@ class MultiCriteriaLabel(BaseLabel[_MCLabelType], CriterionProvider, Generic[_MC
             trip=updated_trip,
         )
 
-    def get_criterion(
-            self,
-            criterion_class: Type[_C],
-    ) -> _C:
-        """
-        Returns the instance of the specified type of criterion from the current label.
-
-        :param criterion_class: type of the criterion to retrieve
-        :return: instance of the specified criterion type
-        """
-
-        criterion = next(
-            filter(lambda c: isinstance(c, criterion_class), self.criteria),
-            None
-        )
-        assert criterion is not None, (f"The current label does not include "
-                                       f"a criterion of type {criterion_class.__name__}")
-
-        return criterion
+    def get_criteria(self) -> Sequence[Criterion]:
+        return self.criteria
 
     def is_strictly_dominating(self, other: MultiCriteriaLabel) -> bool:
         # TODO strict domination here? is this method even needed?
