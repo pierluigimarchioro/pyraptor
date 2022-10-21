@@ -34,12 +34,12 @@ class Leg:
         Departure time in seconds past midnight
         """
 
-        from_stop_time = list(filter(lambda tst: self.from_stop == tst.stop, self.trip.stop_times))
+        from_stop_time = next(filter(lambda tst: self.from_stop == tst.stop, self.trip.stop_times), None)
 
-        assert len(from_stop_time) == 1, (f"There should be exactly one stop time event"
-                                          f"for stop `{self.from_stop}`")
+        assert from_stop_time is not None, (f"There should be exactly one stop time event"
+                                            f"for stop `{self.from_stop}`")
 
-        return from_stop_time[0].dts_dep
+        return from_stop_time.dts_dep
 
     @property
     def arr(self) -> int:
@@ -47,12 +47,12 @@ class Leg:
         Arrival time in seconds past midnight
         """
 
-        to_stop_time = list(filter(lambda tst: self.to_stop == tst.stop, self.trip.stop_times))
+        to_stop_time = next(filter(lambda tst: self.to_stop == tst.stop, self.trip.stop_times), None)
 
-        assert len(to_stop_time) == 1, (f"There should be exactly one stop time event"
-                                        f"for stop `{self.to_stop}`")
+        assert to_stop_time is not None, (f"There should be exactly one stop time event "
+                                          f"for stop `{self.to_stop}`")
 
-        return to_stop_time[0].dts_arr
+        return to_stop_time.dts_arr
 
     # TODO see todo in Journey class: I don't think this belongs here
     #   Leg should not know about Generalized Cost
@@ -300,7 +300,7 @@ class Journey:
         return (
             True
             if (self.total_cost() <= jrny.total_cost())
-               and (self != jrny)
+                and (self != jrny)
             else False
         )
 
@@ -405,7 +405,9 @@ def _reconstruct_journeys(
     """
 
     def prepend_earlier_legs(journeys_to_build: Iterable[Journey]):
-        """Create full journeys by prepending legs recursively"""
+        """
+        Create full journeys by prepending legs recursively
+        """
 
         for to_build in journeys_to_build:
             # Leg to construct and prepend earlier legs to
@@ -426,23 +428,29 @@ def _reconstruct_journeys(
             # the `from_stop` of the later leg
             labels_to_later_leg = best_labels[later_leg.from_stop].labels
             for lbl in labels_to_later_leg:
-                full_earlier_leg = Leg(
-                    from_stop=lbl.boarding_stop,
-                    to_stop=later_leg.from_stop,
-                    trip=lbl.trip,
-                    criteria=lbl.criteria
-                )
-
-                # Only add the new leg if compatible before current leg,
-                # e.g. earlier arrival time, etc.
-                if full_earlier_leg.is_compatible_before(later_leg):
+                # Try to find compatible legs by popping the update
+                # history of the label in FIFO fashion (first label = best label)
+                full_earlier_leg = None
+                full_update_history = [lbl] + list(lbl.update_history)  # Iterate on current label `lbl` too
+                while len(full_update_history) > 0:
+                    old_label = full_update_history.pop(0)
+                    candidate_earlier_leg = Leg(
+                        from_stop=old_label.boarding_stop,
+                        to_stop=later_leg.from_stop,
+                        trip=old_label.trip,
+                        criteria=old_label.criteria
+                    )
+                    if candidate_earlier_leg.is_compatible_before(later_leg):
+                        full_earlier_leg = candidate_earlier_leg
+                        break
+                # Only add the new leg if a compatible leg was found
+                if full_earlier_leg is not None:
                     # Generate and prepend the intermediate legs to the provided journey,
                     # starting from the full earlier leg
                     if add_intermediate_legs:
                         intermediate_legs = _generate_intermediate_legs(
                             full_leg=full_earlier_leg
                         )
-
                         new_jrny = to_build
                         for leg in intermediate_legs:
                             new_jrny = new_jrny.prepend_leg(leg)

@@ -3,7 +3,8 @@ from __future__ import annotations
 import json
 import os
 from abc import abstractmethod, ABC
-from collections.abc import Sequence
+from collections.abc import Sequence, MutableSequence
+from copy import copy
 from dataclasses import dataclass, field
 from itertools import compress
 from typing import List, Type, Dict, TypeVar, Generic
@@ -41,26 +42,36 @@ class BaseLabel(ABC):
     arrival_time: int
     """Earliest time to get to the destination stop by boarding the current trip"""
 
-    # TODO label_update_log?
+    update_history: MutableSequence[BaseLabel]
+    """
+    Collection of the history of label updates that lead to the creation of the current instance.
+    It is always ordered from best to worst, inherently meaning that the first label of 
+    the collection is also the most recent
+    (this is because the reference to any label is kept only if it brings improvements).
+    """
 
     def __init__(
             self,
             trip: Trip = None,
             boarding_stop: Stop = None,
             arrival_stop: Stop = None,
-            arrival_time: int = LARGE_NUMBER
+            arrival_time: int = LARGE_NUMBER,
+            update_history: MutableSequence[BaseLabel] = None
     ):
         """
         :param trip: trip associated to this label
         :param boarding_stop: stop that the associated trip is boarded at
         :param arrival_stop: stop that the associated trip is hopped off at
         :param arrival_time: time of arrival at the arrival stop
+        :param update_history: collection of label updates that lead to the
+            creation of the current instance
         """
 
         self.trip = trip
         self.boarding_stop = boarding_stop
         self.arrival_stop = arrival_stop
         self.arrival_time = arrival_time
+        self.update_history = [] if update_history is None else update_history
 
     @abstractmethod
     def update(self, data: LabelUpdate) -> BaseLabel:
@@ -631,6 +642,14 @@ class MultiCriteriaLabel(BaseLabel, CriterionProvider):
     arrival_stop: Stop
     """Stop that this label is associated to"""
 
+    update_history: MutableSequence[MultiCriteriaLabel]
+    """
+    Collection of the history of label updates that lead to the creation of the current instance.
+    It is always ordered from best to worst, inherently meaning that the first label of 
+    the collection is also the most recent
+    (this is because the reference to any label is kept only if it brings improvements).
+    """
+
     # TODO what if it was a mapping for easier retrieval?
     criteria: Sequence[Criterion]
     """Set of criteria to optimize"""
@@ -641,6 +660,7 @@ class MultiCriteriaLabel(BaseLabel, CriterionProvider):
             boarding_stop: Stop = None,
             arrival_stop: Stop = None,
             arrival_time: int = LARGE_NUMBER,
+            update_history: MutableSequence[MultiCriteriaLabel] = None,
             criteria: Sequence[Criterion] = None
     ):
         """
@@ -648,6 +668,8 @@ class MultiCriteriaLabel(BaseLabel, CriterionProvider):
         :param boarding_stop: stop that the associated trip is boarded at
         :param arrival_stop: stop that the associated trip is hopped off at
         :param arrival_time: time of arrival at the arrival stop
+        :param update_history: collection of label updates that lead to the
+            creation of the current instance
         :param criteria: set of criteria to optimize
         """
 
@@ -655,7 +677,8 @@ class MultiCriteriaLabel(BaseLabel, CriterionProvider):
             trip=trip,
             boarding_stop=boarding_stop,
             arrival_stop=arrival_stop,
-            arrival_time=arrival_time
+            arrival_time=arrival_time,
+            update_history=update_history
         )
 
         self.criteria = criteria
@@ -678,11 +701,16 @@ class MultiCriteriaLabel(BaseLabel, CriterionProvider):
         # Earliest arrival time to the arrival stop on the updated trip
         updated_arr_time = updated_trip.get_stop_time(updated_arr_stop).dts_arr
 
+        # Updated history is obtained by prepending the current instance to the old history
+        updated_history = copy(self.update_history)
+        updated_history.insert(0, self)
+
         return MultiCriteriaLabel(
             arrival_time=updated_arr_time,
             boarding_stop=updated_dep_stop,
             arrival_stop=updated_arr_stop,
             criteria=updated_criteria,
+            update_history=updated_history,
             trip=updated_trip,
         )
 
@@ -730,7 +758,8 @@ class EarliestArrivalTimeLabel(MultiCriteriaLabel):
             trip: Trip = None,
             boarding_stop: Stop = None,
             arrival_stop: Stop = None,
-            arrival_time: int = LARGE_NUMBER
+            arrival_time: int = LARGE_NUMBER,
+            update_history: MutableSequence[EarliestArrivalTimeLabel] = None
     ):
         """
         :param trip: trip associated to this label
@@ -745,10 +774,21 @@ class EarliestArrivalTimeLabel(MultiCriteriaLabel):
             boarding_stop=boarding_stop,
             arrival_stop=arrival_stop,
             arrival_time=arrival_time,
+            update_history=update_history,
             criteria=[at_criterion]  # Arrival Time is the only optimized criterion here
         )
 
         self.at_criterion = at_criterion
+
+    def update(self, data: LabelUpdate[MultiCriteriaLabel]) -> MultiCriteriaLabel:
+        mc_label = super(EarliestArrivalTimeLabel, self).update(data=data)
+
+        return EarliestArrivalTimeLabel(
+            trip=mc_label.trip,
+            boarding_stop=mc_label.boarding_stop,
+            arrival_stop=mc_label.arrival_stop,
+            arrival_time=mc_label.arrival_time,
+        )
 
     def is_strictly_dominating(self, other: EarliestArrivalTimeLabel) -> bool:
         return self.arrival_time < other.arrival_time
@@ -773,6 +813,7 @@ class GeneralizedCostLabel(MultiCriteriaLabel):
             boarding_stop: Stop = None,
             arrival_stop: Stop = None,
             arrival_time: int = LARGE_NUMBER,
+            update_history: MutableSequence[GeneralizedCostLabel] = None,
             criteria: Sequence[Criterion] = None
     ):
         """
@@ -789,6 +830,7 @@ class GeneralizedCostLabel(MultiCriteriaLabel):
             boarding_stop=boarding_stop,
             arrival_stop=arrival_stop,
             arrival_time=arrival_time,
+            update_history=update_history,
             criteria=[gc_criterion]  # GC is the only optimized criterion here
         )
 
@@ -805,6 +847,9 @@ class GeneralizedCostLabel(MultiCriteriaLabel):
         return self.gc_criterion.cost
 
     def update(self, data: LabelUpdate[GeneralizedCostLabel]) -> GeneralizedCostLabel:
+        # Note: I could write this method to call super.update(data),
+        #   but it seems very clunky and kind of a cheat
+
         updated_trip = data.new_trip if data.new_trip is not None else self.trip
         updated_dep_stop = data.boarding_stop if data.boarding_stop is not None else self.boarding_stop
         updated_gc_criterion = self.gc_criterion.update(
@@ -815,11 +860,16 @@ class GeneralizedCostLabel(MultiCriteriaLabel):
         # Earliest arrival time to the arrival stop on the updated trip
         updated_arr_time = updated_trip.get_stop_time(data.arrival_stop).dts_arr
 
+        # Updated history is obtained by prepending the current instance to the old history
+        updated_history = copy(self.update_history)
+        updated_history.insert(0, self)
+
         return GeneralizedCostLabel(
             arrival_time=updated_arr_time,
             boarding_stop=updated_dep_stop,
             arrival_stop=data.arrival_stop,
             trip=updated_trip,
+            update_history=updated_history,
             criteria=updated_gc_criterion.criteria
         )
 
