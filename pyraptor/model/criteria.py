@@ -16,7 +16,11 @@ from pyraptor.model.timetable import TransportType, Trip, Stop
 from pyraptor.util import sec2str, LARGE_NUMBER
 
 
-class BaseLabel(ABC):
+# Forward reference to `BaseLabel` class
+_LabelType = TypeVar("_LabelType", bound="BaseLabel")
+
+
+class BaseLabel(ABC, Generic[_LabelType]):  # TODO this seems like a "filler" class since there is MultiCriteriaLabel, merge MCLabel with BaseLabel?
     """
     Abstract class representing the base characteristics that a RAPTOR label
     needs to have. Depending on the algorithm version, there are different types of
@@ -42,7 +46,7 @@ class BaseLabel(ABC):
     arrival_time: int
     """Earliest time to get to the destination stop by boarding the current trip"""
 
-    update_history: MutableSequence[BaseLabel]
+    update_history: MutableSequence[_LabelType]
     """
     Collection of the history of label updates that lead to the creation of the current instance.
     It is always ordered from best to worst, inherently meaning that the first label of 
@@ -94,9 +98,6 @@ class BaseLabel(ABC):
         :return: True if the current label is strictly dominating
         """
         pass
-
-
-_LabelType = TypeVar("_LabelType", bound=BaseLabel)
 
 
 @dataclass(frozen=True)
@@ -630,7 +631,10 @@ class GeneralizedCostCriterion(Criterion, CriterionProvider):
         return criterion
 
 
-class MultiCriteriaLabel(BaseLabel, CriterionProvider):
+_MCLabelType = TypeVar("_MCLabelType", bound="MultiCriteriaLabel")
+
+
+class MultiCriteriaLabel(BaseLabel[_MCLabelType], CriterionProvider, Generic[_MCLabelType]):
     """
     Class that represents a multi-criteria label.
 
@@ -641,14 +645,6 @@ class MultiCriteriaLabel(BaseLabel, CriterionProvider):
 
     arrival_stop: Stop
     """Stop that this label is associated to"""
-
-    update_history: MutableSequence[MultiCriteriaLabel]
-    """
-    Collection of the history of label updates that lead to the creation of the current instance.
-    It is always ordered from best to worst, inherently meaning that the first label of 
-    the collection is also the most recent
-    (this is because the reference to any label is kept only if it brings improvements).
-    """
 
     # TODO what if it was a mapping for easier retrieval?
     criteria: Sequence[Criterion]
@@ -740,7 +736,7 @@ class MultiCriteriaLabel(BaseLabel, CriterionProvider):
         return self.criteria < other.criteria
 
 
-class EarliestArrivalTimeLabel(MultiCriteriaLabel):
+class EarliestArrivalTimeLabel(MultiCriteriaLabel["EarliestArrivalTimeLabel"]):
     """
     Class that represents a label used in the Earliest Arrival Time RAPTOR variant
     described in the RAPTOR paper
@@ -780,7 +776,7 @@ class EarliestArrivalTimeLabel(MultiCriteriaLabel):
 
         self.at_criterion = at_criterion
 
-    def update(self, data: LabelUpdate[MultiCriteriaLabel]) -> MultiCriteriaLabel:
+    def update(self, data: LabelUpdate[EarliestArrivalTimeLabel]) -> EarliestArrivalTimeLabel:
         mc_label = super(EarliestArrivalTimeLabel, self).update(data=data)
 
         return EarliestArrivalTimeLabel(
@@ -798,7 +794,7 @@ class EarliestArrivalTimeLabel(MultiCriteriaLabel):
                 f"trip={self.trip}, boarding_stop={self.boarding_stop})")
 
 
-class GeneralizedCostLabel(MultiCriteriaLabel):
+class GeneralizedCostLabel(MultiCriteriaLabel["GeneralizedCostLabel"]):
     """
     Label that considers only generalized cost as optimization criterion
     """
