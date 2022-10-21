@@ -170,7 +170,7 @@ class Criterion(ABC):
         else:
             return self.weight * (self.raw_value / self.upper_bound)  # lower bound is always 0
 
-    def __add__(self, other: object) -> Criterion | float:
+    def __add__(self, other: Criterion | float) -> Criterion | float:
         """
         Returns the sum between two criteria, which is:
         - a Criterion instance if the two objects are of type Criterion
@@ -184,6 +184,11 @@ class Criterion(ABC):
         :param other: second addend of the sum operation
         :return: Criterion or float instance
         """
+
+        # Additions only work with Criterion and float instances
+        assert isinstance(other, (Criterion, float)), (f"Cannot add type {Criterion.__name__} "
+                                                       f"with type {other.__class__.__name__}.\n"
+                                                       f"Second addend: {other}")
 
         if isinstance(other, Criterion):
             if other.name == self.name:
@@ -200,11 +205,8 @@ class Criterion(ABC):
                     )
             else:
                 return self.cost + other.cost
-        elif isinstance(other, float):
-            return self.cost + other
         else:
-            raise TypeError(f"Cannot add type {Criterion.__name__} with type {other.__class__.__name__}.\n"
-                            f"Second addend: {other}")
+            return self.cost + other
 
     def __radd__(self, other) -> Criterion | float:
         return self.__add__(other)
