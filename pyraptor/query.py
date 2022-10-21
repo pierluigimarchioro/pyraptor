@@ -14,7 +14,7 @@ from loguru import logger
 from pyraptor.model.algos.base import SharedMobilityConfig
 from pyraptor.model.algos.et_raptor import EarliestArrivalTimeRaptor
 from pyraptor.model.algos.gc_raptor import GeneralizedCostRaptor
-from pyraptor.model.criteria import MultiCriteriaLabel, FileCriteriaProvider, CriteriaFactory, ParetoBag, Bag
+from pyraptor.model.criteria import MultiCriteriaLabel, FileCriteriaProvider, CriteriaFactory, Bag
 from pyraptor.model.output import AlgorithmOutput, get_journeys_to_destinations, Journey, Leg
 from pyraptor.model.shared_mobility import RaptorTimetableSM
 from pyraptor.model.timetable import RaptorTimetable, Stop, TransportType
@@ -73,6 +73,7 @@ def query_raptor(
     logger.debug("Destination station      : {}", destination_station)
     logger.debug("Departure time           : {}", departure_time)
     logger.debug("Rounds                   : {}", str(rounds))
+    logger.debug("Enable Fwd Deps Heuristic: {}", enable_fwd_deps)
     logger.debug("Algorithm Variant        : {}", variant)
     logger.debug("Criteria Provider        : {}", criteria_provider)
     logger.debug("Enable use of shared-mob : {}", enable_sm)
@@ -329,6 +330,14 @@ def _parse_arguments():
              "This argument is ignored if the algorithm variant is not Weighted More Criteria",
     )
     parser.add_argument(
+        "-fwd",
+        "--enable_fwd_deps",
+        type=bool,
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help="Enable use of the Forward Dependencies Heuristic (default True)",
+    )
+    parser.add_argument(
         "-sm",
         "--enable_sm",
         type=bool,
@@ -371,6 +380,7 @@ def _main():
         destination_station=args.destination,
         departure_time=args.time,
         rounds=args.rounds,
+        enable_fwd_deps=args.enable_fwd_deps,
         criteria_provider=file_criteria_provider,
         enable_sm=args.enable_sm,
         preferred_vehicle=args.preferred,
