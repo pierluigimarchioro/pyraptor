@@ -716,6 +716,8 @@ class SingleCriterionRaptor(BaseRaptor[_LabelType, _BagType], ABC):
                     previous_arrival_time, arrival_stop
                 )
 
+                # TODO this feels wrong to do in a generalized case. Is there a way to say:
+                #   "ok, this trip is better in a generalized cost sense"?
                 if (
                         earliest_trip_stop_time is not None
                         and previous_arrival_time <= earliest_trip_stop_time.dts_dep
