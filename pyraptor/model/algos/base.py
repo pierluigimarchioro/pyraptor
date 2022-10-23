@@ -667,8 +667,8 @@ class BaseRaptor(ABC, Generic[_LabelType, _BagType]):
 
 class SingleCriterionRaptor(BaseRaptor[_LabelType, _BagType], ABC):
     """
-    Implementation of the Earliest Arrival Time RAPTOR algorithm.
-    Just a single criterion is optimized, that is, arrival time.
+    Abstract class that serves as the base for any RAPTOR implementation
+    that optimizes just a single criterion.
     """
 
     def _traverse_routes(
@@ -680,10 +680,10 @@ class SingleCriterionRaptor(BaseRaptor[_LabelType, _BagType], ABC):
 
         new_marked_stops = set()
 
-        # For each route
+        # Traverse each route, starting from the earliest marked stop in arrival order
         for marked_route, earliest_marked_stop in marked_route_stops:
-            # Current trip for this marked stop
-            current_trip = None
+            # This represents the best trip that can be taken to traverse the route
+            current_trip: Trip | None = None
 
             # Iterate over all stops after current stop within the current route
             arr_stop_idx = marked_route.stop_index(earliest_marked_stop)
@@ -705,7 +705,7 @@ class SingleCriterionRaptor(BaseRaptor[_LabelType, _BagType], ABC):
                         marked_stops=new_marked_stops
                     )
 
-                # Can we catch an earlier trip at arrival_stop?
+                # Always try to board the earliest trip
                 # This can be determined by looking at the arrival time at arrival_stop
                 #   at the end of the previous round (k-1), and checking that it comes before
                 #   the departure time of the newfound earliest trip at that same stop
@@ -808,7 +808,7 @@ class SingleCriterionRaptor(BaseRaptor[_LabelType, _BagType], ABC):
         # Can the journey to the current arrival stop be improved with the
         # new data (candidate_label)?
         if candidate_label.is_strictly_dominating(previous_best):
-            # Update arrival stop with new arrival time
+            # Update arrival stop with new label
             self._update_stop(
                 k=k,
                 stop_to_update=arrival_stop,
