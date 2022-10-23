@@ -16,9 +16,19 @@ from pyraptor.model.shared_mobility import (
     filter_shared_mobility,
     VehicleTransfers,
     VehicleTransfer,
-    TRANSPORT_TYPE_SPEEDS, RaptorTimetableSM)
-from pyraptor.model.timetable import RaptorTimetable, Route, Stop, TransportType, Transfer, TransferTrip
-
+    TRANSPORT_TYPE_SPEEDS,
+    RaptorTimetableSM
+)
+from pyraptor.model.timetable import (
+    RaptorTimetable,
+    Route,
+    Stop,
+    TransportType,
+    Transfer,
+    TransferTrip,
+    Trip,
+    Transfers
+)
 
 _LabelType = TypeVar("_LabelType", bound=BaseLabel)
 """Type of the labels used by the RAPTOR algorithm"""
@@ -482,7 +492,7 @@ class BaseRaptor(ABC, Generic[_LabelType, _BagType]):
             currently_marked_stops: Set[Stop]
     ):
         """
-        # TODO docs
+        TODO docs
         :param k:
         :param stop_to_update:
         :param update_with:
@@ -653,3 +663,155 @@ class BaseRaptor(ABC, Generic[_LabelType, _BagType]):
 
         # Return the computed fwd updates
         return updated_fwd_deps
+
+
+class SingleCriterionRaptor(BaseRaptor[_LabelType, _BagType], ABC):
+    """
+    Implementation of the Earliest Arrival Time RAPTOR algorithm.
+    Just a single criterion is optimized, that is, arrival time.
+    """
+
+    def _traverse_routes(
+            self,
+            k: int,
+            marked_route_stops: List[Tuple[Route, Stop]],
+    ) -> List[Stop]:
+        logger.debug(f"Traverse routes for round {k}")
+
+        new_marked_stops = set()
+
+        # For each route
+        for marked_route, earliest_marked_stop in marked_route_stops:
+            # Current trip for this marked stop
+            current_trip = None
+
+            # Iterate over all stops after current stop within the current route
+            arr_stop_idx = marked_route.stop_index(earliest_marked_stop)
+            remaining_stops_in_route = marked_route.stops[arr_stop_idx:]
+
+            # The first boarding stop is the first marked stop of the route
+            boarding_stop = earliest_marked_stop
+
+            for arr_stop_idx, arrival_stop in enumerate(remaining_stops_in_route):
+                # t != _|_ in the pseudocode
+                if current_trip is not None:
+                    # Try to improve the journey to the current arrival stop
+                    # by boarding the current trip
+                    self._try_to_improve_arrival_stop(
+                        k=k,
+                        boarding_stop=boarding_stop,
+                        arrival_stop=arrival_stop,
+                        trip=current_trip,
+                        marked_stops=new_marked_stops
+                    )
+
+                # Can we catch an earlier trip at arrival_stop?
+                # This can be determined by looking at the arrival time at arrival_stop
+                #   at the end of the previous round (k-1), and checking that it comes before
+                #   the departure time of the newfound earliest trip at that same stop
+                previous_arrival_time = self.round_stop_bags[k - 1][
+                    arrival_stop
+                ].get_label().arrival_time
+                earliest_trip_stop_time = marked_route.earliest_trip_stop_time(
+                    previous_arrival_time, arrival_stop
+                )
+
+                if (
+                        earliest_trip_stop_time is not None
+                        and previous_arrival_time <= earliest_trip_stop_time.dts_dep
+                ):
+                    # If the trip is different from the previous one, we board the trip
+                    #   at arrival_stop, else the trip is still boarded at the old boarding stop.
+                    # This basically means that the boarding_stop will always be the earliest one,
+                    #   in terms of arrival order in the current route
+                    if earliest_trip_stop_time.trip != current_trip:
+                        boarding_stop = arrival_stop
+
+                    current_trip = earliest_trip_stop_time.trip
+
+        return list(new_marked_stops)
+
+    def _improve_with_transfers(
+            self,
+            k: int,
+            marked_stops: Iterable[Stop],
+            transfers: Transfers
+    ) -> List[Stop]:
+        new_marked_stops: Set[Stop] = set()
+
+        # Add in transfers from the transfers table
+        for dep_stop in marked_stops:
+            # Note: transfers are transitive, which means that for each reachable stops (a, b) there
+            # is transfer (a, b) as well as (b, a)
+            other_station_stops = [
+                t.to_stop for t in transfers if t.from_stop == dep_stop
+            ]
+
+            time_sofar = self.round_stop_bags[k][dep_stop].get_label().arrival_time
+            for arrival_stop in other_station_stops:
+                # Create transfer trip
+                transfer = transfers.stop_to_stop_idx[(dep_stop, arrival_stop)]
+                arrival_time_with_transfer = time_sofar + transfer.transfer_time
+                transfer_trip = TransferTrip(
+                    from_stop=dep_stop,
+                    to_stop=arrival_stop,
+                    dep_time=time_sofar,
+                    arr_time=arrival_time_with_transfer,
+                    transport_type=transfer.transport_type
+                )
+
+                # Can the journey to the current arrival stop be improved by taking
+                # the current transfer trip?
+                self._try_to_improve_arrival_stop(
+                    k=k,
+                    boarding_stop=dep_stop,
+                    arrival_stop=arrival_stop,
+                    trip=transfer_trip,
+                    marked_stops=new_marked_stops
+                )
+
+        return list(new_marked_stops)
+
+    def _try_to_improve_arrival_stop(
+            self,
+            k: int,
+            boarding_stop: Stop,
+            arrival_stop: Stop,
+            trip: Trip,
+            marked_stops: Set[Stop]
+    ):
+        """
+        Tries to improve the journey to the provided arrival stop with the provided data.
+        If there is an improvement, the arrival stop is added to the provided set
+        of marked stops.
+
+        :param k: current round
+        :param boarding_stop: stop that the trip is boarded at
+        :param arrival_stop: stop that the trip is hopped off at
+        :param trip: trip to board to reach the arrival stop
+        :param marked_stops: set of stops currently marked by the algorithm
+        """
+
+        update_data = LabelUpdate(
+            boarding_stop=boarding_stop,
+            arrival_stop=arrival_stop,
+            new_trip=trip,
+            boarding_stop_label=self.round_stop_bags[k][boarding_stop].get_label()
+        )
+        previous_best = self.round_stop_bags[k][arrival_stop].get_label()
+        candidate_label = previous_best.update(
+            data=update_data
+        )
+
+        # Can the journey to the current arrival stop be improved with the
+        # new data (candidate_label)?
+        if candidate_label.is_strictly_dominating(previous_best):
+            # Update arrival stop with new arrival time
+            self._update_stop(
+                k=k,
+                stop_to_update=arrival_stop,
+                update_with=[candidate_label],
+                currently_marked_stops=marked_stops,
+            )
+
+            marked_stops.add(arrival_stop)
