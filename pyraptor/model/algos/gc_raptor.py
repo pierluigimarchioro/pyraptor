@@ -1,16 +1,3 @@
-"""
-# TODO aggiorna
-Weighted implementation of the McRAPTOR algorithm described in the Microsoft paper.
-In this implementation, each label has a cost, which is defined as the weighted sum
-of all the criteria (i.e. distance, emissions, arrival time, etc.).
-This means that the `dominates` relationship changes as follows:
-X1 dominates X2 if X1 hasn't got a worse total cost than X2, where both
-X1 and X2 are either Labels or Journeys.
-This differs from the original implementation of McRAPTOR described in the paper,
-which instead says that a label L1 dominates a label L2 if L1 is not worse
-than L2 in any criterion.
-"""
-
 from __future__ import annotations
 
 from collections.abc import Iterable
