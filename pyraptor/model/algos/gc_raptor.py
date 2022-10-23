@@ -14,7 +14,7 @@ than L2 in any criterion.
 from __future__ import annotations
 
 from collections.abc import Iterable
-from typing import List, Tuple, Dict
+from typing import List, Dict
 
 from loguru import logger
 
@@ -96,9 +96,9 @@ class GeneralizedCostRaptor(SingleCriterionRaptor[GeneralizedCostLabel, Generali
 
         # Initialize origin stops labels, bags and dependencies
         for from_stop in from_stops:
-            # Only add default for arrival time crit. if defined
+            # Default arrival time for origin stops is the departure time
+            # Only add default for arrival time criterion if defined
             with_departure_time = self.criteria_provider.create_criteria(
-                # Default arrival time for origin stops is the departure time
                 defaults={ArrivalTimeCriterion: dep_secs} if ArrivalTimeCriterion in criterion_types else None
             )
 
