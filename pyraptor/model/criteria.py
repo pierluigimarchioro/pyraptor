@@ -7,7 +7,7 @@ from collections.abc import Sequence, MutableSequence
 from copy import copy
 from dataclasses import dataclass, field
 from itertools import compress
-from typing import List, Type, Dict, TypeVar, Generic, Any
+from typing import List, Type, Dict, TypeVar, Generic
 
 import numpy as np
 from loguru import logger
@@ -784,6 +784,7 @@ class EarliestArrivalTimeLabel(MultiCriteriaLabel["EarliestArrivalTimeLabel"]):
         return EarliestArrivalTimeLabel(
             trip=mc_label.trip,
             boarding_stop=mc_label.boarding_stop,
+            update_history=mc_label.update_history,
             arrival_stop=mc_label.arrival_stop,
             arrival_time=mc_label.arrival_time,
         )
