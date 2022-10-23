@@ -9,8 +9,6 @@ from pyraptor.model.algos.base import SingleCriterionRaptor
 from pyraptor.model.timetable import Stop
 from pyraptor.model.criteria import EarliestArrivalTimeLabel, EarliestArrivalTimeBag
 
-# TODO comment everything again
-
 
 class EarliestArrivalTimeRaptor(SingleCriterionRaptor[EarliestArrivalTimeLabel, EarliestArrivalTimeBag]):
     """
