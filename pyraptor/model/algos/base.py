@@ -74,7 +74,7 @@ class BaseRaptor(ABC, Generic[_LabelType, _BagType]):
     enable_fwd_deps_heuristic: bool
     """If True, the algorithm uses the forward dependencies heuristic"""
 
-    stop_forward_dependencies: Dict[Stop, List[Stop]]
+    stop_forward_dependencies: Dict[Stop, Set[Stop]]
     """Dictionary that pairs each stop with the list of stops that depend on it. 
     For example, in a journey x1, x2, ..., xn, stop x2 depends on
     stop x1 because it comes later, hence the name 'forward' dependency"""
@@ -159,7 +159,7 @@ class BaseRaptor(ABC, Generic[_LabelType, _BagType]):
         # Important to do this BEFORE calculating immediate transfers,
         # else there is a possibility that available shared mob station won't be included
         if self.enable_sm:
-            self._initialize_shared_mob(origin_stops=initial_marked_stops)
+            self._initialize_shared_mob(origin_stops=list(initial_marked_stops))
 
         # Get stops immediately reachable with a transfer
         # and add them to the marked stops list
@@ -243,7 +243,7 @@ class BaseRaptor(ABC, Generic[_LabelType, _BagType]):
         return self.round_stop_bags[max_rounds]
 
     @abstractmethod
-    def _initialization(self, from_stops: Iterable[Stop], dep_secs: int) -> List[Stop]:
+    def _initialization(self, from_stops: Iterable[Stop], dep_secs: int) -> Set[Stop]:
         """
         Initialization phase of the algorithm.
 
@@ -306,7 +306,7 @@ class BaseRaptor(ABC, Generic[_LabelType, _BagType]):
                     and s not in self.visited_renting_stations):
                 self.visited_renting_stations.append(s)
 
-    def _accumulate_routes(self, marked_stops: List[Stop]) -> List[Tuple[Route, Stop]]:
+    def _accumulate_routes(self, marked_stops: Set[Stop]) -> List[Tuple[Route, Stop]]:
         """
         Generates a list of (R, S) pairs where:
             - S is a marked stop from the provided list, and it is the earliest
@@ -340,7 +340,7 @@ class BaseRaptor(ABC, Generic[_LabelType, _BagType]):
             self,
             k: int,
             marked_route_stops: List[Tuple[Route, Stop]],
-    ) -> List[Stop]:  # TODO why not return Set?
+    ) -> Set[Stop]:  # TODO why not return Set?
         """
         Traverses through all the marked route-stops pairs and updates the labels accordingly.
         For each route-stop pair (R, S), traverses R starting from S and tries to improve
@@ -363,7 +363,7 @@ class BaseRaptor(ABC, Generic[_LabelType, _BagType]):
             k: int,
             marked_stops: Iterable[Stop],
             transfers: Iterable[Transfer]
-    ) -> List[Stop]:
+    ) -> Set[Stop]:
         """
         Considers all the time-independent transfers starting from the marked stops
         and tries to improve all the reachable stops.
@@ -384,7 +384,7 @@ class BaseRaptor(ABC, Generic[_LabelType, _BagType]):
             self,
             k: int,
             marked_stops: Iterable[Stop]
-    ) -> Sequence[Stop]:
+    ) -> Set[Stop]:
         """
         Tries to improve the criteria values for the provided marked stops
         with shared mob data.
@@ -505,25 +505,23 @@ class BaseRaptor(ABC, Generic[_LabelType, _BagType]):
         # Mark the stop if bag is updated and update the best label(s) for that stop
         # Updated bag means that the current stop brought some improvements
         if updated_bag.improved:
-            # Add the current stop to the forward dependencies of the new boarding stop
-            for lbl in updated_bag.labels:
-                self.stop_forward_dependencies[lbl.boarding_stop].append(stop_to_update)
-
-            # Remove the current stop from forward dependencies of the old boarding stop
-            old_bag = self.round_stop_bags[k][stop_to_update]
-            for old_lbl in old_bag.labels:
-                if old_lbl.boarding_stop is None:
-                    # First initialization of labels has boarding stop == None
-                    # In that case, skip
-                    continue
-                self.stop_forward_dependencies[old_lbl.boarding_stop].remove(stop_to_update)
-
-            # Update the bag of the current stop to update
-            self.round_stop_bags[k][stop_to_update] = updated_bag
-            currently_marked_stops.add(stop_to_update)
-
             # Only run heuristic if enabled
             if self.enable_fwd_deps_heuristic:
+                # Remove the current stop from forward dependencies of the old boarding stop
+                old_bag = self.round_stop_bags[k][stop_to_update]
+                for old_lbl in old_bag.labels:
+                    if old_lbl.boarding_stop is None:
+                        # First initialization of labels has boarding stop == None
+                        # In that case, skip
+                        continue
+                    self.stop_forward_dependencies[old_lbl.boarding_stop].remove(stop_to_update)
+
+                # Add the current stop to the forward dependencies of the new boarding stop
+                # Note: it is important to remove first and add second, because if the order
+                #   is inverted, the newly added stop might be deleted immediately
+                for lbl in updated_bag.labels:
+                    self.stop_forward_dependencies[lbl.boarding_stop].add(stop_to_update)
+
                 updated_fwd_dependencies = self._update_forward_dependencies(
                     k=k,
                     updated_stop=stop_to_update,
@@ -535,6 +533,10 @@ class BaseRaptor(ABC, Generic[_LabelType, _BagType]):
                 for dep_stop, dep_labels in updated_fwd_dependencies.items():
                     old_bag = self.round_stop_bags[k][dep_stop]
                     self.round_stop_bags[k][dep_stop] = old_bag.merge(with_labels=dep_labels.labels)
+
+            # Update the bag of the current stop_to_update
+            self.round_stop_bags[k][stop_to_update] = updated_bag
+            currently_marked_stops.add(stop_to_update)
 
     def _update_forward_dependencies(
             self,
@@ -678,7 +680,7 @@ class SingleCriterionRaptor(BaseRaptor[_LabelType, _SingleLabelBagType], ABC):
             self,
             k: int,
             marked_route_stops: List[Tuple[Route, Stop]],
-    ) -> List[Stop]:
+    ) -> Set[Stop]:
         logger.debug(f"Traverse routes for round {k}")
 
         new_marked_stops = set()
@@ -729,14 +731,14 @@ class SingleCriterionRaptor(BaseRaptor[_LabelType, _SingleLabelBagType], ABC):
 
                     current_trip = earliest_trip
 
-        return list(new_marked_stops)
+        return new_marked_stops
 
     def _improve_with_transfers(
             self,
             k: int,
             marked_stops: Iterable[Stop],
             transfers: Transfers
-    ) -> List[Stop]:
+    ) -> Set[Stop]:
         new_marked_stops: Set[Stop] = set()
 
         # Add in transfers from the transfers table
@@ -770,7 +772,7 @@ class SingleCriterionRaptor(BaseRaptor[_LabelType, _SingleLabelBagType], ABC):
                     marked_stops=new_marked_stops
                 )
 
-        return list(new_marked_stops)
+        return new_marked_stops
 
     def _try_to_improve_arrival_stop(
             self,

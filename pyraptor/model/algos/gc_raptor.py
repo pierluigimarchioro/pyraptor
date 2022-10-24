@@ -75,9 +75,9 @@ class GeneralizedCostRaptor(SingleCriterionRaptor[GeneralizedCostLabel, Generali
                 labels=[GeneralizedCostLabel(criteria=with_infinite_cost)]
             )
 
-        self.stop_forward_dependencies: Dict[Stop, List[Stop]] = {}
+        self.stop_forward_dependencies = {}
         for s in self.timetable.stops:
-            self.stop_forward_dependencies[s] = []
+            self.stop_forward_dependencies[s] = set()
 
         logger.debug(f"Starting from Stop IDs: {str(from_stops)}")
 
@@ -88,7 +88,6 @@ class GeneralizedCostRaptor(SingleCriterionRaptor[GeneralizedCostLabel, Generali
             with_departure_time = self.criteria_provider.create_criteria(
                 defaults={ArrivalTimeCriterion: dep_secs} if ArrivalTimeCriterion in criterion_types else None
             )
-
             gc_label = GeneralizedCostLabel(
                 arrival_time=dep_secs,
                 boarding_stop=from_stop,
@@ -99,7 +98,7 @@ class GeneralizedCostRaptor(SingleCriterionRaptor[GeneralizedCostLabel, Generali
             self.round_stop_bags[0][from_stop] = GeneralizedCostBag(labels=[gc_label])
 
             # From stop has a dependency on itself since it's an origin stop
-            self.stop_forward_dependencies[from_stop] = [from_stop]
+            self.stop_forward_dependencies[from_stop] = {from_stop}
 
         marked_stops = [s for s in from_stops]
         return marked_stops

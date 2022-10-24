@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import Iterable
-from typing import List, Dict
+from typing import List
 
 from loguru import logger
 
@@ -25,6 +25,10 @@ class EarliestArrivalTimeRaptor(SingleCriterionRaptor[EarliestArrivalTimeLabel, 
                 labels=[EarliestArrivalTimeLabel()]
             )
 
+        self.stop_forward_dependencies = {}
+        for s in self.timetable.stops:
+            self.stop_forward_dependencies[s] = set()
+
         # Initialize bags with starting stops taking dep_secs to reach
         # Remember that dep_secs is the departure_time expressed in seconds
         logger.debug(f"Starting from Stop IDs: {str(from_stops)}")
@@ -33,10 +37,9 @@ class EarliestArrivalTimeRaptor(SingleCriterionRaptor[EarliestArrivalTimeLabel, 
             departure_label = EarliestArrivalTimeLabel(arrival_time=dep_secs)
             self.round_stop_bags[0][s] = EarliestArrivalTimeBag(labels=[departure_label])
 
-            marked_stops.append(s)
+            # From stop has a dependency on itself since it's an origin stop
+            self.stop_forward_dependencies[s] = {s}
 
-        self.stop_forward_dependencies: Dict[Stop, List[Stop]] = {}
-        for s in self.timetable.stops:
-            self.stop_forward_dependencies[s] = []
+            marked_stops.append(s)
 
         return marked_stops
