@@ -5,7 +5,7 @@ from typing import List
 
 from loguru import logger
 
-from pyraptor.model.algos.base import SingleCriterionRaptor, SharedMobilityConfig
+from pyraptor.model.algos.base import BaseSingleCriterionRaptor, SharedMobilityConfig
 from pyraptor.model.shared_mobility import RaptorTimetableSM
 from pyraptor.model.timetable import (
     Stop,
@@ -21,7 +21,7 @@ from pyraptor.model.criteria import (
 from pyraptor.util import LARGE_NUMBER
 
 
-class GeneralizedCostRaptor(SingleCriterionRaptor[GeneralizedCostLabel, GeneralizedCostBag]):
+class GeneralizedCostRaptor(BaseSingleCriterionRaptor[GeneralizedCostLabel, GeneralizedCostBag]):
     """
     Implementation of the Generalized Cost RAPTOR algorithm.
     Just a single criterion is optimized, that is, generalized cost, which is obtained

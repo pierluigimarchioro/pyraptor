@@ -673,6 +673,9 @@ class MultiCriteriaLabel(BaseLabel[_MCLabelType], CriteriaProvider, Generic[_MCL
     criteria: Sequence[Criterion]
     """Set of criteria to optimize"""
 
+    last_updated_at: int  # TODO
+    """Last round at which this label was updated"""
+
     def __init__(
             self,
             trip: Trip = None,
@@ -680,7 +683,8 @@ class MultiCriteriaLabel(BaseLabel[_MCLabelType], CriteriaProvider, Generic[_MCL
             arrival_stop: Stop = None,
             arrival_time: int = LARGE_NUMBER,
             update_history: MutableSequence[MultiCriteriaLabel] = None,
-            criteria: Sequence[Criterion] = None
+            criteria: Sequence[Criterion] = None,
+            updated_at: int = 0  # TODO
     ):
         """
         :param trip: trip associated to this label
@@ -701,6 +705,7 @@ class MultiCriteriaLabel(BaseLabel[_MCLabelType], CriteriaProvider, Generic[_MCL
         )
 
         self.criteria = criteria
+        self.last_updated_at = updated_at
 
     def update(self, data: LabelUpdate[MultiCriteriaLabel]) -> MultiCriteriaLabel:
         assert len(self.criteria) != 0, "Trying to update an instance with no criteria set"
@@ -731,6 +736,9 @@ class MultiCriteriaLabel(BaseLabel[_MCLabelType], CriteriaProvider, Generic[_MCL
             criteria=updated_criteria,
             update_history=updated_history,
             trip=updated_trip,
+
+            # TODO
+            updated_at=self.last_updated_at
         )
 
     def get_criteria(self) -> Sequence[Criterion]:

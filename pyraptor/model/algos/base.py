@@ -10,7 +10,15 @@ from typing import List, Tuple, TypeVar, Generic, Dict, Set
 import numpy as np
 from loguru import logger
 
-from pyraptor.model.criteria import BaseLabel, Bag, LabelUpdate, SingleLabelBag
+from pyraptor.model.criteria import (
+    BaseLabel,
+    Bag,
+    LabelUpdate,
+    SingleLabelBag,
+    ParetoBag,
+    MultiCriteriaLabel,
+    CriteriaFactory
+)
 from pyraptor.model.shared_mobility import (
     RentingStation,
     filter_shared_mobility,
@@ -676,7 +684,7 @@ class BaseRaptor(ABC, Generic[_LabelType, _BagType]):
 _SingleLabelBagType = TypeVar("_SingleLabelBagType", bound=SingleLabelBag)
 
 
-class SingleCriterionRaptor(BaseRaptor[_LabelType, _SingleLabelBagType], ABC):
+class BaseSingleCriterionRaptor(BaseRaptor[_LabelType, _SingleLabelBagType], ABC):
     """
     Abstract class that serves as the base for any RAPTOR implementation
     that optimizes just a single criterion.
@@ -823,3 +831,207 @@ class SingleCriterionRaptor(BaseRaptor[_LabelType, _SingleLabelBagType], ABC):
             )
 
             marked_stops.add(arrival_stop)
+
+
+_MCLabelType = TypeVar("_MCLabelType", bound=MultiCriteriaLabel)
+_MCBagType = TypeVar("_MCBagType", bound=ParetoBag)
+
+
+class BaseMultiCriteriaRaptor(BaseRaptor[_MCLabelType, _MCBagType], ABC):
+    """
+    Abstract class that serves as the base of any implementation of the
+    MultiCriteria RAPTOR algorithm described in the RAPTOR paper.
+    """
+
+    def __init__(
+            self,
+            timetable: RaptorTimetable | RaptorTimetableSM,
+            enable_fwd_deps_heuristic: bool,
+            enable_sm: bool,
+            sm_config: SharedMobilityConfig,
+            criteria_factory: CriteriaFactory,
+    ):
+        """
+        :param timetable: object containing the data that will be used by the algorithm
+        :param criteria_factory: object that provides properly parameterized criteria for
+            the algorithm to use
+        """
+
+        super(BaseMultiCriteriaRaptor, self).__init__(
+            timetable=timetable,
+            enable_sm=enable_sm,
+            sm_config=sm_config,
+            enable_fwd_deps_heuristic=enable_fwd_deps_heuristic
+        )
+
+        self.criteria_factory: CriteriaFactory = criteria_factory
+        """Object that provides properly parameterized criteria for
+            the algorithm to use"""
+
+    def _traverse_routes(
+            self,
+            k: int,
+            marked_route_stops: List[Tuple[Route, Stop]],
+    ) -> Set[Stop]:
+        new_marked_stops = set()
+
+        # Traverse each route, starting from the earliest marked stop in arrival order
+        for marked_route, earliest_marked_stop in marked_route_stops:
+            marked_stop_index = marked_route.stop_index(earliest_marked_stop)
+            remaining_stops_in_route = marked_route.stops[marked_stop_index:]
+
+            # The following steps refer to the three-part processing done for each stop,
+            # described in the MC RAPTOR section of the MSFT paper.
+            route_bag = ParetoBag()
+            for current_stop_idx, current_stop in enumerate(remaining_stops_in_route):
+
+                # Step 1: route_bag contains all the labels of the stops traversed until this point.
+                #   From those labels we then generate the labels for the current stop, to which
+                #   we arrive with the same trip boarded at the same boarding stop.
+                updated_labels = []
+                for route_label in route_bag.labels:
+                    updates = self._update_label(
+                        k=k,
+                        label_to_update=route_label,
+                        boarding_stop=route_label.boarding_stop,
+                        arrival_stop=current_stop,
+                        trip=route_label.trip
+                    )
+                    updated_labels.extend(updates)
+
+                # Note that bag B_r basically represents all the updated labels of
+                #   the stops traversed until this point in the current route
+                route_bag = ParetoBag(labels=updated_labels)
+
+                # Step 2: merge the route bag into the bag currently assigned to the stop
+                #   (Merge B_r into B_k(p))
+                self._update_stop(
+                    k=k,
+                    stop_to_update=current_stop,
+                    update_with=route_bag.labels,
+                    currently_marked_stops=new_marked_stops
+                )
+
+                # Step 3: merge B_{k-1}(p) into B_r
+                route_bag = route_bag.merge(with_labels=self.round_stop_bags[k - 1][current_stop].labels)
+
+                # Updates all the labels in B_r with the earliest boardable trips
+                updated_labels = []
+                for route_label in route_bag.labels:
+                    earliest_trip = marked_route.earliest_trip(
+                        route_label.arrival_time, current_stop
+                    )
+
+                    if earliest_trip is not None:
+                        # If the trip is different from the previous one, we board the trip
+                        #   at current_stop, else the trip is still boarded at the old boarding stop.
+                        # This means that the boarding stop is always the earliest visited stop
+                        #   when traversing the route
+                        if route_label.trip != earliest_trip:
+                            boarding_stop = current_stop
+                        else:
+                            boarding_stop = route_label.boarding_stop
+
+                        updates = self._update_label(
+                            k=k,
+                            label_to_update=route_label,
+                            boarding_stop=boarding_stop,
+                            arrival_stop=current_stop,
+                            trip=earliest_trip
+                        )
+                        updated_labels.extend(updates)
+
+                route_bag = ParetoBag(labels=updated_labels)
+
+        logger.debug(f"{len(new_marked_stops)} reachable stops marked")
+
+        return new_marked_stops
+
+    def _improve_with_transfers(
+            self,
+            k: int,
+            marked_stops: Iterable[Stop],
+            transfers: Transfers
+    ) -> List[Stop]:
+        marked_stops_transfers = set()
+
+        # For each marked stop p, see if any stop p' transfer-reachable from p can be improved
+        for current_stop in marked_stops:
+            other_station_stops = [t.to_stop for t in transfers if t.from_stop == current_stop]
+
+            for stop_to_improve in other_station_stops:
+                # This temporary bag will contain all the labels that can potentially improve the
+                #   currently examined transfer-reachable stop
+                temp_bag = ParetoBag()
+                for lbl in self.round_stop_bags[k][stop_to_improve].labels:
+                    transfer = transfers.stop_to_stop_idx[(current_stop, stop_to_improve)]
+                    transfer_arrival_time = lbl.arrival_time + transfer.transfer_time
+                    transfer_trip = TransferTrip(
+                        from_stop=current_stop,
+                        to_stop=stop_to_improve,
+                        dep_time=lbl.arrival_time,
+                        arr_time=transfer_arrival_time,
+                        transport_type=transfer.transport_type
+                    )
+
+                    updated_labels = self._update_label(
+                        k=k,
+                        label_to_update=lbl,
+                        boarding_stop=current_stop,
+                        arrival_stop=stop_to_improve,
+                        trip=transfer_trip
+                    )
+
+                    temp_bag = temp_bag.merge(with_labels=updated_labels)
+
+                # Try to update the transfer-reachable stop by merging the temp bag
+                self._update_stop(
+                    k=k,
+                    stop_to_update=stop_to_improve,
+                    update_with=temp_bag.labels,
+                    currently_marked_stops=marked_stops_transfers
+                )
+
+        logger.debug(f"{len(marked_stops_transfers)} transfer-reachable stops marked")
+
+        return list(marked_stops_transfers)
+
+    def _update_label(
+            self,
+            k: int,
+            label_to_update: _MCLabelType,
+            boarding_stop: Stop,
+            arrival_stop: Stop,
+            trip: Trip
+    ) -> List[_MCLabelType]:
+        updated_labels: List[_MCLabelType] = []
+
+        # Update the current label with the new trip and associated boarding stop
+        # Since the bag of each stop can contain more than one label, the current
+        # route_label is updated once for each label of the boarding stop bag
+        for boarding_stop_lbl in self.round_stop_bags[k][boarding_stop].labels:
+            if boarding_stop_lbl.last_updated_at != k and boarding_stop_lbl.last_updated_at != k-1:
+                # TODO testing - only consider labels created in the prev. or current round
+                continue
+
+            update_data = LabelUpdate(
+                boarding_stop=boarding_stop,
+                arrival_stop=arrival_stop,
+                new_trip=trip,
+                boarding_stop_label=boarding_stop_lbl
+            )
+            updated_lbl = label_to_update.update(data=update_data)
+            updated_lbl.last_updated_at = k
+
+            updated_labels.append(updated_lbl)
+
+        # update_data = LabelUpdate(
+        #     boarding_stop=boarding_stop,
+        #     arrival_stop=arrival_stop,
+        #     new_trip=trip,
+        #     boarding_stop_label=self.round_stop_bags[k][boarding_stop].labels[0]
+        # )
+        # updated_lbl = label_to_update.update(data=update_data)
+        # updated_labels.append(updated_lbl)
+
+        return updated_labels

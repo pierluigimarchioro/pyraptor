@@ -5,12 +5,12 @@ from typing import List
 
 from loguru import logger
 
-from pyraptor.model.algos.base import SingleCriterionRaptor
+from pyraptor.model.algos.base import BaseSingleCriterionRaptor
 from pyraptor.model.timetable import Stop
 from pyraptor.model.criteria import EarliestArrivalTimeLabel, EarliestArrivalTimeBag
 
 
-class EarliestArrivalTimeRaptor(SingleCriterionRaptor[EarliestArrivalTimeLabel, EarliestArrivalTimeBag]):
+class EarliestArrivalTimeRaptor(BaseSingleCriterionRaptor[EarliestArrivalTimeLabel, EarliestArrivalTimeBag]):
     """
     Implementation of the Earliest Arrival Time RAPTOR algorithm.
     Just a single criterion is optimized, that is, arrival time.

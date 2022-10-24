@@ -14,6 +14,7 @@ from loguru import logger
 from pyraptor.model.algos.base import SharedMobilityConfig
 from pyraptor.model.algos.et_raptor import EarliestArrivalTimeRaptor
 from pyraptor.model.algos.gc_raptor import GeneralizedCostRaptor
+from pyraptor.model.algos.mc_raptor import MultiCriteriaRaptor
 from pyraptor.model.criteria import MultiCriteriaLabel, FileCriteriaProvider, CriteriaFactory, Bag
 from pyraptor.model.output import AlgorithmOutput, get_journeys_to_destinations
 from pyraptor.model.shared_mobility import RaptorTimetableSM
@@ -31,6 +32,7 @@ class RaptorVariants(Enum):
 
     EarliestArrivalTime = "et"
     GeneralizedCost = "gc"
+    MultiCriteria = "mc"
 
     def __str__(self):
         return self.value
@@ -203,28 +205,39 @@ def _execute_raptor_variant(
         enable_car=enable_car
     )
 
-    def run_gc_raptor() -> Mapping[Stop, Bag[MultiCriteriaLabel]]:
-        raptor = GeneralizedCostRaptor(
-            timetable=timetable,
-            enable_fwd_deps_heuristic=enable_fwd_deps,
-            enable_sm=enable_sm,
-            sm_config=sm_config,
-            criteria_provider=criteria_provider
-        )
-        return raptor.run(origin_stops, dep_secs, rounds)
-
-    def run_base_raptor() -> Mapping[Stop, Bag[MultiCriteriaLabel]]:
-        raptor = EarliestArrivalTimeRaptor(
+    def run_eat_raptor() -> Mapping[Stop, Bag[MultiCriteriaLabel]]:
+        eat_raptor = EarliestArrivalTimeRaptor(
             timetable=timetable,
             enable_fwd_deps_heuristic=enable_fwd_deps,
             enable_sm=enable_sm,
             sm_config=sm_config
         )
-        return raptor.run(origin_stops, dep_secs, rounds)
+        return eat_raptor.run(origin_stops, dep_secs, rounds)
+
+    def run_gc_raptor() -> Mapping[Stop, Bag[MultiCriteriaLabel]]:
+        gc_raptor = GeneralizedCostRaptor(
+            timetable=timetable,
+            enable_fwd_deps_heuristic=enable_fwd_deps,
+            enable_sm=enable_sm,
+            sm_config=sm_config,
+            criteria_factory=criteria_provider
+        )
+        return gc_raptor.run(origin_stops, dep_secs, rounds)
+
+    def run_mc_raptor() -> Mapping[Stop, Bag[MultiCriteriaLabel]]:
+        mc_raptor = MultiCriteriaRaptor(
+            timetable=timetable,
+            enable_fwd_deps_heuristic=enable_fwd_deps,
+            enable_sm=enable_sm,
+            sm_config=sm_config,
+            criteria_factory=criteria_provider
+        )
+        return mc_raptor.run(origin_stops, dep_secs, rounds)
 
     variant_switch: Dict[RaptorVariants, Callable[[], Mapping[Stop, Bag[MultiCriteriaLabel]]]] = {
-        RaptorVariants.EarliestArrivalTime: run_base_raptor,
-        RaptorVariants.GeneralizedCost: run_gc_raptor
+        RaptorVariants.EarliestArrivalTime: run_eat_raptor,
+        RaptorVariants.GeneralizedCost: run_gc_raptor,
+        RaptorVariants.MultiCriteria: run_mc_raptor
     }
 
     return variant_switch[variant]()
@@ -286,8 +299,9 @@ def _parse_arguments():
         "-r",
         "--rounds",
         type=int,
-        default=5,
-        help="Number of rounds to execute the RAPTOR algorithm",
+        default=-1,
+        help="Number of rounds to execute the RAPTOR algorithm for. "
+             "Defaults to -1, meaning that RAPTOR continues execution until convergence is reached.",
     )
     parser.add_argument(
         "-var",
