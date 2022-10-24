@@ -640,12 +640,13 @@ class Route:
         :return: stop time for the provided stop in the earliest boardable trip, or None if any
         """
 
-        stop_idx = self.stop_index(stop)
-        trip_stop_times = [trip.stop_times[stop_idx] for trip in self.trips]
-        trip_stop_times = [tst for tst in trip_stop_times if tst.dts_dep >= dts_arr]
-        trip_stop_times = sorted(trip_stop_times, key=attrgetter("dts_dep"))
+        earliest_trip = self.earliest_trip(dts_arr, stop)
 
-        return trip_stop_times[0] if len(trip_stop_times) > 0 else None
+        if earliest_trip is not None:
+            stop_idx: int = earliest_trip.stop_times_index[stop]
+            return earliest_trip.stop_times[stop_idx]
+        else:
+            return None
 
 
 class Routes:
