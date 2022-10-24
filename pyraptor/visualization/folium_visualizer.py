@@ -359,30 +359,23 @@ def parse_arguments():
 
 
 def visualize_output(
-        algo_output_path: str,
+        algo_output: AlgorithmOutput,
         visualization_dir: str,
         open_browser: bool
 ):
     """
     Saves the visualization of the provided output.
 
-    :param algo_output_path: output to visualize
+    :param algo_output: output to visualize
     :param visualization_dir: directory to save the visualizations in
     :param open_browser: if True, the visualization are opened on the browser
     """
 
-    logger.debug("Algorithm path      : {}", algo_output_path)
-    logger.debug("Output directory    : {}", visualization_dir)
-    logger.debug("Open in browser     : {}", open_browser)
+    logger.debug("Algorithm output instance : {}", algo_output)
+    logger.debug("Output directory          : {}", visualization_dir)
+    logger.debug("Open in browser           : {}", open_browser)
 
-    logger.info(f"Visualizing {algo_output_path}")
-
-    try:
-        output: AlgorithmOutput = AlgorithmOutput.read_from_file(filepath=algo_output_path)
-    except IOError as ex:
-        raise Exception(f"An error occurred while trying to read {algo_output_path}: {ex}")
-
-    for i, jrny in enumerate(output.journeys):
+    for i, jrny in enumerate(algo_output.journeys):
         visualization = TripVisualization(legs=jrny.legs)
         dep = jrny.legs[0].from_stop.name
         arr = jrny.legs[-1].to_stop.name
@@ -391,10 +384,22 @@ def visualize_output(
         visualization.save(path_=out_file_path, open_browser=open_browser)
 
 
-if __name__ == "__main__":
+def _main():
     args = parse_arguments()
+
+    try:
+        logger.debug(f"Reading algorithm output from path '{args.algo_output}'")
+        output: AlgorithmOutput = AlgorithmOutput.read_from_file(filepath=args.algo_output)
+    except IOError as ex:
+        raise IOError(f"An error occurred while trying to read '{args.algo_output}':\n"
+                      f"{ex}")
+
     visualize_output(
-        algo_output_path=args.algo_output,
+        algo_output=output,
         visualization_dir=args.output_dir,
         open_browser=args.browser
     )
+
+
+if __name__ == "__main__":
+    _main()

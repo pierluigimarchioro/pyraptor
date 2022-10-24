@@ -25,7 +25,7 @@ def read_gtfs_tables(gtfs_dir: str) -> Dict[str, pd.DataFrame]:
     logger.info(f"Reading GTFS at {gtfs_dir}")
 
     if not os.path.exists(gtfs_dir):
-        raise Exception(f"No directory {gtfs_dir}")
+        raise NotADirectoryError(f"No directory '{gtfs_dir}'")
 
     gtfs_tables: Dict[str, pd.DataFrame] = {}
     for item in os.listdir(gtfs_dir):
@@ -83,7 +83,7 @@ def tables_to_gtfs(tables_dir: str, gtfs_filename: str, out_dir: str = None):
 
     # raises an exception if table directory doesn't exist
     if not os.path.exists(tables_dir):
-        raise Exception(f"No dir '{tables_dir}'")
+        raise NotADirectoryError(f"No directory '{tables_dir}'")
 
     gtfs_dir = tables_dir if out_dir is None else out_dir
     gtfs_path = os.path.join(gtfs_dir, gtfs_filename)
@@ -180,7 +180,7 @@ def read_timetable(input_folder: str, timetable_name: str) -> RaptorTimetable | 
 
     def load_joblib(name):
         logger.debug(f"Loading '{name}'")
-        with open(Path(input_folder, f"{name}.pcl"), "rb") as handle:
+        with open(Path(input_folder, name), "rb") as handle:
             return joblib.load(handle)
 
     if not os.path.exists(input_folder):
@@ -210,7 +210,7 @@ def write_timetable(output_folder: str, timetable_name: str, timetable: RaptorTi
     """
 
     def write_joblib(state, name):
-        with open(Path(output_folder, f"{name}.pcl"), "wb") as handle:
+        with open(Path(output_folder, name), "wb") as handle:
             joblib.dump(state, handle)
 
     logger.info("Writing PyRaptor timetable to output directory")

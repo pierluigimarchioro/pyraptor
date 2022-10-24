@@ -5,55 +5,54 @@ from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
 from time import perf_counter
-from typing import Dict, List, Callable, Tuple, Any
+from typing import Dict, List, Callable, Tuple
 
 import joblib
 import numpy as np
 from loguru import logger
 
-from pyraptor.model.criteria import Criterion, Bag, pareto_set, MultiCriteriaLabel
+from pyraptor.model.criteria import Criterion, pareto_set, MultiCriteriaLabel, Bag, CriteriaProvider
 from pyraptor.model.timetable import Stop, Trip, TimetableInfo
 from pyraptor.util import sec2str, mkdir_if_not_exists
 
 
 @dataclass
-class Leg:
-    """Leg"""
+class Leg(CriteriaProvider):
+    """
+    Class that represents a leg of some journey, that is, a transfer between a pair of stops
+    performed by boarding some trip.
+    """
 
     from_stop: Stop
     to_stop: Stop
     trip: Trip
-    criteria: Iterable[Criterion]
+    criteria: Sequence[Criterion]
 
     @property
     def dep(self) -> int:
-        """Departure time in seconds past midnight"""
+        """
+        Departure time in seconds past midnight
+        """
 
-        try:
-            return [
-                tst.dts_dep for tst in self.trip.stop_times if self.from_stop == tst.stop
-            ][0]
-        except IndexError as ex:
-            raise Exception(f"No departure time for to_stop: {self.to_stop}.\n"
-                            f"Current Leg: {repr(self)}. \n Original Error: {ex} \n\n"
-                            f"Trying to find {self.from_stop}"
-                            f"in stop times: \n{[f'{repr(x)}' for x in self.trip.stop_times]}")
+        from_stop_time = next(filter(lambda tst: self.from_stop == tst.stop, self.trip.stop_times), None)
+
+        assert from_stop_time is not None, (f"There should be exactly one stop time event"
+                                            f"for stop `{self.from_stop}`")
+
+        return from_stop_time.dts_dep
 
     @property
     def arr(self) -> int:
-        """Arrival time in seconds past midnight"""
+        """
+        Arrival time in seconds past midnight
+        """
 
-        try:
-            return [
-                tst.dts_arr for tst in self.trip.stop_times if self.to_stop == tst.stop
-            ][0]
-        except IndexError as ex:
-            raise Exception(f"No arrival time for to_stop: {self.to_stop}.\n"
-                            f"Current Leg: {self}. \n Original Error: {ex}")
+        to_stop_time = next(filter(lambda tst: self.to_stop == tst.stop, self.trip.stop_times), None)
 
-    @property
-    def total_cost(self) -> float:
-        return sum(self.criteria, start=0.0)
+        assert to_stop_time is not None, (f"There should be exactly one stop time event "
+                                          f"for stop `{self.to_stop}`")
+
+        return to_stop_time.dts_arr
 
     def is_same_station_transfer(self) -> bool:
         """
@@ -69,8 +68,10 @@ class Leg:
         Check if Leg is allowed before another leg, that is if the accumulated value of
         the criteria of the current leg is less or equal to the accumulated value of
         those of the other leg (current leg is instance of this class).
-        E.g. Leg X+1 criteria must be >= their counter-parts in Leg X, because
-            Leg X+1 comes later.
+        E.g. Leg_{X+1}.criteria must be >= their counter-parts in Leg_{X}, because
+            Leg_{X+1} comes later.
+        Additionally, the arrival time of Leg_{X} must be before the departure time of Leg_{X+1},
+        else the trip of the later leg can't be boarded.
         """
 
         criteria_compatible = np.all(
@@ -82,8 +83,14 @@ class Leg:
 
         return all([criteria_compatible, arrival_before_departure])
 
+    def get_criteria(self) -> Sequence[Criterion]:
+        return self.criteria
+
     def to_dict(self, leg_index: int = None) -> Dict:
-        """Leg to readable dictionary"""
+        """
+        Leg to readable dictionary
+        """
+
         return dict(
             trip_leg_idx=leg_index,
             departure_time=self.dep,
@@ -104,7 +111,7 @@ class Leg:
 
 
 @dataclass(frozen=True)
-class Journey:
+class Journey(CriteriaProvider):
     """
     Journey from origin to destination specified as Legs
     """
@@ -144,18 +151,17 @@ class Journey:
         prev_trip = first_trip if first_trip is not None else None
         n_changes = 1
         for leg in self:
+            assert leg.trip is not None, f"Leg trip cannot be {None}"
+
             current_trip = leg.trip
-            if current_trip is not None:
-                hint = current_trip.hint
+            hint = current_trip.hint
 
-                if current_trip != prev_trip:
-                    trip_change = f"-- Trip Change #{n_changes} -- "
-                    update_(trip_change)
-                    n_changes += 1
+            if current_trip != prev_trip:
+                trip_change = f"-- Trip Change #{n_changes} -- "
+                update_(trip_change)
+                n_changes += 1
 
-                prev_trip = current_trip
-            else:
-                raise Exception(f"Leg trip cannot be {None}. Value: {current_trip}")
+            prev_trip = current_trip
 
             msg = (
                     str(sec2str(leg.dep))
@@ -171,7 +177,7 @@ class Journey:
             update_(msg)
 
         update_("")
-        for c in self.criteria():
+        for c in self.get_criteria():
             update_(str(c))
 
         msg = f"Duration: {sec2str(self.travel_time())}"
@@ -181,12 +187,18 @@ class Journey:
         return out_str
 
     def number_of_trips(self):
-        """Return number of distinct trips"""
+        """
+        Return number of distinct trips
+        """
+
         trips = set([lbl.trip for lbl in self.legs])
         return len(trips)
 
     def prepend_leg(self, leg: Leg) -> Journey:
-        """Add leg to journey"""
+        """
+        Add leg to journey
+        """
+
         legs = self.legs
         legs.insert(0, leg)
         jrny = Journey(legs=legs)
@@ -196,6 +208,8 @@ class Journey:
         """
         Removes all empty legs (where the trip is not set)
         and transfer legs between stops of the same station.
+        # TODO does this actually remove transfer legs between same-station stops?
+            is it because in that case the trip is None? because the check isn't here
 
         :return: updated journey
         """
@@ -212,8 +226,8 @@ class Journey:
     def is_valid(self) -> bool:
         """
         Returns true if the journey is considered valid.
-        Notably, a journey is valid if, for each leg, leg k arrival time
-        is not greater than leg k+1 departure time.
+        Notably, a journey is valid if, each leg X is compatible before
+        the immediately successive leg X+1.
 
         :return: True if journey is valid, False otherwise
         """
@@ -225,53 +239,62 @@ class Journey:
         return True
 
     def from_stop(self) -> Stop:
-        """Origin stop of Journey"""
+        """
+        Origin stop of Journey
+        """
+
         return self.legs[0].from_stop
 
     def to_stop(self) -> Stop:
-        """Destination stop of Journey"""
+        """
+        Destination stop of Journey
+        """
+
         return self.legs[-1].to_stop
 
     def dep(self) -> int:
-        """Departure time"""
+        """
+        Departure time
+        """
+
         return self.legs[0].dep
 
     def arr(self) -> int:
-        """Arrival time"""
+        """
+        Arrival time
+        """
+
         return self.legs[-1].arr
 
     def travel_time(self) -> int:
         """Travel time in seconds"""
         return self.arr() - self.dep()
 
-    def criteria(self) -> Iterable[Criterion]:
+    def get_criteria(self) -> Sequence[Criterion]:
         """
-        Returns the final criteria for the journey, which correspond to
-        the criteria values of the final leg.
+        Returns the final values of each optimized criteria of the journey,
+        which correspond to the criteria values of the final leg.
         :return:
         """
 
         return self.legs[-1].criteria
 
-    def total_cost(self) -> float:
-        """
-        Returns the total cost of the journey
-        :return:
-        """
-
-        return sum(self.criteria(), start=0.0)
-
     def dominates(self, jrny: Journey):
-        """Dominates other Journey"""
+        """
+        Dominates other Journey
+        """
+
         return (
             True
-            if (self.total_cost() <= jrny.total_cost())
-            and (self != jrny)
+            if (self.get_criteria() < jrny.get_criteria())
+                and (self != jrny)
             else False
         )
 
     def print(self, dep_secs: int = None, logger_: Callable[[str], None] = logger.info):
-        """Prints the current journey instance on the provided logger"""
+        """
+        Prints the current journey instance on the provided logger
+        """
 
         logger_(str(self))
 
@@ -279,22 +302,36 @@ class Journey:
             logger_(f" ({sec2str(self.arr() - dep_secs)} from request time {sec2str(dep_secs)})")
 
     def to_list(self) -> List[Dict]:
-        """Convert journey to list of legs as dict"""
+        """
+        Convert journey to list of legs as dict
+        """
+
         return [leg.to_dict(leg_index=idx) for idx, leg in enumerate(self.legs)]
 
 
 def get_journeys_to_destinations(
         origin_stops: Iterable[Stop],
-        destination_stops: Dict[Any, Iterable[Stop]],
-        best_labels: Mapping[Stop, Bag]
-) -> Mapping[Any, Sequence[Journey]]:
+        destination_stops: Dict[str, Iterable[Stop]],
+        best_bags: Mapping[Stop, Bag[MultiCriteriaLabel]]
+) -> Mapping[str, Sequence[Journey]]:
+    """
+    Returns a mapping that pairs each set of destination stops with a valid set of journeys.
+
+    :param origin_stops: set of departure stops that the journeys start at
+    :param destination_stops: mapping that pairs a set of destinations with some identifier,
+        usually a stop or station name.
+    :param best_bags: result of a RAPTOR algorithm execution, that is a mapping where
+        each stop is paired with its best bag of labels
+    :return:
+    """
+
     # Calculate journeys to all destinations
     logger.info("Calculating journeys to all destinations")
     s = perf_counter()
 
     journeys_to_destinations = {}
     for destination_station_name, to_stops in destination_stops.items():
-        destination_legs = _best_legs_to_destination_station(to_stops, best_labels)
+        destination_legs = _best_legs_to_destination_station(to_stops, best_bags)
 
         if len(destination_legs) == 0:
             logger.debug(f"Destination '{destination_station_name}' unreachable with given parameters."
@@ -302,7 +339,7 @@ def get_journeys_to_destinations(
             continue
 
         journeys = _reconstruct_journeys(
-            origin_stops, destination_legs, best_labels
+            origin_stops, destination_legs, best_bags
         )
         journeys_to_destinations[destination_station_name] = journeys
 
@@ -313,7 +350,7 @@ def get_journeys_to_destinations(
 
 def _best_legs_to_destination_station(
         to_stops: Iterable[Stop],
-        last_round_bag: Mapping[Stop, Bag]
+        last_round_bag: Mapping[Stop, Bag[MultiCriteriaLabel]]
 ) -> Sequence[Leg]:
     """
     Find the last legs to destination station that are reached by non-dominated labels.
@@ -346,8 +383,8 @@ def _best_legs_to_destination_station(
 def _reconstruct_journeys(
         from_stops: Iterable[Stop],
         destination_legs: Iterable[Leg],
-        best_labels: Mapping[Stop, Bag],
-        add_intermediate_legs: bool = True
+        best_labels: Mapping[Stop, Bag[MultiCriteriaLabel]],
+        add_intermediate_legs: bool = False  # TODO parameterize at query level
 ) -> List[Journey]:
     """
     Construct Journeys for destinations from bags by recursively
@@ -355,7 +392,9 @@ def _reconstruct_journeys(
     """
 
     def prepend_earlier_legs(journeys_to_build: Iterable[Journey]):
-        """Create full journeys by prepending legs recursively"""
+        """
+        Create full journeys by prepending legs recursively
+        """
 
         for to_build in journeys_to_build:
             # Leg to construct and prepend earlier legs to
@@ -376,23 +415,36 @@ def _reconstruct_journeys(
             # the `from_stop` of the later leg
             labels_to_later_leg = best_labels[later_leg.from_stop].labels
             for lbl in labels_to_later_leg:
-                full_earlier_leg = Leg(
-                    from_stop=lbl.boarding_stop,
-                    to_stop=later_leg.from_stop,
-                    trip=lbl.trip,
-                    criteria=lbl.criteria
-                )
+                # Try to find compatible legs by popping the update
+                # history of the label in FIFO fashion (first label = best label)
+                full_earlier_leg = None
+                full_update_history = [lbl] + list(lbl.update_history)  # Iterate on current label `lbl` too
+                while len(full_update_history) > 0:
+                    old_label = full_update_history.pop(0)
 
-                # Only add the new leg if compatible before current leg,
-                # e.g. earlier arrival time, etc.
-                if full_earlier_leg.is_compatible_before(later_leg):
+                    if old_label.arrival_stop != later_leg.from_stop:
+                        # This can happen because arrival stop can change after an update
+                        # in that case, of course, skip the label
+                        continue
+
+                    candidate_earlier_leg = Leg(
+                        from_stop=old_label.boarding_stop,
+                        to_stop=later_leg.from_stop,
+                        trip=old_label.trip,
+                        criteria=old_label.criteria
+                    )
+                    if candidate_earlier_leg.is_compatible_before(later_leg):
+                        full_earlier_leg = candidate_earlier_leg
+                        break
+
+                # Only add the new leg if a compatible leg was found
+                if full_earlier_leg is not None:
                     # Generate and prepend the intermediate legs to the provided journey,
                     # starting from the full earlier leg
                     if add_intermediate_legs:
                         intermediate_legs = _generate_intermediate_legs(
                             full_leg=full_earlier_leg
                         )
-
                         new_jrny = to_build
                         for leg in intermediate_legs:
                             new_jrny = new_jrny.prepend_leg(leg)
@@ -470,8 +522,8 @@ class AlgorithmOutput(TimetableInfo):
 
     _DEFAULT_FILENAME = "algo-output"
 
-    journeys: Iterable[Journey] = None
-    """Best journey found by the algorithm"""
+    journeys: Sequence[Journey] = None
+    """Best journeys found by the algorithm"""
 
     departure_time: str = None
     """string in the format %H:%M:%S"""

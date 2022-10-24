@@ -62,22 +62,32 @@ class RentingStations(Stops, ABC):
 
     @property
     def no_source(self) -> List[RentingStation]:
-        """ Returns all renting stations with no available vehicles for departure """
+        """
+        Returns all renting stations with no available vehicles for departure
+        """
+
         return [s for s in self if not s.valid_source]
 
     @property
     def no_destination(self) -> List[RentingStation]:
-        """ Returns all renting stations with no available docks for arrival """
+        """
+        Returns all renting stations with no available docks for arrival
+        """
+        
         return [s for s in self if not s.valid_destination]
 
     @abstractmethod
     def init_download(self):
-        """ Downloads static datas """
+        """
+        Downloads static data
+        """
         pass
 
     @abstractmethod
     def update(self):
-        """ Update datas using real-time feeds  """
+        """
+        Update data using real-time feeds
+        """
         pass
 
 
@@ -132,7 +142,9 @@ class PhysicalRentingStations(RentingStations):
     """ Override abstract methods """
 
     def init_download(self):
-        """ Downloads static datas """
+        """
+        Downloads static data
+        """
 
         stations: List[Dict] = SharedMobilityFeed.open_json(self.station_info_url)['data']['stations']
         for station in stations:
@@ -142,7 +154,6 @@ class PhysicalRentingStations(RentingStations):
                 name=station['name'],
                 station=new_station,
                 platform_code=-1,
-                index=None,
                 geo=Coordinates(station['lat'], station['lon']),
                 system_id=self.system_id,
                 transport_types=self.system_transport_types,
@@ -152,7 +163,10 @@ class PhysicalRentingStations(RentingStations):
             self.add_stop(new_)
 
     def update(self):
-        """ Update datas using real-time feeds  """
+        """
+        Update data using real-time feeds
+        """
+
         status: List[Dict] = SharedMobilityFeed.open_json(self.station_status_url)['data']['stations']
         for state in status:
             station: PhysicalRentingStation = self.get_stop(state['station_id'])
@@ -206,11 +220,15 @@ class GeofenceAreas(RentingStations):
     """ Override abstract methods """
 
     def init_download(self):
-        """ Downloads static datas """
+        """
+        Downloads static data
+        """
         pass
 
     def update(self):
-        """ Update datas using real-time feeds  """
+        """
+        Update data using real-time feeds
+        """
         pass
 
 
@@ -249,9 +267,10 @@ class VehicleTransfer(Transfer):
 
 
 class VehicleTransfers(Transfers):
-    """ This class represent a set of VehicleTransfers  """
-
-    """ Override superclass methods with stub, subsuming to VehicleTransfer """
+    """
+    This class represent a set of VehicleTransfers, that is, time-independent transfer
+    carried out with the use of some vehicle (e.g. bike, car, etc.)
+    """
 
     def add(self, transfer: VehicleTransfer):
         super(VehicleTransfers, self).add(transfer)
@@ -271,7 +290,7 @@ class VehicleTransfers(Transfers):
 class SharedMobilityFeed:
     """
     This class represent a GBFS feed
-    All datas comes from gbfs.json (see https://github.com/NABSA/gbfs/blob/v2.3/gbfs.md#gbfsjson)
+    All data comes from gbfs.json (see https://github.com/NABSA/gbfs/blob/v2.3/gbfs.md#gbfsjson)
     """
 
     def __init__(self, url: str, lang: str = 'it'):
@@ -309,14 +328,14 @@ class SharedMobilityFeed:
             raise Exception(f"{feed_name} not in {self.feeds}")
 
         feed = SharedMobilityFeed.open_json(url=self.feeds_url[feed_name])
-        datas = feed['data']
+        data = feed['data']
 
         if feed_name != 'system_information':
             items_name = next(
-                iter(datas.keys()))  # name of items is only key in datas (e.g. 'stations', 'vehicles', ...)
-            return datas[items_name]
+                iter(data.keys()))  # name of items is only key in data (e.g. 'stations', 'vehicles', ...)
+            return data[items_name]
         else:
-            return datas  # in system_information datas is an items list
+            return data  # in system_information data is an items list
 
     def _get_transport_types(self) -> List[TransportType]:
         """
@@ -371,20 +390,32 @@ class SharedMobilityFeed:
 
 
 def public_transport_stop(for_stops: Stops) -> List[Stop]:
-    """ Returns its public stops  """
+    """
+    Returns its public stops
+    """
+
     return filter_public_transport(stops=for_stops)
 
 
 def shared_mobility_stops(for_stops: Stops) -> List[RentingStation]:
-    """ Returns its shared mobility stops  """
+    """
+    Returns its shared mobility stops
+    """
+
     return filter_shared_mobility(stops=for_stops)
 
 
 def filter_public_transport(stops: Iterable[Stop]) -> List[Stop]:
-    """ Filter only Stop objects, not its subclasses  """
+    """
+    Filter only Stop objects, not its subclasses
+    """
+
     return [s for s in stops if type(s) == Stop]
 
 
 def filter_shared_mobility(stops: Iterable[Stop]) -> list[RentingStation]:
-    """ Filter only subclasses of RentingStation  """
+    """
+    Filter only subclasses of RentingStation
+    """
+
     return [s for s in stops if isinstance(s, RentingStation)]

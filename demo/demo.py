@@ -1,12 +1,12 @@
 from __future__ import annotations
 
 import argparse
-import json
 import os.path
 import re
 import webbrowser
+from collections.abc import Mapping
 from os import path
-from typing import List
+from typing import List, Type
 
 import flask
 from flask import Flask, render_template, redirect, url_for, request
@@ -14,12 +14,12 @@ from loguru import logger
 
 from pyraptor.model.shared_mobility import RaptorTimetableSM
 from pyraptor.timetable.io import read_timetable
-from pyraptor.timetable.timetable import SHARED_MOB_TIMETABLE_FILENAME, TIMETABLE_FILENAME
 from pyraptor.model.criteria import (
-    CriteriaProvider,
+    CriteriaFactory,
     ArrivalTimeCriterion,
     TransfersCriterion,
-    DistanceCriterion
+    DistanceCriterion,
+    CriterionConfiguration, EmissionsCriterion, Criterion
 )
 from pyraptor.model.timetable import RaptorTimetable
 from pyraptor.query import query_raptor, RaptorVariants
@@ -28,6 +28,8 @@ from pyraptor.visualization.folium_visualizer import visualize_output
 from pyraptor.model.output import AlgorithmOutput
 
 app = Flask(__name__)
+
+# TODO WMC RAPTOR was changed to Generalized Cost RAPTOR -> change wmc_raptor paths/functions to gc_raptor
 
 
 class Option:
@@ -126,16 +128,23 @@ MC_RAPTOR_OUT_DIR = os.path.join(DEMO_OUTPUT_DIR, "mc_raptor")
 
 ALGO_OUTPUT_FILENAME = 'algo-output.pcl'
 MC_CONFIG_FILENAME = 'mc_demo_config.json'
-MC_CONFIG_FILEPATH = os.path.join(MC_RAPTOR_OUT_DIR, MC_CONFIG_FILENAME)
+CRITERIA_CLASSES: Mapping[str, Type[Criterion]] = {
+    "arrival_time": ArrivalTimeCriterion,
+    "transfers": TransfersCriterion,
+    "distance": DistanceCriterion,
+    "co2": EmissionsCriterion
+}
+CRITERIA_PROVIDER: CriteriaFactory | None = None
 
-INPUT_FOLDER: str = "./../data/output"
+DEFAULT_TIMETABLE_PATH: str = "./../data/output/timetable.pcl"
+DEFAULT_SM_TIMETABLE_PATH: str = "./../data/output/timetable_sm.pcl"
 STATION_NAMES: List[str] = []
 STATION_NAMES_SM: List[str] = []
 TIMETABLE: RaptorTimetable | None = None
 TIMETABLE_SM: RaptorTimetableSM | None = None
 DEBUG: bool = True
 ENABLE_SM: bool = True
-RAPTOR_ROUNDS = 10
+MAX_ROUNDS = 10
 
 VEHICLES = [Option(id_=id_, name=name) for id_, name in [
     ('regular', 'Regular bike'), ('electric', 'Electric bike'), ('car', 'Car')
@@ -183,20 +192,19 @@ def basic_raptor_run():
 
         timetable = TIMETABLE_SM if ENABLE_SM else TIMETABLE
 
-        elapsed_time = query_raptor(
+        elapsed_time, algo_output = query_raptor(
             timetable=timetable,
-            output_folder=BASIC_RAPTOR_OUT_DIR,
             origin_station=origin,
             destination_station=destination,
             departure_time=departure_time,
-            rounds=RAPTOR_ROUNDS,
-            variant=RaptorVariants.Basic.value,
+            rounds=MAX_ROUNDS,
+            variant=RaptorVariants.EarliestArrivalTime.value,
             enable_sm=ENABLE_SM,
             preferred_vehicle=preferred_vehicle,
             enable_car=enable_car
         )
 
-        visualize(BASIC_RAPTOR_OUT_DIR)
+        visualize(algo_output, BASIC_RAPTOR_OUT_DIR)
 
         return show_journey_descriptions(algo_output_dir=BASIC_RAPTOR_OUT_DIR, time=elapsed_time)
 
@@ -206,6 +214,7 @@ def basic_raptor_run():
 
 @app.route("/wmc_raptor")
 def wmc_raptor():
+
     station_names = STATION_NAMES_SM if ENABLE_SM else STATION_NAMES
     return render_template('raptor_form.html', stop_names=station_names, vehicles=VEHICLES,
                            version_name='Weighted McRAPTOR', action='wmc_raptor_run',
@@ -214,25 +223,13 @@ def wmc_raptor():
 
 @app.route("/wmc_raptor_weights")
 def wmc_raptor_weights():
-    criteria_provider = CriteriaProvider(criteria_config_path=MC_CONFIG_FILEPATH)
-
-    try:
-        criteria = criteria_provider.get_criteria()
-    except FileNotFoundError:
-        criteria = [
-            ArrivalTimeCriterion(name="arrival_time", weight=1, upper_bound=86400, raw_value=0),
-            TransfersCriterion(name="transfers", weight=1, upper_bound=10, raw_value=0),
-            DistanceCriterion(name="distance", weight=1, upper_bound=50, raw_value=0),
-            ArrivalTimeCriterion(name="co2", weight=1, upper_bound=3000, raw_value=0)
-        ]
-
-    criteria_by_name = {c.name: c for c in criteria}
+    criteria_by_class = {c.__class__: c for c in CRITERIA_PROVIDER.create_criteria()}
 
     return render_template('wmc_raptor_weights.html',
-                           arrival_time=criteria_by_name["arrival_time"],
-                           transfers=criteria_by_name["transfers"],
-                           distance=criteria_by_name["distance"],
-                           co2=criteria_by_name["co2"])
+                           arrival_time=criteria_by_class[ArrivalTimeCriterion],
+                           transfers=criteria_by_class[TransfersCriterion],
+                           distance=criteria_by_class[DistanceCriterion],
+                           co2=criteria_by_class[EmissionsCriterion])
 
 
 @app.route("/wmc_raptor_weights_save", methods=["GET", "POST"])
@@ -240,7 +237,7 @@ def wmc_raptor_weights_save():
     if request.method == "POST":
         # form
         form = request.form
-        weights = {
+        form_cfg = {
             criteria: {
                 "weight": float(form.get(f"{criteria}-weight")),
                 "max": float(form.get(f"{criteria}-max"))
@@ -248,12 +245,15 @@ def wmc_raptor_weights_save():
             for criteria in ['distance', 'arrival_time', 'transfers', 'co2']
         }
 
-        logger.debug(MC_RAPTOR_OUT_DIR)
-        if not os.path.exists(MC_RAPTOR_OUT_DIR):
-            os.makedirs(MC_RAPTOR_OUT_DIR)
+        criteria_cfg = {}
+        for c_name, c_params in form_cfg.items():
+            criteria_cfg[CRITERIA_CLASSES[c_name]] = CriterionConfiguration(
+                weight=c_params["weight"],
+                upper_bound=c_params["max"]
+            )
 
-        with open(MC_CONFIG_FILEPATH, 'w') as f:
-            json.dump(weights, f)
+        global CRITERIA_PROVIDER
+        CRITERIA_PROVIDER = CriteriaFactory(criteria_config=criteria_cfg)
 
         return redirect(url_for('wmc_raptor'))
 
@@ -270,21 +270,20 @@ def wmc_raptor_run():
 
         timetable = TIMETABLE_SM if ENABLE_SM else TIMETABLE
 
-        elapsed_time = query_raptor(
+        elapsed_time, algo_output = query_raptor(
             timetable=timetable,
-            output_folder=MC_RAPTOR_OUT_DIR,
             origin_station=origin,
             destination_station=destination,
             departure_time=departure_time,
-            rounds=RAPTOR_ROUNDS,
-            variant=RaptorVariants.WeightedMc.value,
-            criteria_config=MC_CONFIG_FILEPATH,
+            rounds=MAX_ROUNDS,
+            variant=RaptorVariants.GeneralizedCost.value,
+            criteria_provider=CRITERIA_PROVIDER,
             enable_sm=ENABLE_SM,
             preferred_vehicle=preferred_vehicle,
             enable_car=enable_car
         )
 
-        visualize(MC_RAPTOR_OUT_DIR)
+        visualize(algo_output, MC_RAPTOR_OUT_DIR)
 
         return show_journey_descriptions(MC_RAPTOR_OUT_DIR, time=elapsed_time)
 
@@ -292,10 +291,9 @@ def wmc_raptor_run():
 """Visualization utils"""
 
 
-def visualize(algo_output_dir: str, open_browser: bool = True):
-    algo_out_path = path.join(algo_output_dir, ALGO_OUTPUT_FILENAME)
+def visualize(algo_output: AlgorithmOutput, algo_output_dir: str, open_browser: bool = True):
     visualize_output(
-        algo_output_path=algo_out_path,
+        algo_output=algo_output,
         visualization_dir=algo_output_dir,
         open_browser=open_browser
     )
@@ -321,11 +319,20 @@ def show_journey_descriptions(algo_output_dir: str, time: float) -> flask.templa
 def parse_arguments():
     parser = argparse.ArgumentParser()
     parser.add_argument(
-        "-i",
-        "--input",
+        "-tt",
+        "--timetable_path",
         type=str,
-        default=INPUT_FOLDER,
-        help="Input directory containing timetable.pcl (and names.json)",
+        default=DEFAULT_TIMETABLE_PATH,
+        help="Path to a timetable file "
+             f"Defaults to: {DEFAULT_TIMETABLE_PATH}",
+    )
+    parser.add_argument(
+        "-smtt",
+        "--sm_timetable_path",
+        type=str,
+        default=DEFAULT_SM_TIMETABLE_PATH,
+        help="Path to a shared mob timetable file. "
+             f"Defaults to: {DEFAULT_SM_TIMETABLE_PATH}",
     )
     parser.add_argument(
         "-d",
@@ -333,20 +340,21 @@ def parse_arguments():
         type=bool,
         action=argparse.BooleanOptionalAction,
         default=DEBUG,
-        help="Debug mode"
+        help="Enable/Disable Debug Mode"
     )
 
     arguments = parser.parse_args()
     return arguments
 
 
-def run_demo(input_folder: str, debug: bool):
-    logger.debug("Input folder            : {}", input_folder)
-    logger.debug("Debug mode              : {}", debug)
-
-    # input to global variables
-    global INPUT_FOLDER
-    INPUT_FOLDER = input_folder
+def run_demo(
+        timetable_path: str,
+        sm_timetable_path: str,
+        debug: bool
+):
+    logger.debug("Timetable Path            : {}", timetable_path)
+    logger.debug("Shared Mob Timetable Path : {}", sm_timetable_path)
+    logger.debug("Debug mode                : {}", debug)
 
     global DEBUG
     DEBUG = debug
@@ -354,16 +362,32 @@ def run_demo(input_folder: str, debug: bool):
     # loading timetables
 
     global TIMETABLE
-    TIMETABLE = read_timetable(input_folder=input_folder, timetable_name=TIMETABLE_FILENAME)
+    TIMETABLE = read_timetable(
+        input_folder=os.path.dirname(timetable_path),
+        timetable_name=os.path.basename(timetable_path)
+    )
 
     global STATION_NAMES
     STATION_NAMES = _get_station_names(TIMETABLE)
 
     global TIMETABLE_SM
-    TIMETABLE_SM = read_timetable(input_folder=input_folder, timetable_name=SHARED_MOB_TIMETABLE_FILENAME)
+    TIMETABLE_SM = read_timetable(
+        input_folder=os.path.dirname(sm_timetable_path),
+        timetable_name=os.path.basename(sm_timetable_path)
+    )
 
     global STATION_NAMES_SM
     STATION_NAMES_SM = _get_station_names(TIMETABLE_SM)
+
+    global CRITERIA_PROVIDER
+    CRITERIA_PROVIDER = CriteriaFactory(
+        criteria_config={
+            ArrivalTimeCriterion: CriterionConfiguration(weight=1, upper_bound=86400),
+            TransfersCriterion: CriterionConfiguration(weight=1, upper_bound=25),
+            DistanceCriterion: CriterionConfiguration(weight=1, upper_bound=150),
+            EmissionsCriterion: CriterionConfiguration(weight=1, upper_bound=5000),
+        }
+    )
 
     webbrowser.open('http://127.0.0.1:5000/')
     app.run(debug=DEBUG, use_reloader=False)
@@ -376,10 +400,15 @@ def _get_station_names(timetable: RaptorTimetable):
     return names
 
 
-if __name__ == "__main__":
-
+def _main():
     args = parse_arguments()
+
     run_demo(
-        input_folder=args.input,
+        timetable_path=args.timetable_path,
+        sm_timetable_path=args.sm_timetable_path,
         debug=args.debug
     )
+
+
+if __name__ == "__main__":
+    _main()

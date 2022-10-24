@@ -3,12 +3,12 @@ from __future__ import annotations
 import json
 import os
 from abc import abstractmethod, ABC
-from collections.abc import Sequence, MutableMapping
+from collections.abc import Sequence, MutableSequence
+from copy import copy
 from dataclasses import dataclass, field
 from itertools import compress
 from typing import List, Type, Dict, TypeVar, Generic
 
-import attr
 import numpy as np
 from loguru import logger
 
@@ -16,8 +16,15 @@ from pyraptor.model.timetable import TransportType, Trip, Stop
 from pyraptor.util import sec2str, LARGE_NUMBER
 
 
-@dataclass(frozen=True)
-class BaseLabel(ABC):
+# TODO module seems a bit big, consider splitting in: "criteria", "labels", "bags"
+#   also renaming the module to "optimization"
+
+
+# Forward reference to `BaseLabel` class
+_LabelType = TypeVar("_LabelType", bound="BaseLabel")
+
+
+class BaseLabel(ABC, Generic[_LabelType]):  # TODO this seems like a "filler" class since there is MultiCriteriaLabel, merge MCLabel with BaseLabel?
     """
     Abstract class representing the base characteristics that a RAPTOR label
     needs to have. Depending on the algorithm version, there are different types of
@@ -31,20 +38,48 @@ class BaseLabel(ABC):
     https://www.microsoft.com/en-us/research/wp-content/uploads/2012/01/raptor_alenex.pdf
     """
 
-    trip: Trip | None = None
+    trip: Trip
     """Trip to take to arrive at the destination stop at `earliest_arrival_time`"""
 
-    boarding_stop: Stop = None
+    boarding_stop: Stop
     """Stop at which the trip is boarded"""
 
-    @abstractmethod
-    def get_earliest_arrival_time(self):
-        """
-        Returns the earliest arrival time associated to this label
+    arrival_stop: Stop
+    """Stop at which the trip is hopped off"""
 
-        :return: arrival time in seconds past the midnight of the departure day
+    arrival_time: int
+    """Earliest time to get to the destination stop by boarding the current trip"""
+
+    update_history: MutableSequence[_LabelType]
+    """
+    Collection of the history of label updates that lead to the creation of the current instance.
+    It is always ordered from best to worst, inherently meaning that the first label of 
+    the collection is also the most recent
+    (this is because the reference to any label is kept only if it brings improvements).
+    """
+
+    def __init__(
+            self,
+            trip: Trip = None,
+            boarding_stop: Stop = None,
+            arrival_stop: Stop = None,
+            arrival_time: int = LARGE_NUMBER,
+            update_history: MutableSequence[BaseLabel] = None
+    ):
         """
-        pass
+        :param trip: trip associated to this label
+        :param boarding_stop: stop that the associated trip is boarded at
+        :param arrival_stop: stop that the associated trip is hopped off at
+        :param arrival_time: time of arrival at the arrival stop
+        :param update_history: collection of label updates that lead to the
+            creation of the current instance
+        """
+
+        self.trip = trip
+        self.boarding_stop = boarding_stop
+        self.arrival_stop = arrival_stop
+        self.arrival_time = arrival_time
+        self.update_history = [] if update_history is None else update_history
 
     @abstractmethod
     def update(self, data: LabelUpdate) -> BaseLabel:
@@ -58,173 +93,75 @@ class BaseLabel(ABC):
         pass
 
     @abstractmethod
-    def is_dominating(self, other: BaseLabel) -> bool:
+    def is_dominating(self, other: BaseLabel, strict: bool = False) -> bool:
         """
-        Returns true if the current label is dominating the provided label,
-        meaning that it is not worse in any of the valuation criteria.
+        Returns true if the current label is *dominating* the provided label,
+        meaning that it is *equal or better* in all the optimization criteria.
+        If the `strict` parameter is set to True, then the definition of *strict domination*
+        is used instead, meaning that the current label must be *strictly better* in at least
+        one optimization criterion.
 
         :param other: other label to compare
-        :return:
+        :param strict: if True (default), *strict domination* is used
+        :return: True if the current label is dominating the other
         """
         pass
 
 
 @dataclass(frozen=True)
-class BasicRaptorLabel(BaseLabel):
+class LabelUpdate(Generic[_LabelType]):
     """
-    Class that represents a label used in the basic RAPTOR variant
-    described in the RAPTOR paper
-    (https://www.microsoft.com/en-us/research/wp-content/uploads/2012/01/raptor_alenex.pdf).
+    Class that represents all the necessary data to update a label
     """
 
-    earliest_arrival_time: int = LARGE_NUMBER
-    """Earliest time to get to the destination stop by boarding the current trip"""
+    boarding_stop: Stop
+    """Stop at which the trip is boarded"""
 
-    def get_earliest_arrival_time(self):
-        return self.earliest_arrival_time
+    arrival_stop: Stop
+    """Stop at which the trip is hopped off"""
 
-    def update(self, data: LabelUpdate) -> BasicRaptorLabel:
-        trip = data.new_trip if self.trip != data.new_trip else self.trip
-        boarding_stop = data.boarding_stop if data.boarding_stop is not None else self.boarding_stop
+    new_trip: Trip
+    """New trip to board to get from `boarding_stop` to `arrival_stop`."""
 
-        # Earliest arrival time to the arrival stop on the updated trip
-        earliest_arrival_time = trip.get_stop_time(data.arrival_stop).dts_arr
-
-        return BasicRaptorLabel(
-            earliest_arrival_time=earliest_arrival_time,
-            boarding_stop=boarding_stop,
-            trip=trip
-        )
-
-    def is_dominating(self, other: BasicRaptorLabel) -> bool:
-        return self.earliest_arrival_time <= other.earliest_arrival_time
-
-    def __repr__(self) -> str:
-        return f"{BasicRaptorLabel.__name__}(earliest_arrival_time={self.earliest_arrival_time}, " \
-               f"trip={self.trip}, boarding_stop={self.boarding_stop})"
+    boarding_stop_label: _LabelType
+    """Label associated to the boarding stop. Used to calculate criteria that rely
+    on previous stops information (e.g. current_cost = previous_cost + K)"""
 
 
-@dataclass(frozen=True)
-class MultiCriteriaLabel(BaseLabel):
-    """
-    Class that represents a multi-criteria label.
-
-    The concept this is class is modeled after is that of the multi-label in the
-    `McRAPTOR` section of the RAPTOR paper
-    (https://www.microsoft.com/en-us/research/wp-content/uploads/2012/01/raptor_alenex.pdf)
-    """
-
-    arrival_stop: Stop = attr.ib(default=None)
-    """Stop that this label is associated to"""
-
-    criteria: Sequence[Criterion] = attr.ib(default=list)
-    """Collection of criteria used to compare labels"""
-
-    @staticmethod
-    def from_base_raptor_label(label: BasicRaptorLabel) -> MultiCriteriaLabel:
-        """
-        Creates a multi-criteria label from a base RAPTOR label instance.
-        The new multi-criteria label has a total cost of 1.
-
-        :param label: base RAPTOR label to convert to multi-criteria
-        :return: converted multi-criteria label
-        """
-
-        # Args except raw_value are not important
-        arr_criterion = ArrivalTimeCriterion(
-            raw_value=label.earliest_arrival_time
-        )
-        mc_lbl = MultiCriteriaLabel(
-            boarding_stop=label.boarding_stop,
-            trip=label.trip,
-            criteria=[arr_criterion]
-        )
-
-        return mc_lbl
-
-    @property
-    def total_cost(self) -> float:
-        """
-        Returns the total cost assigned to the label, which corresponds to
-        the weighted sum of its criteria.
-        :return: float instance representing the total cost
-        """
-
-        if len(self.criteria) == 0:
-            raise Exception("No criteria to calculate cost with")
-
-        return sum(self.criteria, start=0.0)
-
-    def get_earliest_arrival_time(self) -> int:
-        """
-        Returns the earliest arrival time associated to this label
-
-        :return: arrival time in seconds past the midnight of the departure day
-        """
-
-        arrival_time_crit = next(
-            filter(lambda c: isinstance(c, ArrivalTimeCriterion), self.criteria),
-            None
-        )
-
-        if arrival_time_crit is None:
-            raise ValueError(f"No {ArrivalTimeCriterion.__name__} is defined for this label")
-        else:
-
-            return int(arrival_time_crit.raw_value)
-
-    def update(self, data: LabelUpdate[MultiCriteriaLabel]) -> MultiCriteriaLabel:
-        if len(self.criteria) == 0:
-            raise Exception("Trying to update an instance with no criteria set")
-
-        updated_criteria = []
-        for c in self.criteria:
-            updated_c = c.update(data=data)
-            updated_criteria.append(updated_c)
-
-        updated_trip = data.new_trip if data.new_trip is not None else self.trip
-        updated_dep_stop = data.boarding_stop if data.boarding_stop is not None else self.boarding_stop
-        updated_arr_stop = data.arrival_stop if data.arrival_stop is not None else self.arrival_stop
-
-        return MultiCriteriaLabel(
-            boarding_stop=updated_dep_stop,
-            arrival_stop=updated_arr_stop,
-            criteria=updated_criteria,
-            trip=updated_trip,
-        )
-
-    def is_dominating(self, other: MultiCriteriaLabel) -> bool:
-        return self.total_cost <= other.total_cost
-
-
-@dataclass(frozen=True)
 class Criterion(ABC):
     """
     Base class for a RAPTOR label criterion
     """
 
-    name: str = field(default="")
-    """Name of the criterion"""
+    def __init__(
+            self,
+            name: str = "",
+            weight: float = 1.0,
+            raw_value: float = 0.0,
+            upper_bound: float = LARGE_NUMBER
+    ):
+        self.name: str = name
+        """Name of the criterion"""
 
-    weight: float = field(default=1.0)
-    """Weight used to determine the cost of this criterion"""
+        self.weight: float = weight
+        """Weight used to determine the cost of this criterion"""
 
-    raw_value: float = field(default=0.0)
-    """
-    Raw value of the criterion, that is before any weight is applied.
-    This value maintains is expressed in the original unit of measurement.
-    """
+        self.raw_value: float = raw_value
+        """
+        Raw value of the criterion, that is before any weight is applied.
+        This value maintains is expressed in the original unit of measurement.
+        """
 
-    upper_bound: float = field(default=LARGE_NUMBER)
-    """
-    Maximum value allowed for this criterion.
-    Such threshold has two main purposes:
-    
-    - to scale the raw value into the [0,1] range;
-    - to represent the maximum accepted raw value for the criteria, over which
-        the label is considered very unfavorable (the cost becomes artificially very large)
-        or discarded completely.
-    """
+        self.upper_bound: float = upper_bound
+        """
+        Maximum value allowed for this criterion.
+        Such threshold has two main purposes:
+
+        - to scale the raw value into the [0,1] range;
+        - to represent the maximum accepted raw value for the criteria, over which
+            the label is considered very unfavorable (the cost becomes artificially very large)
+            or discarded completely.
+        """
 
     @property
     def cost(self) -> float:
@@ -241,7 +178,7 @@ class Criterion(ABC):
         else:
             return self.weight * (self.raw_value / self.upper_bound)  # lower bound is always 0
 
-    def __add__(self, other: object) -> Criterion | float:
+    def __add__(self, other: Criterion | float) -> Criterion | float:
         """
         Returns the sum between two criteria, which is:
         - a Criterion instance if the two objects are of type Criterion
@@ -255,6 +192,11 @@ class Criterion(ABC):
         :param other: second addend of the sum operation
         :return: Criterion or float instance
         """
+
+        # Additions only work with Criterion and float instances
+        assert isinstance(other, (Criterion, float)), (f"Cannot add type {Criterion.__name__} "
+                                                       f"with type {other.__class__.__name__}.\n"
+                                                       f"Second addend: {other}")
 
         if isinstance(other, Criterion):
             if other.name == self.name:
@@ -271,11 +213,8 @@ class Criterion(ABC):
                     )
             else:
                 return self.cost + other.cost
-        elif isinstance(other, float):
-            return self.cost + other
         else:
-            raise TypeError(f"Cannot add type {Criterion.__name__} with type {other.__class__.__name__}.\n"
-                            f"Second addend: {other}")
+            return self.cost + other
 
     def __radd__(self, other) -> Criterion | float:
         return self.__add__(other)
@@ -311,50 +250,66 @@ class Criterion(ABC):
                f"raw_value={self.raw_value};upper_bound={self.upper_bound})"
 
     @abstractmethod
-    def update(self, data: LabelUpdate) -> Criterion:
+    def update(
+            self,
+            data: LabelUpdate,
+            accumulated_criteria_provider: CriteriaProvider
+    ) -> Criterion:
+        """
+        Update the current criterion instance with the provided data
+
+        :param data: data to update the criterion with
+        :param accumulated_criteria_provider: instance that allows to retrieve the values
+            accumulated for each optimized criteria up until this point in the journey
+        :return: updated criterion instance
+        """
         pass
 
 
-# Generic type vars for Criterion and Label subclasses
-_C = TypeVar('_C', bound=Criterion)
-_LabelType = TypeVar("_LabelType", bound=BaseLabel)
+# Forward Reference to Criterion class, defined afterwards
+_C = TypeVar('_C', bound="Criterion")
 
 
-# NOTE: what if `stop` is associated with two labels with an equal cost?
-# In that case, `best_label` would contain just one of the two, with the choice
-# being non-deterministic. This could create errors when calculating the criteria
-# and reconstructing the journey. In this implementation, however, it is certain that at most
-# one label is associated with each stop at any given time, because pareto_set() and Bag.merge()
-# implementations just keep the best one (keep_equal arg is False), and non-deterministically choose
-# one between labels with the same cost. It is however worthy to point out this potential breaking point.
-# A possible solution would be to remove the concept of Bag and keeping just a single label,
-# therefore forcing the above situation to happen (instead of relying on the implementation details
-# of the Bag.merge() method)
-def _get_best_stop_criterion(
+class CriteriaProvider(ABC):
+    """
+    Abstract class that defines an interface that allows to retrieve
+    criteria instances from a specified provider
+    """
+
+    @abstractmethod
+    def get_criteria(self) -> Sequence[Criterion]:
+        """
+        Retrieves the criterion instance of the specified type
+        :return: criterion instance
+        """
+        pass
+
+
+def get_criterion(
+        criteria_provider: CriteriaProvider,
         criterion_class: Type[_C],
-        stop: Stop,
-        best_labels: MutableMapping[Stop, MultiCriteriaLabel]
-) -> _C:
+        ignore_errors: bool = False
+) -> _C | None:
     """
-    Returns the instance of the specified type of criterion, which is retrieved from the
-    best label associated with the provided stop.
-    An exception is raised if the criterion instance couldn't be found.
+    Returns the instance of the specified type of criterion from the current label.
 
+    :param criteria_provider: provider of criteria to retrieve the specified instance from
     :param criterion_class: type of the criterion to retrieve
-    :param stop: stop to retrieve the best criterion for
-    :param best_labels: collection that pairs the best labels with their associated stop
-    :return: instance of the specified criterion type
+    :param ignore_errors: if True, no error is raised if the specified criterion class
+        is not found, and None is returned instead
+    :return: instance of the specified criterion type or, if `ignore_errors` is set to False,
+        None if such a type was not found.
     """
 
-    # Criteria can be retrieved only from MultiCriteriaLabel instances
-    best_label = best_labels[stop]
+    not_found_default = None
     criterion = next(
-        filter(lambda c: isinstance(c, criterion_class), best_label.criteria),
-        None
+        filter(lambda c: isinstance(c, criterion_class), criteria_provider.get_criteria()),
+        not_found_default
     )
-    if criterion is None:
-        raise ValueError(f"The provided best labels do not include "
-                         f"a criterion of type {criterion_class.__name__}")
+
+    if criterion is not_found_default and not ignore_errors:
+        raise ValueError(f"The provided {CriteriaProvider.__name__} instance does "
+                         f"not include a criterion of type {criterion_class.__name__}")
 
     return criterion
 
@@ -365,27 +320,46 @@ class DistanceCriterion(Criterion):
     The value represents the total number of km travelled.
     """
 
+    def __init__(self, weight: float = 1.0, raw_value: float = 0.0, upper_bound: float = LARGE_NUMBER):
+        super(DistanceCriterion, self).__init__(
+            name="Total Distance",
+            weight=weight,
+            raw_value=raw_value,
+            upper_bound=upper_bound
+        )
+
     def __str__(self):
         return f"Travelled Distance: {self.raw_value} [Km]"
 
-    def update(self, data: LabelUpdate[MultiCriteriaLabel]) -> DistanceCriterion:
-        arrival_distance = self._get_total_arrival_distance(data=data)
+    def update(
+            self,
+            data: LabelUpdate[MultiCriteriaLabel],
+            accumulated_criteria_provider: CriteriaProvider
+    ) -> DistanceCriterion:
+        arrival_distance = self._get_total_arrival_distance(
+            data=data,
+            accumulated_criteria_provider=accumulated_criteria_provider
+        )
 
         return DistanceCriterion(
-            name=self.name,
             weight=self.weight,
             raw_value=arrival_distance,
             upper_bound=self.upper_bound
         )
 
     @staticmethod
-    def _get_total_arrival_distance(data: LabelUpdate[MultiCriteriaLabel]) -> float:
+    def _get_total_arrival_distance(
+            data: LabelUpdate[MultiCriteriaLabel],
+            accumulated_criteria_provider: CriteriaProvider
+    ) -> float:
         """
         Returns the updated distance (in km) for the criterion instance based on the
         new provided boarding and arrival stop. Such value represents the total travelled
         distance between the origin stop and the provided arrival stop.
 
         :param data: update data
+        :param accumulated_criteria_provider: instance that allows to retrieve the values
+            accumulated for each optimized criteria up until this point in the journey
         :return: distance in km
         """
 
@@ -401,10 +375,9 @@ class DistanceCriterion(Criterion):
 
         # Extract the total distance of the previous stop (boarding stop) in the journey
         # from its distance criterion instance
-        prev_stop_dist_criterion = _get_best_stop_criterion(
-            criterion_class=DistanceCriterion,
-            stop=data.boarding_stop,
-            best_labels=data.best_labels
+        prev_stop_dist_criterion = get_criterion(
+            criteria_provider=accumulated_criteria_provider,
+            criterion_class=DistanceCriterion
         )
 
         return prev_stop_dist_criterion.raw_value + same_trip_distance
@@ -431,21 +404,38 @@ class EmissionsCriterion(Criterion):
     Class that represents and handles calculations for the co2 emissions criterion
     """
 
+    def __init__(self, weight: float = 1.0, raw_value: float = 0.0, upper_bound: float = LARGE_NUMBER):
+        super(EmissionsCriterion, self).__init__(
+            name="Total Emissions",
+            weight=weight,
+            raw_value=raw_value,
+            upper_bound=upper_bound
+        )
+
     def __str__(self):
         return f"Total Emissions: {self.raw_value} [CO2 grams / passenger Km]"
 
-    def update(self, data: LabelUpdate[MultiCriteriaLabel]) -> EmissionsCriterion:
-        arrival_emissions = self._get_total_arrival_emissions(data=data)
+    def update(
+            self,
+            data: LabelUpdate[MultiCriteriaLabel],
+            accumulated_criteria_provider: CriteriaProvider
+    ) -> EmissionsCriterion:
+        arrival_emissions = self._get_total_arrival_emissions(
+            data=data,
+            accumulated_criteria_provider=accumulated_criteria_provider
+        )
 
         return EmissionsCriterion(
-            name=self.name,
             weight=self.weight,
             raw_value=arrival_emissions,
             upper_bound=self.upper_bound
         )
 
     @staticmethod
-    def _get_total_arrival_emissions(data: LabelUpdate[MultiCriteriaLabel]) -> float:
+    def _get_total_arrival_emissions(
+            data: LabelUpdate[MultiCriteriaLabel],
+            accumulated_criteria_provider: CriteriaProvider
+    ) -> float:
         """
         Returns the updated total emissions (in co2 grams / passenger km) for
         this criterion instance, based on the new provided boarding and arrival stop.
@@ -453,6 +443,8 @@ class EmissionsCriterion(Criterion):
         and the provided arrival stop.
 
         :param data: update data
+        :param accumulated_criteria_provider: instance that allows to retrieve the values
+            accumulated for each optimized criteria up until this point in the journey
         :return: emissions in co2 grams / passenger km
         """
 
@@ -467,10 +459,9 @@ class EmissionsCriterion(Criterion):
         )
         same_trip_emissions = same_trip_distance * co2_multiplier
 
-        prev_stop_emissions_crit = _get_best_stop_criterion(
-            criterion_class=EmissionsCriterion,
-            stop=data.boarding_stop,
-            best_labels=data.best_labels
+        prev_stop_emissions_crit = get_criterion(
+            criteria_provider=accumulated_criteria_provider,
+            criterion_class=EmissionsCriterion
         )
 
         return prev_stop_emissions_crit.raw_value + same_trip_emissions
@@ -524,12 +515,25 @@ class ArrivalTimeCriterion(Criterion):
     Class that represents and handles calculations for the arrival time criterion
     """
 
+    def __init__(self, weight: float = 1.0, raw_value: float = 0.0, upper_bound: float = LARGE_NUMBER):
+        super(ArrivalTimeCriterion, self).__init__(
+            name="Arrival Time",
+            weight=weight,
+            raw_value=raw_value,
+            upper_bound=upper_bound
+        )
+
     def __str__(self):
         return f"Arrival Time: {sec2str(seconds=int(self.raw_value))}"
 
-    def update(self, data: LabelUpdate) -> ArrivalTimeCriterion:
+    def update(
+            self,
+            data: LabelUpdate[MultiCriteriaLabel],
+            accumulated_criteria_provider: CriteriaProvider = None
+    ) -> ArrivalTimeCriterion:
         new_arrival_time = data.new_trip.get_stop_time(data.arrival_stop).dts_arr
 
+        # This error might happen if the timetable was generated with incorrect data
         if new_arrival_time is None or np.isnan(new_arrival_time):
             logger.error(f"Arrival time for stop {data.arrival_stop} is None\n"
                          f"Stop time object: {data.new_trip.get_stop_time(data.arrival_stop)}")
@@ -537,7 +541,6 @@ class ArrivalTimeCriterion(Criterion):
             raise ValueError(f"Arrival time not found for stop {data.arrival_stop}")
 
         return ArrivalTimeCriterion(
-            name=self.name,
             weight=self.weight,
             raw_value=new_arrival_time,
             upper_bound=self.upper_bound
@@ -553,167 +556,480 @@ class TransfersCriterion(Criterion):
     Class that represents and handles calculations for the number of transfers criterion.
     A transfer is defined as a change of trip, excluding the initial change that happens
     at the origin stops to board the first trip.
+    This means that to K trips equal K-1 transfers.
     """
+
+    def __init__(self, weight: float = 1.0, raw_value: float = 0.0, upper_bound: float = LARGE_NUMBER):
+        super(TransfersCriterion, self).__init__(
+            name="Transfers Number",
+            weight=weight,
+            raw_value=raw_value,
+            upper_bound=upper_bound
+        )
 
     def __str__(self):
         return f"Total Transfers: {self.raw_value}"
 
-    def update(self, data: LabelUpdate) -> TransfersCriterion:
+    def update(
+            self,
+            data: LabelUpdate[MultiCriteriaLabel],
+            accumulated_criteria_provider: CriteriaProvider
+    ) -> TransfersCriterion:
         # The transfer counter is updated only if:
         # - there is a trip change (new != old) and
         #       the old isn't the initial trip (origin trip)
-        best_boarding_label = data.best_labels[data.boarding_stop]
-        add_new_transfer = data.new_trip != best_boarding_label.trip and best_boarding_label.trip != DEFAULT_ORIGIN_TRIP
+        best_boarding_label = data.boarding_stop_label
+        add_new_transfer = (data.new_trip != best_boarding_label.trip
+                            and best_boarding_label.trip != DEFAULT_ORIGIN_TRIP)
 
-        transfers_at_boarding = _get_best_stop_criterion(
-            criterion_class=TransfersCriterion,
-            stop=data.boarding_stop,
-            best_labels=data.best_labels
+        transfers_at_boarding = get_criterion(
+            criteria_provider=accumulated_criteria_provider,
+            criterion_class=TransfersCriterion
         )
 
         return TransfersCriterion(
-            name=self.name,
             weight=self.weight,
             raw_value=transfers_at_boarding.raw_value if not add_new_transfer else transfers_at_boarding.raw_value + 1,
             upper_bound=self.upper_bound
         )
 
 
-class CriteriaProvider:
+class GeneralizedCostCriterion(Criterion, CriteriaProvider):
+    criteria: Sequence[Criterion]
     """
-    Class that provides parsing functionality for the criteria configuration file.
-
-    Such file is a JSON format where keys represent criteria names and
-    values represent criteria weights.
+    Set of criteria used to calculate the generalized cost
     """
 
-    def __init__(self, criteria_config_path: str | bytes | os.PathLike):
-        """
-        :param criteria_config_path: path to the criteria configuration file,
-            containing the weights of each supported criteria
-        """
+    def __init__(
+            self,
+            criteria: Sequence[Criterion],
+            weight: float = 1.0,
+            upper_bound: float = LARGE_NUMBER,
+    ):
+        super(GeneralizedCostCriterion, self).__init__(
+            name="Generalized Cost",
+            weight=weight,
+            raw_value=0.0,
+            upper_bound=upper_bound
+        )
 
-        self._criteria_config_path: str | bytes | os.PathLike = criteria_config_path
-        self._criteria_config: Dict[str, Dict[str, float]] = {}
+        self.criteria = criteria
 
-    def get_criteria(self, defaults: Dict[Type[Criterion], float] = None) -> Sequence[Criterion]:
-        """
-        Returns a collection of criteria objects that are based on the name and weights provided
-        in the configuration file.
+        # Calculate and set generalized cost on init
+        self.raw_value = sum(self.criteria, start=0.0)
 
-        :param: dictionary containing the default values for each criterion type.
-            The default value for an unspecified criterion is `0`.
-        :return: criteria objects
-        """
+    def update(
+            self,
+            data: LabelUpdate[MultiCriteriaLabel],
+            accumulated_criteria_provider: CriteriaProvider
+    ) -> GeneralizedCostCriterion:
+        assert len(self.criteria) != 0, "Trying to update an instance with no criteria set"
 
-        # Load criteria only if necessary
-        if len(self._criteria_config) == 0:
-            self._load_config()
-
-        if defaults is None:
-            defaults = {}
-
-        # Pair criteria names with their class (and constructor)
-        criterion_classes = {
-            "distance": DistanceCriterion,
-            "arrival_time": ArrivalTimeCriterion,
-            "co2": EmissionsCriterion,
-            "transfers": TransfersCriterion,
-        }
-
-        criteria = []
-        for name, criteria_info in self._criteria_config.items():
-            weight = criteria_info["weight"]
-            upper_bound = criteria_info["max"]
-
-            c_class = criterion_classes[name]
-            default_val = defaults.get(c_class, 0)
-
-            c = c_class(
-                name=name,
-                weight=weight,
-                raw_value=default_val,
-                upper_bound=upper_bound
+        # The accumulated criteria MUST be retrieved from a GeneralizedCostCriterion instance,
+        #   because the criteria used to calculate the generalized cost may differ
+        #   from the whole set of optimized criteria
+        # E.g. MultiCriteriaLabel.criteria == { A, B, GeneralizedCost } and
+        #   GeneralizedCost.criteria == { C, D, E }
+        if not isinstance(accumulated_criteria_provider, GeneralizedCostCriterion):
+            accumulated_criteria_provider = get_criterion(
+                criteria_provider=data.boarding_stop_label,
+                criterion_class=GeneralizedCostCriterion
             )
 
-            criteria.append(c)
+        updated_criteria = []
+        for c in self.criteria:
+            updated_c = c.update(
+                data=data,
+                accumulated_criteria_provider=accumulated_criteria_provider
+            )
+            updated_criteria.append(updated_c)
 
-        return criteria
+        return GeneralizedCostCriterion(
+            criteria=updated_criteria,
+            weight=self.weight,
+            upper_bound=self.upper_bound
+        )
 
-    def _load_config(self):
-        with open(self._criteria_config_path) as f:
-            self._criteria_config = json.load(f)
+    def get_criteria(self) -> Sequence[Criterion]:
+        return self.criteria
 
 
-@dataclass(frozen=True)
-class LabelUpdate(Generic[_LabelType]):
+_MCLabelType = TypeVar("_MCLabelType", bound="MultiCriteriaLabel")
+
+
+class MultiCriteriaLabel(BaseLabel[_MCLabelType], CriteriaProvider, Generic[_MCLabelType]):
     """
-    Class that represents all the necessary data to update a label
-    """
+    Class that represents a multi-criteria label.
 
-    boarding_stop: Stop
-    """Stop at which the trip is boarded"""
+    The concept this is class is modeled after is that of the multi-label in the
+    `McRAPTOR` section of the RAPTOR paper
+    (https://www.microsoft.com/en-us/research/wp-content/uploads/2012/01/raptor_alenex.pdf)
+    """
 
     arrival_stop: Stop
-    """Stop at which the trip is hopped off"""
+    """Stop that this label is associated to"""
 
-    new_trip: Trip
-    """New trip to board to get from `boarding_stop` to `arrival_stop`."""
+    # TODO what if it was a mapping for easier retrieval?
+    criteria: Sequence[Criterion]
+    """Set of criteria to optimize"""
 
-    best_labels: MutableMapping[Stop, _LabelType]
+    def __init__(
+            self,
+            trip: Trip = None,
+            boarding_stop: Stop = None,
+            arrival_stop: Stop = None,
+            arrival_time: int = LARGE_NUMBER,
+            update_history: MutableSequence[MultiCriteriaLabel] = None,
+            criteria: Sequence[Criterion] = None
+    ):
+        """
+        :param trip: trip associated to this label
+        :param boarding_stop: stop that the associated trip is boarded at
+        :param arrival_stop: stop that the associated trip is hopped off at
+        :param arrival_time: time of arrival at the arrival stop
+        :param update_history: collection of label updates that lead to the
+            creation of the current instance
+        :param criteria: set of criteria to optimize
+        """
+
+        super(MultiCriteriaLabel, self).__init__(
+            trip=trip,
+            boarding_stop=boarding_stop,
+            arrival_stop=arrival_stop,
+            arrival_time=arrival_time,
+            update_history=update_history
+        )
+
+        self.criteria = criteria
+
+    def update(self, data: LabelUpdate[MultiCriteriaLabel]) -> MultiCriteriaLabel:
+        assert len(self.criteria) != 0, "Trying to update an instance with no criteria set"
+
+        updated_criteria = []
+        for c in self.criteria:
+            updated_c = c.update(
+                data=data,
+                accumulated_criteria_provider=data.boarding_stop_label
+            )
+            updated_criteria.append(updated_c)
+
+        updated_trip = data.new_trip if data.new_trip is not None else self.trip
+        updated_dep_stop = data.boarding_stop if data.boarding_stop is not None else self.boarding_stop
+        updated_arr_stop = data.arrival_stop if data.arrival_stop is not None else self.arrival_stop
+
+        # Earliest arrival time to the arrival stop on the updated trip
+        updated_arr_time = updated_trip.get_stop_time(updated_arr_stop).dts_arr
+
+        # Updated history is obtained by prepending the current instance to the old history
+        updated_history = copy(self.update_history)
+        updated_history.insert(0, self)
+
+        return MultiCriteriaLabel(
+            arrival_time=updated_arr_time,
+            boarding_stop=updated_dep_stop,
+            arrival_stop=updated_arr_stop,
+            criteria=updated_criteria,
+            update_history=updated_history,
+            trip=updated_trip,
+        )
+
+    def get_criteria(self) -> Sequence[Criterion]:
+        return self.criteria
+
+    def is_dominating(self, other: MultiCriteriaLabel, strict: bool = False) -> bool:
+        if strict:
+            return self.criteria < other.criteria
+        else:
+            return np.all(np.array(self.criteria) <= np.array(other.criteria))
+
+
+class EarliestArrivalTimeLabel(MultiCriteriaLabel["EarliestArrivalTimeLabel"]):
     """
-    Reference to the best labels for each stop, independent from the number of rounds.
-    This data is needed by criteria that have a dependency on other labels to calculate their cost.
-    (e.g. the distance cost of label x+1 depends on the distance cost of label x)
+    Class that represents a label used in the Earliest Arrival Time RAPTOR variant
+    described in the RAPTOR paper
+    (https://www.microsoft.com/en-us/research/wp-content/uploads/2012/01/raptor_alenex.pdf).
+
+    Arrival time is the only optimization criterion.
     """
+
+    at_criterion: ArrivalTimeCriterion
+    """Arrival Time Criterion instance used to calculate updated arrival times.
+    This is the only criterion optimized in labels of this type."""
+
+    def __init__(
+            self,
+            trip: Trip = None,
+            boarding_stop: Stop = None,
+            arrival_stop: Stop = None,
+            arrival_time: int = LARGE_NUMBER,
+            update_history: MutableSequence[EarliestArrivalTimeLabel] = None
+    ):
+        """
+        :param trip: trip associated to this label
+        :param boarding_stop: stop that the associated trip is boarded at
+        :param arrival_stop: stop that the associated trip is hopped off at
+        :param arrival_time: time of arrival at the arrival stop
+        """
+
+        at_criterion = ArrivalTimeCriterion(raw_value=arrival_time)
+        super(EarliestArrivalTimeLabel, self).__init__(
+            trip=trip,
+            boarding_stop=boarding_stop,
+            arrival_stop=arrival_stop,
+            arrival_time=arrival_time,
+            update_history=update_history,
+            criteria=[at_criterion]  # Arrival Time is the only optimized criterion here
+        )
+
+        self.at_criterion = at_criterion
+
+    def update(self, data: LabelUpdate[EarliestArrivalTimeLabel]) -> EarliestArrivalTimeLabel:
+        mc_label = super(EarliestArrivalTimeLabel, self).update(data=data)
+
+        return EarliestArrivalTimeLabel(
+            trip=mc_label.trip,
+            boarding_stop=mc_label.boarding_stop,
+            update_history=mc_label.update_history,
+            arrival_stop=mc_label.arrival_stop,
+            arrival_time=mc_label.arrival_time,
+        )
+
+    def is_dominating(self, other: EarliestArrivalTimeLabel, strict: bool = False) -> bool:
+        if strict:
+            return self.arrival_time < other.arrival_time
+        else:
+            return self.arrival_time <= other.arrival_time
+
+    def __repr__(self) -> str:
+        return (f"{EarliestArrivalTimeLabel.__name__}(earliest_arrival_time={self.arrival_time}, "
+                f"trip={self.trip}, boarding_stop={self.boarding_stop})")
+
+
+class GeneralizedCostLabel(MultiCriteriaLabel["GeneralizedCostLabel"]):
+    """
+    Label that considers only generalized cost as optimization criterion
+    """
+
+    gc_criterion: GeneralizedCostCriterion
+    """Generalized cost criterion instance used to calculate generalized cost.
+    This is the only criterion optimized in labels of this type."""
+
+    def __init__(
+            self,
+            trip: Trip = None,
+            boarding_stop: Stop = None,
+            arrival_stop: Stop = None,
+            arrival_time: int = LARGE_NUMBER,
+            update_history: MutableSequence[GeneralizedCostLabel] = None,
+            criteria: Sequence[Criterion] = None
+    ):
+        """
+        :param trip: trip associated to this label
+        :param boarding_stop: stop that the associated trip is boarded at
+        :param arrival_stop: stop that the associated trip is hopped off at
+        :param arrival_time: time of arrival at the arrival stop
+        :param criteria: criteria used to calculate the generalized cost
+        """
+
+        gc_criterion = GeneralizedCostCriterion(criteria=criteria)
+        super(GeneralizedCostLabel, self).__init__(
+            trip=trip,
+            boarding_stop=boarding_stop,
+            arrival_stop=arrival_stop,
+            arrival_time=arrival_time,
+            update_history=update_history,
+            criteria=[gc_criterion]  # GC is the only optimized criterion here
+        )
+
+        self.gc_criterion = gc_criterion
+
+    @property
+    def generalized_cost(self) -> float:
+        """
+        Returns the total cost assigned to the label, which corresponds to
+        the weighted sum of its criteria.
+        :return: float instance representing the total cost
+        """
+
+        return self.gc_criterion.cost
+
+    def update(self, data: LabelUpdate[GeneralizedCostLabel]) -> GeneralizedCostLabel:
+        # Note: I could write this method to call super.update(data),
+        #   but it seems very clunky and kind of a cheat
+
+        updated_trip = data.new_trip if data.new_trip is not None else self.trip
+        updated_dep_stop = data.boarding_stop if data.boarding_stop is not None else self.boarding_stop
+        updated_gc_criterion = self.gc_criterion.update(
+            data=data,
+            accumulated_criteria_provider=data.boarding_stop_label.gc_criterion
+        )
+
+        # Earliest arrival time to the arrival stop on the updated trip
+        updated_arr_time = updated_trip.get_stop_time(data.arrival_stop).dts_arr
+
+        # Updated history is obtained by prepending the current instance to the old history
+        updated_history = copy(self.update_history)
+        updated_history.insert(0, self)
+
+        return GeneralizedCostLabel(
+            arrival_time=updated_arr_time,
+            boarding_stop=updated_dep_stop,
+            arrival_stop=data.arrival_stop,
+            trip=updated_trip,
+            update_history=updated_history,
+            criteria=updated_gc_criterion.criteria
+        )
+
+    def is_dominating(self, other: GeneralizedCostLabel, strict: bool = False) -> bool:
+        if strict:
+            # If cost is equal, the one with the best arrival time dominates
+            if self.generalized_cost == other.generalized_cost:
+                return self.arrival_time < other.arrival_time
+            else:
+                return self.generalized_cost < other.generalized_cost
+        else:
+            return self.generalized_cost <= other.generalized_cost
 
 
 @dataclass(frozen=True)
-class Bag:
+class Bag(ABC, Generic[_LabelType]):
     """
-    Class that represents a container of label used in the MC RAPTOR algorithm
+    Abstract class that defines a bag (collection) of labels associated to some stop.
     """
 
-    labels: List[MultiCriteriaLabel] = field(default_factory=list)
-    updated: bool = False
+    labels: List[_LabelType] = field(default_factory=list)
+    """Collection of labels associated to this bag"""
+
+    improved: bool = False
+    """True if this bag was created after a merging that brought some improvements"""
 
     def __len__(self):
         return len(self.labels)
 
     def __repr__(self):
-        return f"Bag({self.labels}, updated={self.updated})"
+        return f"Bag({self.labels})"
+
+    @abstractmethod
+    def merge(self, with_labels: List[_LabelType]) -> Bag:
+        """
+        Returns a new bag instance updated with the provided labels.
+
+        :param with_labels: labels to merge with
+        :return: bag that contains only the best labels between the
+            ones provided and the ones in the current instance
+        """
+        pass
+
+
+# Suppress warning that SingleLabelBag must implement ABC
+# noinspection PyAbstractClass
+
+
+class SingleLabelBag(Bag[_LabelType]):
+    """
+    Abstract class that represents a bag that always contains at most one label.
+    """
+
+    def get_label(self) -> _LabelType | None:
+        """
+        Returns the only label contained in this bag, or None if there aren't any.
+        :return: label instance or None if there are no labels
+        """
+
+        assert len(self.labels) <= 1, "There should never be more than one label"
+
+        return self.labels[0] if len(self.labels) > 0 else None
+
+
+class EarliestArrivalTimeBag(SingleLabelBag[EarliestArrivalTimeLabel]):
+    """
+    Label Bag used in Earliest Arrival Time RAPTOR
+    """
+
+    def merge(self, with_labels: List[EarliestArrivalTimeLabel]) -> EarliestArrivalTimeBag:
+        """
+        Returns an updated bag containing the label with the best arrival time
+
+        :param with_labels: labels to update the bag with
+        :return:
+        """
+
+        if len(with_labels) == 0 and len(self.labels) == 0:
+            return EarliestArrivalTimeBag(improved=False)
+
+        prev_best = (
+            None
+            if len(self.labels) == 0
+            else min(self.labels, key=lambda lbl: lbl.arrival_time)
+        )
+        best_label = min(self.labels + with_labels, key=lambda lbl: lbl.arrival_time)
+
+        was_improved = prev_best != best_label
+        return EarliestArrivalTimeBag(labels=[best_label], improved=was_improved)
+
+
+class GeneralizedCostBag(SingleLabelBag[GeneralizedCostLabel]):
+    """
+    Label Bag used in Generalized Cost RAPTOR
+    """
+
+    def merge(self, with_labels: List[GeneralizedCostLabel]) -> GeneralizedCostBag:
+        """
+        Returns an updated bag containing the label with the lowest generalized cost
+
+        :param with_labels: labels to update the bag with
+        :return:
+        """
+
+        if len(with_labels) == 0 and len(self.labels) == 0:
+            return GeneralizedCostBag(improved=False)
+
+        # Best is evaluated on the basis of generalized cost. If even, then the best arrival time is kept
+        prev_best = (
+            None
+            if len(self.labels) == 0
+            else min(self.labels, key=lambda lbl: (lbl.generalized_cost, lbl.arrival_time))
+        )
+        best_label = min(self.labels + with_labels, key=lambda lbl: (lbl.generalized_cost, lbl.arrival_time))
+
+        was_improved = prev_best is None or best_label.is_dominating(prev_best, strict=True)
+        return GeneralizedCostBag(labels=[best_label], improved=was_improved)
+
+
+@dataclass(frozen=True)
+class ParetoBag(Bag[MultiCriteriaLabel]):
+    """
+    Class that represents a Pareto-set of labels, i.e. a set of pair-wise non-dominating labels,
+    where no label is worse than any other in at least one criterion
+    """
+
+    # TODO this class is currently not used, but will be when McRaptor will be implemented again.
+    #   Remember to check if all the methods are useful/properly implemented
+
+    def __repr__(self):
+        return f"ParetoBag({self.labels}, updated={self.improved})"
 
     def add(self, label: MultiCriteriaLabel):
         """Add"""
+
         self.labels.append(label)
 
-    def merge(self, other_bag: Bag) -> Bag:
-        """Merge other bag in current bag and return updated Bag"""
-
-        pareto_labels = self.labels + other_bag.labels
+    def merge(self, with_labels: List[MultiCriteriaLabel]) -> ParetoBag:
+        pareto_labels = self.labels + with_labels
 
         if len(pareto_labels) == 0:
-            return Bag(labels=[], updated=False)
+            return ParetoBag(labels=[], improved=False)
 
         pareto_labels = pareto_set(pareto_labels)
         bag_update = True if pareto_labels != self.labels else False
 
-        return Bag(labels=pareto_labels, updated=bag_update)
-
-    def get_best_label(self) -> MultiCriteriaLabel:
-        """
-        Returns the label with the best (lowest) cost in the bag
-        :return:
-        """
-
-        if len(self.labels) == 0:
-            raise Exception("There are no labels to retrieve the best from")
-
-        by_cost_asc = list(sorted(self.labels, key=lambda l: l.total_cost))
-        return by_cost_asc[0]
+        return ParetoBag(labels=pareto_labels, improved=bag_update)
 
     def labels_with_trip(self):
-        """All labels with trips, i.e. all labels that are reachable with a trip with given criterion"""
+        """
+        All labels with trips, i.e. all labels that are reachable with a trip with given criterion
+        """
+
         return [lbl for lbl in self.labels if lbl.trip is not None]
 
 
@@ -726,25 +1042,139 @@ def pareto_set(labels: List[MultiCriteriaLabel], keep_equal=False):
     :return: list with pairwise non-dominating labels
     """
 
-    is_efficient = np.ones(len(labels), dtype=bool)
-    label_costs = np.array([label.total_cost for label in labels])
-    for i, cost in enumerate(label_costs):
-        if is_efficient[i]:
-            # Keep any point with a lower cost
+    best_mask = np.ones(len(labels), dtype=bool)
+    all_labels_criteria = np.array([label.criteria for label in labels])
+    for current_lbl_idx, criteria in enumerate(all_labels_criteria):
+        if best_mask[current_lbl_idx]:
+            # Here the sets of criteria of each label are compared with all the others
+            # This is strict domination, where at least one criterion must be better for
+            #   a label to be considered dominating (not the `np.any` and the strict `<`)
+            # `keep_equal` option also keeps labels with an equal set of criteria
             if keep_equal:
-                # keep point with all labels equal or one lower
-                # Note: list1 < list2 determines if list1 is smaller than list2
-                #   based on lexicographic ordering
-                #   (i.e. the smaller list is the one with the smaller leftmost element)
-                is_efficient[is_efficient] = np.any(
-                    label_costs[is_efficient] < cost, axis=0
-                ) + np.all(label_costs[is_efficient] == cost, axis=0)
+                best_mask[best_mask] = np.any(
+                    all_labels_criteria[best_mask] < criteria, axis=1
+                ) + np.all(all_labels_criteria[best_mask] == criteria, axis=1)
 
             else:
-                is_efficient[is_efficient] = np.any(
-                    label_costs[is_efficient] < cost, axis=0
+                best_mask[best_mask] = np.any(
+                    all_labels_criteria[best_mask] < criteria, axis=1
                 )
 
-            is_efficient[i] = True  # And keep self
+            # Keep the label that has been compared with all the others
+            best_mask[current_lbl_idx] = True
 
-    return list(compress(labels, is_efficient))
+    return list(compress(labels, best_mask))
+
+
+@dataclass
+class CriterionConfiguration:
+    """
+    Class that represents the configuration for some criterion.
+    It defines weight and upper_bound parameters.
+    """
+
+    weight: float
+    upper_bound: float
+
+
+class CriteriaFactory:
+    """
+    Class that represents a criteria factory whose goal is to create properly
+    parameterized criterion instances based on some specified configuration
+    """
+
+    _criteria_config: Dict[Type[Criterion], CriterionConfiguration]
+
+    def __init__(self, criteria_config: Dict[Type[Criterion], CriterionConfiguration]):
+        self._criteria_config = criteria_config
+
+    @property
+    def criteria_config(self) -> Dict[Type[Criterion], CriterionConfiguration]:
+        """
+        Returns the currently loaded criteria configuration
+        :return:
+        """
+
+        return self._criteria_config
+
+    def create_criteria(self, defaults: Dict[Type[Criterion], float] = None) -> Sequence[Criterion]:
+        """
+        Returns a collection of criteria objects that are based the configuration provided
+        to this instance
+
+        :param: dictionary containing the default values for each criterion type.
+            The default value for an unspecified criterion is `0`.
+        :return: criteria objects
+        """
+
+        if defaults is None:
+            defaults = {}
+
+        criteria = []
+        for criterion_class, criterion_cfg in self._criteria_config.items():
+            c = criterion_class(
+                weight=criterion_cfg.weight,
+                raw_value=defaults.get(criterion_class, 0.0),
+                upper_bound=criterion_cfg.upper_bound
+            )
+            criteria.append(c)
+
+        return criteria
+
+
+class FileCriteriaFactory(CriteriaFactory):
+    """
+    Class that provides parameterized criteria instances based on a .json configuration file.
+
+    Such file has the following format::
+
+        {
+            "criterion_name1": {
+                "weight": float
+                "upper_bound": float
+            },
+            "criterion_name2": {
+                "weight": float
+                "upper_bound": float
+            },
+            ...
+        }
+    """
+
+    def __init__(self, criteria_config_path: str | bytes | os.PathLike):
+        """
+        :param criteria_config_path: path to the criteria configuration file,
+            containing the weights of each supported criteria
+        """
+
+        if not os.path.exists(criteria_config_path):
+            raise FileNotFoundError(f"'{criteria_config_path}' is not a valid path to a criteria configuration file.")
+
+        self._criteria_config_path: str | bytes | os.PathLike = criteria_config_path
+        cfg = self._read_config_from_file()
+
+        super(FileCriteriaFactory, self).__init__(criteria_config=cfg)
+
+    def _read_config_from_file(self) -> Dict[Type[Criterion], CriterionConfiguration]:
+        with open(self._criteria_config_path) as f:
+            cfg_json = json.load(f)
+
+            # Pair criteria names with their class (and constructor)
+            criterion_classes = {
+                "distance": DistanceCriterion,
+                "arrival_time": ArrivalTimeCriterion,
+                "co2": EmissionsCriterion,
+                "transfers": TransfersCriterion,
+            }
+
+            criteria_cfg: Dict[Type[Criterion], CriterionConfiguration] = {}
+            for name, criteria_info in cfg_json.items():
+                weight = criteria_info["weight"]
+                upper_bound = criteria_info["max"]
+
+                criteria_cfg[criterion_classes[name]] = CriterionConfiguration(
+                    weight=weight,
+                    upper_bound=upper_bound
+                )
+
+            return criteria_cfg

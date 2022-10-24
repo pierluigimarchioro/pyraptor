@@ -1,35 +1,39 @@
 /**
- * Each field represents a criteria to evaluate possible itineraries with;
- * the value represents the weight assigned to that criteria in the evaluation process.
- * Allowed weights are in the range [0, +inf], where 0 means that the criteria won't be considered.
+ * Each top-level field represents an optimality criterion used by the algorithm.
+ * The attributes "weight" and "max" assigned to each criterion respectively represent a
+ *  penalization factor and the maximum threshold, over which an itinerary is considered
+ *  highly unfavorable.
+ * Allowed weights are in the range [0, +inf], where 0 means that the criteria has no influence
+ *  in the final generalized cost.
+ * As regards to maximum thresholds, the interval of allowed values is [-inf, +inf]
  */
 {
   "distance": {
-    // Weight to assign to the total distance of the itinerary
+    // Penalization factor for the total distance of the itinerary
     "weight": 1,
 
-    // Maximum distance in km of an acceptable itinerary
+    // Maximum travelled distance [Km] of an acceptable itinerary
     "max": 100
   },
   "arrival_time": {
-    // Weight to assign to the final arrival time of the itinerary
+    // Penalization factor for the final arrival time of the itinerary
     "weight": 1,
 
-    // Maximum arrival time in seconds past midnight of the departure day
+    // Maximum arrival time in seconds past the midnight of the departure day
     "max": 86400
   },
   "transfers": {
-    // Weight to assign to the number of transfers (changes of trip/transport) of the itinerary
+    // Penalization factor for the number of transfers (changes of trip/transport) of the itinerary
     "weight": 1,
 
     // Maximum number of transfers in an acceptable itinerary
     "max": 10
   },
   "co2": {
-    // Weight to assign to the co2 emissions of the itinerary
+    // Penalization factor for the emissions [CO2 grams / passenger Km] of the itinerary
     "weight": 1,
 
-    // Maximum grams of co2 per passenger km emissions of an acceptable itinerary
+    // Maximum emissions [CO2 grams / passenger Km] of an acceptable itinerary
     "max": 2000
   }
 }

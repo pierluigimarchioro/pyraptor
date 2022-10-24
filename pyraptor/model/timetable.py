@@ -99,10 +99,10 @@ class Stop:
     """Stop"""
 
     id = attr.ib(default=None)
-    name = attr.ib(default=None)
+    name: str = attr.ib(default=None)
     station: Station = attr.ib(default=None)
-    platform_code = attr.ib(default=None)
-    index = attr.ib(default=None)
+    platform_code: int = attr.ib(default=None)
+    index: int = attr.ib(default=None)
     geo: Coordinates = attr.ib(default=None)
 
     def __hash__(self):
@@ -133,14 +133,14 @@ class Stops(Generic[_Stop]):
     """Stops"""
 
     def __init__(self):
-        self.set_idx = dict()
-        self.set_index = dict()
-        self.last_index = 1
+        self.set_idx: Dict[Any, Stop] = dict()
+        self.set_index: Dict[int, Stop] = dict()
+        self.last_index: int = 0
 
     def __repr__(self):
         return f"Stops(n_stops={len(self.set_idx)})"
 
-    def __getitem__(self, stop_id):
+    def __getitem__(self, stop_id: str | Any) -> Stop:
         return self.set_idx[stop_id]
 
     def __len__(self):
@@ -149,14 +149,14 @@ class Stops(Generic[_Stop]):
     def __iter__(self):
         return iter(self.set_idx.values())
 
-    def get_stop(self, stop_id) -> _Stop:
+    def get_stop(self, stop_id: str | Any) -> _Stop:
         """Get stop"""
         if stop_id not in self.set_idx:
             raise ValueError(f"Stop ID {stop_id} not present in Stops")
         stop: _Stop = self.set_idx[stop_id]
         return stop
 
-    def get_by_index(self, stop_index) -> _Stop:
+    def get_by_index(self, stop_index: int) -> _Stop:
         """Get stop by index"""
         return self.set_index[stop_index]
 
@@ -395,10 +395,10 @@ class RouteInfo:
     def __eq__(self, other):
         if other is None:
             return False
-        if isinstance(other, RouteInfo):
-            return other.transport_type == self.transport_type and other.name == self.name
-        else:
-            raise Exception(f"Cannot compare {RouteInfo.__name__} with {type(other)}")
+
+        assert isinstance(other, RouteInfo), f"Cannot compare {RouteInfo.__name__} with {type(other)}"
+
+        return other.transport_type == self.transport_type and other.name == self.name
 
 
 class TransferRouteInfo(RouteInfo):
@@ -534,8 +534,8 @@ class TransferTrip(Trip):
         # Add stop times for both origin and end stops
         travelling_time = arr_time - dep_time
 
-        if transport_type not in TRANSPORT_TYPE_SPEEDS.keys():
-            raise ValueError(f"Unhandled transport type `{transport_type}`: average speed is not defined")
+        assert transport_type in TRANSPORT_TYPE_SPEEDS.keys(), (f"Unhandled transport type `{transport_type}`: "
+                                                                f"average speed is not defined")
 
         travelled_distance = (travelling_time / 3600) * TRANSPORT_TYPE_SPEEDS[transport_type]
         arr_stop_time = TripStopTime(
@@ -613,7 +613,7 @@ class Route:
         """Stop index"""
         return self.stop_order[stop]
 
-    def earliest_trip(self, dts_arr: int, stop: Stop) -> Trip:
+    def earliest_trip(self, dts_arr: int, stop: Stop) -> Trip | None:
         """
         Returns the earliest trip that can be boarded at the provided stop in the
         current route after `dts_arr` time (in seconds after midnight)
@@ -630,7 +630,7 @@ class Route:
 
         return trip_stop_times[0].trip if len(trip_stop_times) > 0 else None
 
-    def earliest_trip_stop_time(self, dts_arr: int, stop: Stop) -> TripStopTime:
+    def earliest_trip_stop_time(self, dts_arr: int, stop: Stop) -> TripStopTime | None:
         """
         Returns the stop time for the provided stop in the current route
         from the earliest trip that can be boarded after `dts_arr` time.
@@ -640,12 +640,13 @@ class Route:
         :return: stop time for the provided stop in the earliest boardable trip, or None if any
         """
 
-        stop_idx = self.stop_index(stop)
-        trip_stop_times = [trip.stop_times[stop_idx] for trip in self.trips]
-        trip_stop_times = [tst for tst in trip_stop_times if tst.dts_dep >= dts_arr]
-        trip_stop_times = sorted(trip_stop_times, key=attrgetter("dts_dep"))
+        earliest_trip = self.earliest_trip(dts_arr, stop)
 
-        return trip_stop_times[0] if len(trip_stop_times) > 0 else None
+        if earliest_trip is not None:
+            stop_idx: int = earliest_trip.stop_times_index[stop]
+            return earliest_trip.stop_times[stop_idx]
+        else:
+            return None
 
 
 class Routes:
