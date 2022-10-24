@@ -10,7 +10,7 @@ from typing import List, Tuple, TypeVar, Generic, Dict, Set
 import numpy as np
 from loguru import logger
 
-from pyraptor.model.criteria import BaseLabel, Bag, LabelUpdate
+from pyraptor.model.criteria import BaseLabel, Bag, LabelUpdate, SingleLabelBag
 from pyraptor.model.shared_mobility import (
     RentingStation,
     filter_shared_mobility,
@@ -665,7 +665,10 @@ class BaseRaptor(ABC, Generic[_LabelType, _BagType]):
         return updated_fwd_deps
 
 
-class SingleCriterionRaptor(BaseRaptor[_LabelType, _BagType], ABC):
+_SingleLabelBagType = TypeVar("_SingleLabelBagType", bound=SingleLabelBag)
+
+
+class SingleCriterionRaptor(BaseRaptor[_LabelType, _SingleLabelBagType], ABC):
     """
     Abstract class that serves as the base for any RAPTOR implementation
     that optimizes just a single criterion.
@@ -705,31 +708,26 @@ class SingleCriterionRaptor(BaseRaptor[_LabelType, _BagType], ABC):
                         marked_stops=new_marked_stops
                     )
 
-                # Always try to board the earliest trip
-                # This can be determined by looking at the arrival time at arrival_stop
-                #   at the end of the previous round (k-1), and checking that it comes before
-                #   the departure time of the newfound earliest trip at that same stop
-                previous_arrival_time = self.round_stop_bags[k - 1][
+                # Always try to board the earliest possible trip
+                # The question that is asked is the following: we arrived at stop arrival_stop
+                #   in the previous round (k-1), what is the earliest trip that can be boarded
+                #   at that stop, after arriving?
+                prev_round_arr_time = self.round_stop_bags[k - 1][
                     arrival_stop
                 ].get_label().arrival_time
-                earliest_trip_stop_time = marked_route.earliest_trip_stop_time(
-                    previous_arrival_time, arrival_stop
+                earliest_trip = marked_route.earliest_trip(
+                    prev_round_arr_time, arrival_stop
                 )
 
-                # TODO this feels wrong to do in a generalized case. Is there a way to say:
-                #   "ok, this trip is better in a generalized cost sense"?
-                if (
-                        earliest_trip_stop_time is not None
-                        and previous_arrival_time <= earliest_trip_stop_time.dts_dep
-                ):
+                if earliest_trip is not None:
                     # If the trip is different from the previous one, we board the trip
                     #   at arrival_stop, else the trip is still boarded at the old boarding stop.
                     # This basically means that the boarding_stop will always be the earliest one,
                     #   in terms of arrival order in the current route
-                    if earliest_trip_stop_time.trip != current_trip:
+                    if earliest_trip != current_trip:
                         boarding_stop = arrival_stop
 
-                    current_trip = earliest_trip_stop_time.trip
+                    current_trip = earliest_trip
 
         return list(new_marked_stops)
 

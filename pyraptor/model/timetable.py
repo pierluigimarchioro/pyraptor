@@ -613,7 +613,7 @@ class Route:
         """Stop index"""
         return self.stop_order[stop]
 
-    def earliest_trip(self, dts_arr: int, stop: Stop) -> Trip:
+    def earliest_trip(self, dts_arr: int, stop: Stop) -> Trip | None:
         """
         Returns the earliest trip that can be boarded at the provided stop in the
         current route after `dts_arr` time (in seconds after midnight)
@@ -630,7 +630,7 @@ class Route:
 
         return trip_stop_times[0].trip if len(trip_stop_times) > 0 else None
 
-    def earliest_trip_stop_time(self, dts_arr: int, stop: Stop) -> TripStopTime:
+    def earliest_trip_stop_time(self, dts_arr: int, stop: Stop) -> TripStopTime | None:
         """
         Returns the stop time for the provided stop in the current route
         from the earliest trip that can be boarded after `dts_arr` time.
