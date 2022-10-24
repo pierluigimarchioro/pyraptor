@@ -14,7 +14,7 @@ from loguru import logger
 from pyraptor.model.algos.base import SharedMobilityConfig
 from pyraptor.model.algos.et_raptor import EarliestArrivalTimeRaptor
 from pyraptor.model.algos.gc_raptor import GeneralizedCostRaptor
-from pyraptor.model.criteria import MultiCriteriaLabel, FileCriteriaProvider, CriteriaFactory, Bag
+from pyraptor.model.criteria import MultiCriteriaLabel, FileCriteriaFactory, CriteriaFactory, Bag
 from pyraptor.model.output import AlgorithmOutput, get_journeys_to_destinations
 from pyraptor.model.shared_mobility import RaptorTimetableSM
 from pyraptor.model.timetable import RaptorTimetable, Stop, TransportType
@@ -114,7 +114,7 @@ def query_raptor(
         timetable=timetable,
         origin_stops=origin_stops,
         dep_secs=dep_secs,
-        criteria_provider=criteria_provider,
+        criteria_factory=criteria_provider,
         enable_fwd_deps=enable_fwd_deps,
         enable_sm=enable_sm,
         preferred_vehicle=preferred_transport_type,
@@ -188,7 +188,7 @@ def _execute_raptor_variant(
         dep_secs: int,
         rounds: int,
         enable_fwd_deps: bool,
-        criteria_provider: CriteriaFactory,
+        criteria_factory: CriteriaFactory,
         enable_sm: bool,
         preferred_vehicle: TransportType,
         enable_car: bool
@@ -209,7 +209,7 @@ def _execute_raptor_variant(
             enable_fwd_deps_heuristic=enable_fwd_deps,
             enable_sm=enable_sm,
             sm_config=sm_config,
-            criteria_provider=criteria_provider
+            criteria_factory=criteria_factory
         )
         return raptor.run(origin_stops, dep_secs, rounds)
 
@@ -351,7 +351,7 @@ def _main():
     args = _parse_arguments()
 
     cached_timetable = _load_timetable(input_folder=args.input, enable_sm=args.enable_sm)
-    file_criteria_provider = FileCriteriaProvider(criteria_config_path=args.mc_config)
+    file_criteria_factory = FileCriteriaFactory(criteria_config_path=args.mc_config)
 
     elapsed_time, algo_output = query_raptor(
         variant=args.variant,
@@ -361,7 +361,7 @@ def _main():
         departure_time=args.time,
         rounds=args.rounds,
         enable_fwd_deps=args.enable_fwd_deps,
-        criteria_provider=file_criteria_provider,
+        criteria_provider=file_criteria_factory,
         enable_sm=args.enable_sm,
         preferred_vehicle=args.preferred,
         enable_car=args.car

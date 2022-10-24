@@ -1122,7 +1122,7 @@ class CriteriaFactory:
         return criteria
 
 
-class FileCriteriaProvider(CriteriaFactory):
+class FileCriteriaFactory(CriteriaFactory):
     """
     Class that provides parameterized criteria instances based on a .json configuration file.
 
@@ -1153,7 +1153,7 @@ class FileCriteriaProvider(CriteriaFactory):
         self._criteria_config_path: str | bytes | os.PathLike = criteria_config_path
         cfg = self._read_config_from_file()
 
-        super(FileCriteriaProvider, self).__init__(criteria_config=cfg)
+        super(FileCriteriaFactory, self).__init__(criteria_config=cfg)
 
     def _read_config_from_file(self) -> Dict[Type[Criterion], CriterionConfiguration]:
         with open(self._criteria_config_path) as f:
