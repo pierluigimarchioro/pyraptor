@@ -421,6 +421,12 @@ def _reconstruct_journeys(
                 full_update_history = [lbl] + list(lbl.update_history)  # Iterate on current label `lbl` too
                 while len(full_update_history) > 0:
                     old_label = full_update_history.pop(0)
+
+                    if old_label.arrival_stop != later_leg.from_stop:
+                        # This can happen because arrival stop can change after an update
+                        # in that case, of course, skip the label
+                        continue
+
                     candidate_earlier_leg = Leg(
                         from_stop=old_label.boarding_stop,
                         to_stop=later_leg.from_stop,
@@ -430,6 +436,7 @@ def _reconstruct_journeys(
                     if candidate_earlier_leg.is_compatible_before(later_leg):
                         full_earlier_leg = candidate_earlier_leg
                         break
+
                 # Only add the new leg if a compatible leg was found
                 if full_earlier_leg is not None:
                     # Generate and prepend the intermediate legs to the provided journey,
