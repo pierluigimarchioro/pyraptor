@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import Iterable
-from typing import List, Dict
+from typing import List
 
 from loguru import logger
 
@@ -34,11 +34,11 @@ class GeneralizedCostRaptor(SingleCriterionRaptor[GeneralizedCostLabel, Generali
             enable_fwd_deps_heuristic: bool,
             enable_sm: bool,
             sm_config: SharedMobilityConfig,
-            criteria_provider: CriteriaFactory,
+            criteria_factory: CriteriaFactory,
     ):
         """
         :param timetable: object containing the data that will be used by the algorithm
-        :param criteria_provider: object that provides properly parameterized criteria for
+        :param criteria_factory: object that provides properly parameterized criteria for
             the algorithm to use
         """
 
@@ -49,8 +49,8 @@ class GeneralizedCostRaptor(SingleCriterionRaptor[GeneralizedCostLabel, Generali
             enable_fwd_deps_heuristic=enable_fwd_deps_heuristic
         )
 
-        self.criteria_provider: CriteriaFactory = criteria_provider
-        """Object that provides properly parameterized criteria for
+        self.criteria_factory: CriteriaFactory = criteria_factory
+        """Object that creates properly parameterized criteria instances for
             the algorithm to use"""
 
     def _initialization(
@@ -58,14 +58,14 @@ class GeneralizedCostRaptor(SingleCriterionRaptor[GeneralizedCostLabel, Generali
             from_stops: Iterable[Stop],
             dep_secs: int
     ) -> List[Stop]:
-        criterion_types = self.criteria_provider.criteria_config.keys()
+        criterion_types = self.criteria_factory.criteria_config.keys()
 
         # Initialize Round 0 with empty bags.
         # Following rounds are initialized by copying the previous one
         self.round_stop_bags[0] = {}
         for p in self.timetable.stops:
             # Initialize every criterion to infinite (the highest possible) cost
-            with_infinite_cost = self.criteria_provider.create_criteria(
+            with_infinite_cost = self.criteria_factory.create_criteria(
                 defaults={
                     c_type: LARGE_NUMBER
                     for c_type in criterion_types
@@ -85,7 +85,7 @@ class GeneralizedCostRaptor(SingleCriterionRaptor[GeneralizedCostLabel, Generali
         for from_stop in from_stops:
             # Default arrival time for origin stops is the departure time
             # Only add default for arrival time criterion if defined
-            with_departure_time = self.criteria_provider.create_criteria(
+            with_departure_time = self.criteria_factory.create_criteria(
                 defaults={ArrivalTimeCriterion: dep_secs} if ArrivalTimeCriterion in criterion_types else None
             )
             gc_label = GeneralizedCostLabel(

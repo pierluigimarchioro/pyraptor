@@ -184,8 +184,10 @@ class BaseRaptor(ABC, Generic[_LabelType, _BagType]):
 
         # Only cap rounds if max_rounds != -1
         k = 1
-        while (max_rounds == -1
-               or (k <= max_rounds and max_rounds != -1)):
+        while (
+                max_rounds == -1
+                or (k <= max_rounds and max_rounds != -1)
+        ):
             logger.info(f"Analyzing possibilities at round {k}")
             logger.debug(f"Marked stops to evaluate: {len(marked_stops)}")
 
@@ -500,6 +502,23 @@ class BaseRaptor(ABC, Generic[_LabelType, _BagType]):
         :return:
         """
 
+        def update_fwd_deps_set(s: Stop):
+            # Remove the current stop from forward dependencies of the old boarding stop
+            old_bag = self.round_stop_bags[k][s]
+            for old_lbl in old_bag.labels:
+                if old_lbl.boarding_stop is None:
+                    # First initialization of labels has boarding stop == None
+                    # In that case, skip
+                    continue
+
+                self.stop_forward_dependencies[old_lbl.boarding_stop].remove(s)
+
+            # Add the current stop to the forward dependencies of the new boarding stop
+            # Note: it is important to remove first and add second, because if the order
+            #   is inverted, the newly added stop might be deleted immediately
+            for lbl in updated_bag.labels:
+                self.stop_forward_dependencies[lbl.boarding_stop].add(s)
+
         updated_bag = self.round_stop_bags[k][stop_to_update].merge(with_labels=update_with)
 
         # Mark the stop if bag is updated and update the best label(s) for that stop
@@ -507,20 +526,7 @@ class BaseRaptor(ABC, Generic[_LabelType, _BagType]):
         if updated_bag.improved:
             # Only run heuristic if enabled
             if self.enable_fwd_deps_heuristic:
-                # Remove the current stop from forward dependencies of the old boarding stop
-                old_bag = self.round_stop_bags[k][stop_to_update]
-                for old_lbl in old_bag.labels:
-                    if old_lbl.boarding_stop is None:
-                        # First initialization of labels has boarding stop == None
-                        # In that case, skip
-                        continue
-                    self.stop_forward_dependencies[old_lbl.boarding_stop].remove(stop_to_update)
-
-                # Add the current stop to the forward dependencies of the new boarding stop
-                # Note: it is important to remove first and add second, because if the order
-                #   is inverted, the newly added stop might be deleted immediately
-                for lbl in updated_bag.labels:
-                    self.stop_forward_dependencies[lbl.boarding_stop].add(stop_to_update)
+                update_fwd_deps_set(stop_to_update)
 
                 updated_fwd_dependencies = self._update_forward_dependencies(
                     k=k,
