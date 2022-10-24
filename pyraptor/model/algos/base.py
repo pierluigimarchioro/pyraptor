@@ -805,7 +805,7 @@ class SingleCriterionRaptor(BaseRaptor[_LabelType, _SingleLabelBagType], ABC):
 
         # Can the journey to the current arrival stop be improved with the
         # new data (candidate_label)?
-        if candidate_label.is_strictly_dominating(previous_best):
+        if candidate_label.is_dominating(previous_best, strict=True):
             # Update arrival stop with new label
             self._update_stop(
                 k=k,

@@ -93,13 +93,17 @@ class BaseLabel(ABC, Generic[_LabelType]):  # TODO this seems like a "filler" cl
         pass
 
     @abstractmethod
-    def is_strictly_dominating(self, other: BaseLabel) -> bool:
+    def is_dominating(self, other: BaseLabel, strict: bool = False) -> bool:
         """
-        Returns true if the current label is *strictly dominating* the provided label,
-        meaning that it is *strictly better* in at least one criterion.
+        Returns true if the current label is *dominating* the provided label,
+        meaning that it is *equal or better* in all the optimization criteria.
+        If the `strict` parameter is set to True, then the definition of *strict domination*
+        is used instead, meaning that the current label must be *strictly better* in at least
+        one optimization criterion.
 
         :param other: other label to compare
-        :return: True if the current label is strictly dominating
+        :param strict: if True (default), *strict domination* is used
+        :return: True if the current label is dominating the other
         """
         pass
 
@@ -732,10 +736,11 @@ class MultiCriteriaLabel(BaseLabel[_MCLabelType], CriteriaProvider, Generic[_MCL
     def get_criteria(self) -> Sequence[Criterion]:
         return self.criteria
 
-    def is_strictly_dominating(self, other: MultiCriteriaLabel) -> bool:
-        # TODO strict domination here? is this method even needed?
-        #    after implementing McRAPTOR, consider removing if unused
-        return self.criteria < other.criteria
+    def is_dominating(self, other: MultiCriteriaLabel, strict: bool = False) -> bool:
+        if strict:
+            return self.criteria < other.criteria
+        else:
+            return np.all(np.array(self.criteria) <= np.array(other.criteria))
 
 
 class EarliestArrivalTimeLabel(MultiCriteriaLabel["EarliestArrivalTimeLabel"]):
@@ -789,8 +794,11 @@ class EarliestArrivalTimeLabel(MultiCriteriaLabel["EarliestArrivalTimeLabel"]):
             arrival_time=mc_label.arrival_time,
         )
 
-    def is_strictly_dominating(self, other: EarliestArrivalTimeLabel) -> bool:
-        return self.arrival_time < other.arrival_time
+    def is_dominating(self, other: EarliestArrivalTimeLabel, strict: bool = False) -> bool:
+        if strict:
+            return self.arrival_time < other.arrival_time
+        else:
+            return self.arrival_time <= other.arrival_time
 
     def __repr__(self) -> str:
         return (f"{EarliestArrivalTimeLabel.__name__}(earliest_arrival_time={self.arrival_time}, "
@@ -872,8 +880,15 @@ class GeneralizedCostLabel(MultiCriteriaLabel["GeneralizedCostLabel"]):
             criteria=updated_gc_criterion.criteria
         )
 
-    def is_strictly_dominating(self, other: GeneralizedCostLabel) -> bool:
-        return self.generalized_cost < other.generalized_cost
+    def is_dominating(self, other: GeneralizedCostLabel, strict: bool = False) -> bool:
+        if strict:
+            # If cost is equal, the one with the best arrival time dominates
+            if self.generalized_cost == other.generalized_cost:
+                return self.arrival_time < other.arrival_time
+            else:
+                return self.generalized_cost < other.generalized_cost
+        else:
+            return self.generalized_cost <= other.generalized_cost
 
 
 @dataclass(frozen=True)
@@ -969,14 +984,15 @@ class GeneralizedCostBag(SingleLabelBag[GeneralizedCostLabel]):
         if len(with_labels) == 0 and len(self.labels) == 0:
             return GeneralizedCostBag(improved=False)
 
+        # Best is evaluated on the basis of generalized cost. If even, then the best arrival time is kept
         prev_best = (
             None
             if len(self.labels) == 0
-            else min(self.labels, key=lambda lbl: lbl.generalized_cost)
+            else min(self.labels, key=lambda lbl: (lbl.generalized_cost, lbl.arrival_time))
         )
-        best_label = min(self.labels + with_labels, key=lambda lbl: lbl.generalized_cost)
+        best_label = min(self.labels + with_labels, key=lambda lbl: (lbl.generalized_cost, lbl.arrival_time))
 
-        was_improved = prev_best != best_label
+        was_improved = prev_best is None or best_label.is_dominating(prev_best, strict=True)
         return GeneralizedCostBag(labels=[best_label], improved=was_improved)
 
 
